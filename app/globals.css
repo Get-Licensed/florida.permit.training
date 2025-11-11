@@ -19,6 +19,18 @@
   }
 }
 
+@keyframes steer {
+  0% { transform: rotate(0deg); opacity: 0.3; }
+  25% { transform: rotate(-15deg); opacity: 1; }
+  50% { transform: rotate(0deg); opacity: 0.6; }
+  75% { transform: rotate(15deg); opacity: 1; }
+  100% { transform: rotate(0deg); opacity: 0.3; }
+}
+
+.steering-animation {
+  animation: steer 2.5s ease-in-out infinite;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
