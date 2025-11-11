@@ -135,7 +135,7 @@ export default function UpdateProfilePage() {
       updatableFields.alien_reg = null;
       updatableFields.non_alien_reg = null;
     }
-
+    
     const { error: metaErr } = await supabase.auth.updateUser({
       data: {
         full_name: formData.full_name,
