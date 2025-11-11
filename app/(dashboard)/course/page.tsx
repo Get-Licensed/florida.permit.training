@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
+export const dynamic = "force-dynamic";
 
 /* ───────────────────────────────
    COURSE LESSON STRUCTURE
