@@ -1,23 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 
-const BRAND_BLUE = "#001f40";
-const BRAND_ORANGE = "#ca5608";
+type FormData = {
+  full_name: string;
+  preferred_name: string;
+  email: string;
+  street: string;
+  apt: string;
+  city: string;
+  state: string;
+  country: string;
+  zip: string;
+  home_phone: string;
+  dob: string;
+  gender: string;
+  ssn_last5: string | null;
+  alien_reg: string | null;
+  non_alien_reg: string | null;
+};
 
 export default function UpdateProfilePage() {
   const router = useRouter();
 
-  const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [noSSN, setNoSSN] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [resetStatus, setResetStatus] = useState<"idle" | "sent" | "error">("idle");
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     full_name: "",
     preferred_name: "",
     email: "",
@@ -71,31 +85,27 @@ export default function UpdateProfilePage() {
         home_phone: profile?.home_phone || "",
         dob: profile?.dob || meta.dob || "",
         gender: profile?.gender || "",
-        ssn_last5: profile?.ssn_last5 || "",
-        alien_reg: profile?.alien_reg || "",
-        non_alien_reg: profile?.non_alien_reg || "",
+        ssn_last5: profile?.ssn_last5 ?? "",
+        alien_reg: profile?.alien_reg ?? "",
+        non_alien_reg: profile?.non_alien_reg ?? "",
       });
 
       setLoading(false);
     };
+
     fetchProfile();
   }, [router]);
 
-  const handleChange = (e: any) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((f) => ({ ...f, [name]: value }));
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/auth/sign-in");
   };
 
   const handleResetPassword = async () => {
     if (resetStatus !== "idle") return;
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !user.email) {
+    if (!user?.email) {
       setResetStatus("error");
       setTimeout(() => setResetStatus("idle"), 10000);
       return;
@@ -105,17 +115,11 @@ export default function UpdateProfilePage() {
       redirectTo: `${window.location.origin}/auth/reset`,
     });
 
-    if (error) {
-      console.error("Reset password error:", error);
-      setResetStatus("error");
-    } else {
-      setResetStatus("sent");
-    }
-
+    setResetStatus(error ? "error" : "sent");
     setTimeout(() => setResetStatus("idle"), 10000);
   };
 
-  const handleSave = async (e: any) => {
+  const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setErrorMsg("");
@@ -127,15 +131,15 @@ export default function UpdateProfilePage() {
       return;
     }
 
-    const { email, ...updatableFields } = formData;
+    const updatableFields: FormData = structuredClone(formData);
 
-    if (noSSN) {
-      updatableFields.ssn_last5 = null;
-    } else {
-      updatableFields.alien_reg = null;
-      updatableFields.non_alien_reg = null;
-    }
-    
+   //--- if (noSSN) {
+   //   updatableFields.ssn_last5 = null;
+   // } else {
+   //   updatableFields.alien_reg = null;
+   //   updatableFields.non_alien_reg = null;
+   // }
+
     const { error: metaErr } = await supabase.auth.updateUser({
       data: {
         full_name: formData.full_name,
@@ -170,10 +174,8 @@ export default function UpdateProfilePage() {
 
   return (
     <main className="flex flex-col min-h-screen bg-white">
-      {/* HEADER WITH MENU BUTTON ONLY */}
       <header className="h-4" />
 
-      {/* PAGE TITLE AND RESET LINK */}
       <section className="px-8 pt-6 max-w-6xl mx-auto text-center">
         <h1 className="text-2xl font-bold text-[#001f40] mb-2">Update Your Profile</h1>
         <p
@@ -202,7 +204,7 @@ export default function UpdateProfilePage() {
       >
         <Input label="Full Legal Name" name="full_name" value={formData.full_name} onChange={handleChange} required />
         <Input label="Preferred Name" name="preferred_name" value={formData.preferred_name} onChange={handleChange} />
-        <Input label="Email Address" name="email" value={formData.email} disabled />
+        <Input label="Email Address" name="email" value={formData.email ?? ""} disabled />
         <Input label="Date of Birth" name="dob" type="date" value={formData.dob} onChange={handleChange} />
         <Input label="Gender" name="gender" value={formData.gender} onChange={handleChange} />
         <Input label="Street Address" name="street" value={formData.street} onChange={handleChange} />
@@ -222,14 +224,15 @@ export default function UpdateProfilePage() {
 
         <div className="col-span-3 flex flex-wrap gap-6 items-start">
           {!noSSN ? (
-            <Input label="Social Security Number (Last 5 Digits)" name="ssn_last5" value={formData.ssn_last5} onChange={handleChange} />
+            <Input label="Social Security Number (Last 5 Digits)" name="ssn_last5" value={formData.ssn_last5 ?? ""} onChange={handleChange} />
           ) : (
             <>
-              <Input label="Alien Registration Number" name="alien_reg" value={formData.alien_reg} onChange={handleChange} />
-              <Input label="Non-Alien Registration Number" name="non_alien_reg" value={formData.non_alien_reg} onChange={handleChange} />
+              <Input label="Alien Registration Number" name="alien_reg" value={formData.alien_reg ?? ""} onChange={handleChange} />
+              <Input label="Non-Alien Registration Number" name="non_alien_reg" value={formData.non_alien_reg ?? ""} onChange={handleChange} />
             </>
-                   )}
+          )}
         </div>
+
 
         {errorMsg && (
           <p className="text-red-600 text-center col-span-3">{errorMsg}</p>
