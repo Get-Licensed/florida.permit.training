@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -133,13 +134,6 @@ export default function UpdateProfilePage() {
 
     const updatableFields: FormData = structuredClone(formData);
 
-   //--- if (noSSN) {
-   //   updatableFields.ssn_last5 = null;
-   // } else {
-   //   updatableFields.alien_reg = null;
-   //   updatableFields.non_alien_reg = null;
-   // }
-
     const { error: metaErr } = await supabase.auth.updateUser({
       data: {
         full_name: formData.full_name,
@@ -154,13 +148,11 @@ export default function UpdateProfilePage() {
       return;
     }
 
-    const { error } = await supabase
-      .from("profiles")
-      .upsert({
-        id: user.id,
-        ...updatableFields,
-        updated_at: new Date().toISOString(),
-      });
+    const { error } = await supabase.from("profiles").upsert({
+      id: user.id,
+      ...updatableFields,
+      updated_at: new Date().toISOString(),
+    });
 
     if (error) {
       console.error("Profile update error:", error);
@@ -169,92 +161,161 @@ export default function UpdateProfilePage() {
       return;
     }
 
-    router.push("/dashboard");
+    // ✅ Stay on profile page
+    setSaving(false);
+    setErrorMsg("Profile saved successfully!");
   };
+
+  const cancelBtnClasses =
+    "px-4 py-2 bg-gray-300 text-[#001f40] rounded hover:bg-gray-400 w-full sm:w-auto";
+  const saveBtnClasses = (saving: boolean) =>
+    `px-4 py-2 rounded text-white font-semibold w-full sm:w-auto ${
+      saving ? "bg-gray-400" : "bg-[#ca5608] hover:bg-[#b24b06]"
+    }`;
 
   return (
     <main className="flex flex-col min-h-screen bg-white">
       <header className="h-4" />
 
-      <section className="px-8 pt-6 max-w-6xl mx-auto text-center">
-        <h1 className="text-2xl font-bold text-[#001f40] mb-2">Update Your Profile</h1>
-        <p
-          className={`text-sm underline cursor-pointer mb-6 inline-block ${
-            resetStatus === "sent"
-              ? "text-green-600"
+      {/* Heading row with title, reset link, and desktop buttons */}
+      <section className="px-6 pt-6 w-full max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+        <div className="flex flex-col items-start">
+          <h1 className="text-2xl font-bold text-[#001f40]">Update Your Profile</h1>
+          <p
+            className={`text-sm underline cursor-pointer mt-1 ${
+              resetStatus === "sent"
+                ? "text-green-600"
+                : resetStatus === "error"
+                ? "text-red-600"
+                : "text-[#001f40] hover:text-[#ca5608]"
+            }`}
+            onClick={handleResetPassword}
+          >
+            {resetStatus === "sent"
+              ? "✅ Password reset sent to your email"
               : resetStatus === "error"
-              ? "text-red-600"
-              : "text-[#001f40] hover:text-[#ca5608]"
-          }`}
-          onClick={handleResetPassword}
-        >
-          {resetStatus === "sent"
-            ? "✅ Password reset sent to your email"
-            : resetStatus === "error"
-            ? "⚠️ Please wait 10 seconds before retrying"
-            : "Reset your password"}
-        </p>
+              ? "⚠️ Please wait 10 seconds before retrying"
+              : "Reset your password"}
+          </p>
+        </div>
+
+     {/* Desktop-only buttons in header */}
+            <div className="flex justify-end gap-[10px] hidden sm:flex">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className={cancelBtnClasses}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(e) => handleSave(e)}
+                className={saveBtnClasses(saving)}
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
       </section>
 
       <form
         onSubmit={handleSave}
-        className={`flex-1 p-8 max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 ${
+        className={`flex-1 p-6 w-full max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 ${
           saving ? "opacity-50 pointer-events-none" : ""
         }`}
       >
+        {/* Inputs */}
         <Input label="Full Legal Name" name="full_name" value={formData.full_name} onChange={handleChange} required />
         <Input label="Preferred Name" name="preferred_name" value={formData.preferred_name} onChange={handleChange} />
         <Input label="Email Address" name="email" value={formData.email ?? ""} disabled />
+
         <Input label="Date of Birth" name="dob" type="date" value={formData.dob} onChange={handleChange} />
         <Input label="Gender" name="gender" value={formData.gender} onChange={handleChange} />
-        <Input label="Street Address" name="street" value={formData.street} onChange={handleChange} />
-        <Input label="Apt / Suite #" name="apt" value={formData.apt} onChange={handleChange} />
-        <Input label="City" name="city" value={formData.city} onChange={handleChange} />
-        <Input label="State / Province" name="state" value={formData.state} onChange={handleChange} />
-        <Input label="Country" name="country" value={formData.country} onChange={handleChange} />
-        <Input label="Zip / Postal Code" name="zip" value={formData.zip} onChange={handleChange} />
         <Input label="Home Telephone" name="home_phone" value={formData.home_phone} onChange={handleChange} />
 
-        <div className="col-span-3">
-          <label className="text-sm font-semibold text-[#001f40] mb-1 flex items-center gap-2">
-            <input type="checkbox" checked={noSSN} onChange={(e) => setNoSSN(e.target.checked)} />
-            I do not have a Social Security Number
-          </label>
-        </div>
+        <Input label="Street Address" name="street" value={formData.street} onChange={handleChange} />
+        <Input label="Apt / Suite #" name="apt" value={formData.apt} onChange={handleChange} />
+        <Input label="State" name="state" value={formData.state} onChange={handleChange} />
 
-        <div className="col-span-3 flex flex-wrap gap-6 items-start">
+        <Input label="City" name="city" value={formData.city} onChange={handleChange} />
+        <Input label="Country" name="country" value={formData.country} onChange={handleChange} />
+        <Input label="Zip / Postal Code" name="zip" value={formData.zip} onChange={handleChange} />
+
+        {/* Identification section */}
+        <div className="col-span-full grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+          {/* Col 1: Checkbox always visible */}
+          <div className="flex items-center">
+            <label className="text-sm font-semibold text-[#001f40] flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={noSSN}
+                onChange={(e) => setNoSSN(e.target.checked)}
+              />
+              I do not have a Social Security Number
+            </label>
+          </div>
+
+          {/* Col 2 + Col 3: Conditional fields */}
           {!noSSN ? (
-            <Input label="Social Security Number (Last 5 Digits)" name="ssn_last5" value={formData.ssn_last5 ?? ""} onChange={handleChange} />
+            // Show SSN field spanning cols 2+3 when not checked
+            <div className="sm:col-span-2">
+              <Input
+                label="Social Security Number (Last 5 Digits)"
+                name="ssn_last5"
+                value={formData.ssn_last5 ?? ""}
+                onChange={handleChange}
+              />
+            </div>
           ) : (
             <>
-              <Input label="Alien Registration Number" name="alien_reg" value={formData.alien_reg ?? ""} onChange={handleChange} />
-              <Input label="Non-Alien Registration Number" name="non_alien_reg" value={formData.non_alien_reg ?? ""} onChange={handleChange} />
+              <Input
+                label="Alien Registration Number"
+                name="alien_reg"
+                value={formData.alien_reg ?? ""}
+                onChange={handleChange}
+              />
+              <Input
+                label="Non-Alien Registration Number"
+                name="non_alien_reg"
+                value={formData.non_alien_reg ?? ""}
+                onChange={handleChange}
+              />
             </>
           )}
         </div>
 
-
-        {errorMsg && (
-          <p className="text-red-600 text-center col-span-3">{errorMsg}</p>
-        )}
-
-        <div className="col-span-3 flex justify-end gap-4 mt-6">
-          <button
-            type="button"
-            onClick={() => router.push("/course")}
-            className="px-6 py-2 bg-gray-300 text-[#001f40] rounded hover:bg-gray-400"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className={`px-6 py-2 rounded text-white font-semibold ${
-              saving ? "bg-gray-400" : "bg-[#ca5608] hover:bg-[#b24b06]"
+       {errorMsg && (
+          <p
+            className={`text-center col-span-full ${
+              errorMsg.includes("successfully")
+                ? "text-[#ca5608]" // brand orange for success
+                : "text-red-600"   // red for errors
             }`}
           >
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
+            {errorMsg}
+          </p>
+        )}
+
+        {/* Mobile-only Save/Cancel buttons below the form */}
+        <div className="col-span-full block sm:hidden mt-6">
+          <div className="flex flex-col gap-3">
+           <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className={cancelBtnClasses}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className={saveBtnClasses(saving)}
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
         </div>
       </form>
     </main>
@@ -271,7 +332,7 @@ function Input({
   required = false,
 }: any) {
   return (
-    <div className="flex flex-col flex-1 min-w-[260px]">
+    <div className="flex flex-col w-full">
       <label className="text-sm font-semibold text-[#001f40] mb-1">
         {label}
       </label>
@@ -282,37 +343,10 @@ function Input({
         onChange={onChange}
         disabled={disabled}
         required={required}
-        className={`border-0 border-b border-[#001f40] bg-transparent focus:outline-none text-[#001f40] text-[14px] pb-1 ${
+        className={`border-0 border-b border-[#001f40] bg-transparent focus:outline-none text-[#001f40] text-[14px] pb-1 w-full ${
           disabled ? "opacity-70" : ""
         }`}
       />
     </div>
-  );
-}
-
-function MenuLink({
-  label,
-  href,
-  onClick,
-}: {
-  label: string;
-  href: string;
-  onClick?: () => void;
-}) {
-  const isActive =
-    typeof window !== "undefined" && window.location.pathname === href;
-
-  return (
-    <li>
-      <a
-        href={href}
-        onClick={onClick}
-        className={`cursor-pointer hover:text-[#ca5608] ${
-          isActive ? "text-[#ca5608] font-bold underline" : ""
-        }`}
-      >
-        {label}
-      </a>
-    </li>
   );
 }

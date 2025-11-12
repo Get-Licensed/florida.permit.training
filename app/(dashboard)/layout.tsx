@@ -1,57 +1,53 @@
 "use client";
+export const dynamic = "force-dynamic";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
+import { useEffect, useRef, useState } from "react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const pathname = usePathname();
   const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
-  // ───────────── PROTECT ROUTES ─────────────
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace("/auth/sign-in");
-      } else {
-        setLoading(false);
-      }
-    };
-    checkSession();
-  }, [router]);
+  const navItems = [
+    { name: "Dashboard", href: "/dashboard" },
+    { name: "My Course", href: "/course" },
+    { name: "My Permit", href: "/my-permit" },
+    { name: "My Profile", href: "/profile" },
+    { name: "Support", href: "/support" },
+  ];
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/auth/sign-in");
   };
 
-  // ───────────── LOADING SCREEN ─────────────
-  if (loading) {
-    return (
-      <main className="flex items-center justify-center h-screen bg-white">
-        <div className="steering-animation">
-          <img
-            src="/steering-wheel.png"
-            alt="Loading..."
-            className="w-20 h-20"
-          />
-        </div>
-      </main>
-    );
-  }
+  // ✅ Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    if (menuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
 
-  // ───────────── PAGE LAYOUT ─────────────
   return (
     <main className="flex flex-col min-h-screen bg-white">
-      {/* HEADER */}
+      {/* Header */}
       <header className="flex justify-between items-center p-4 text-white bg-[#001f40]">
-        <h1
-          className="text-xl font-bold cursor-pointer"
-          onClick={() => router.push("/dashboard")}
-        >
-          Florida Permit Training
+        <h1 className="text-xl font-bold">
+          <Link href="/dashboard" className="hover:text-[#ca5608] transition">
+            Florida Permit Training
+          </Link>
         </h1>
         <button
           onClick={() => setMenuOpen(true)}
@@ -61,70 +57,53 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </button>
       </header>
 
-      {/* BACKDROP */}
-      <div
-        className={`fixed inset-0 z-40 transition-opacity duration-300 ${
-          menuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
-        onClick={() => setMenuOpen(false)}
-      />
+      {/* Side Menu */}
+      {menuOpen && (
+        <div
+          ref={menuRef}
+          className="fixed top-0 right-0 w-64 h-full bg-[#001f40] text-white p-6 shadow-xl z-50 transition-transform duration-300"
+        >
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold">Menu</h2>
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="text-2xl font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
 
-      {/* SIDE MENU */}
-      <div
-        className={`fixed top-0 right-0 w-64 h-full bg-[#001f40] text-white p-6 shadow-xl z-50 transform transition-transform duration-300 ${
-          menuOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold">Menu</h2>
-          <button
-            onClick={() => setMenuOpen(false)}
-            className="text-2xl font-bold cursor-pointer"
-          >
-            ✕
-          </button>
+          <nav className="flex flex-col gap-4 text-lg">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  onClick={() => setMenuOpen(false)}
+                  className={`transition-colors duration-200 ${
+                    isActive
+                      ? "text-[#ca5608] font-semibold underline"
+                      : "text-white hover:text-[#ca5608]"
+                  }`}
+                >
+                  {item.name}
+                </Link>
+              );
+            })}
+
+            <button
+              onClick={handleLogout}
+              className="mt-4 text-left text-white hover:text-[#ca5608] transition-colors"
+            >
+              Log Out
+            </button>
+          </nav>
         </div>
-        <ul className="flex flex-col gap-4 text-lg">
-          <MenuLink label="Dashboard" href="/dashboard" />
-          <MenuLink label="My Profile" href="/profile" />
-          <MenuLink label="My Course" href="/course" />
-          <MenuLink label="My Permit" href="/my-permit" />
-          <MenuLink label="Support" href="/support" />
-          <MenuLink label="Log Out" href="#" onClick={handleLogout} />
-        </ul>
-      </div>
+      )}
 
-      {/* PAGE CONTENT */}
-      <section className="flex-1">{children}</section>
+      {/* Page Content */}
+      <div className="flex-1">{children}</div>
     </main>
-  );
-}
-
-/* ───────────── MENU LINK ───────────── */
-function MenuLink({
-  label,
-  href,
-  onClick,
-}: {
-  label: string;
-  href: string;
-  onClick?: () => void;
-}) {
-  const isActive =
-    typeof window !== "undefined" && window.location.pathname === href;
-
-  return (
-    <li>
-      <a
-        href={href !== "#" ? href : undefined}
-        onClick={onClick}
-        className={`cursor-pointer hover:text-[#ca5608] ${
-          isActive ? "text-[#ca5608] font-bold underline" : ""
-        }`}
-      >
-        {label}
-      </a>
-    </li>
   );
 }

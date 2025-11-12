@@ -1,7 +1,7 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
-
 /* ─────────────────────────────────────────
    Course structure (simplified)
 ───────────────────────────────────────── */

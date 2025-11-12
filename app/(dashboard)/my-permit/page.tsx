@@ -1,6 +1,7 @@
 "use client";
+export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 
 export default function MyPermitPage() {

@@ -1,8 +1,8 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
-export const dynamic = "force-dynamic";
 
 /* ───────────────────────────────
    COURSE LESSON STRUCTURE
@@ -13,6 +13,7 @@ type Lesson = {
   duration: number;
   thumbnail: string;
   modules: string[];
+  moduleDurations?: number[];
 };
 
 const COURSE: Lesson[] = [
@@ -35,47 +36,73 @@ const BRAND_ORANGE = "#ca5608";
 const BRAND_BLUE = "#001f40";
 
 /* ───────────────────────────────
-   MENU ICONS
-────────────────────────────── */
-const Menu = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="4" y1="6" x2="20" y2="6" />
-    <line x1="4" y1="12" x2="20" y2="12" />
-    <line x1="4" y1="18" x2="20" y2="18" />
-  </svg>
-);
-
-const Close = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
-
-/* ───────────────────────────────
-   MAIN PAGE COMPONENT
+   MAIN COMPONENT
 ────────────────────────────── */
 export default function CoursePage() {
   const [hoverLesson, setHoverLesson] = useState<Lesson | null>(null);
   const [currentLesson, setCurrentLesson] = useState(0);
   const [currentModule, setCurrentModule] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [mouseX, setMouseX] = useState(0);
   const [vw, setVw] = useState(0);
 
-  const totalMinutes = useMemo(
-    () => COURSE.reduce((acc, l) => acc + l.duration, 0),
-    []
-  );
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [isCounting, setIsCounting] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const [awaitingClick, setAwaitingClick] = useState(false); // ← NEW: user must click Next
+  const [narrating, setNarrating] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [completedModules, setCompletedModules] = useState<Record<string, boolean>>({});
 
-  const widthPercent = (lesson: Lesson) =>
-    (lesson.duration / totalMinutes) * 100;
+  /* Format helpers */
+  const fmt = (s: number) => {
+    const sec = Math.max(0, Math.ceil(s));
+    const m = Math.floor(sec / 60);
+    const ss = String(sec % 60).padStart(2, "0");
+    return m > 0 ? `${m}:${ss}` : `${sec}s`;
+  };
+  const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
-  const progress =
-    ((currentModule + 1) / COURSE[currentLesson].modules.length) * 100;
+  /* ─────────────── Load user progress ─────────────── */
+  useEffect(() => {
+    const loadProgress = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id;
+      setUserId(uid || null);
+      if (!uid) return;
 
+      const { data } = await supabase
+        .from("course_progress")
+        .select("lesson_id, module_index, completed")
+        .eq("user_id", uid)
+        .eq("completed", true);
+
+      if (data) {
+        const map: Record<string, boolean> = {};
+        data.forEach((r) => (map[`${r.lesson_id}-${r.module_index}`] = true));
+        setCompletedModules(map);
+      }
+    };
+    loadProgress();
+  }, []);
+
+  const isModuleCompleted = (lessonId: number, modIdx: number) =>
+    completedModules[`${lessonId}-${modIdx}`] === true;
+
+  /* ─────────────── Resume from last incomplete ─────────────── */
+  useEffect(() => {
+    if (!Object.keys(completedModules).length) return;
+    for (let l = 0; l < COURSE.length; l++) {
+      const mods = COURSE[l].modules;
+      const firstIncomplete = mods.findIndex((_, idx) => !isModuleCompleted(COURSE[l].id, idx));
+      if (firstIncomplete !== -1) {
+        setCurrentLesson(l);
+        setCurrentModule(firstIncomplete);
+        return;
+      }
+    }
+  }, [completedModules]);
+
+  /* ─────────────── Responsive width ─────────────── */
   useEffect(() => {
     const update = () => setVw(window.innerWidth);
     update();
@@ -83,72 +110,195 @@ export default function CoursePage() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  const CARD_W = 300;
-  const CARD_MARGIN = 12;
-  const cardLeft =
-    Math.max(
-      CARD_MARGIN,
-      Math.min(mouseX - CARD_W / 2, Math.max(0, vw) - CARD_W - CARD_MARGIN)
-    ) + "px";
+  /* ─────────────── Timer setup ─────────────── */
+  useEffect(() => {
+    const lesson = COURSE[currentLesson];
 
+    // Starting any module resets the click requirement
+    setAwaitingClick(false);
+
+    if (isModuleCompleted(lesson.id, currentModule)) {
+      setTimeLeft(0);
+      setIsCounting(false);
+      setIsComplete(true);
+      // In review mode, still require a click to advance
+      setAwaitingClick(true);
+      return;
+    }
+    const dur = lesson.moduleDurations?.[currentModule] ?? 30;
+    setTimeLeft(dur);
+    setIsCounting(true);
+    setIsComplete(false);
+  }, [currentLesson, currentModule]);
+
+  /* ─────────────── Pause on blur ─────────────── */
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) setIsCounting(false);
+      else if (timeLeft > 0 && !isComplete) setIsCounting(true);
+    };
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (timeLeft > 0 && !isComplete) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [timeLeft, isComplete]);
+
+  /* ─────────────── Smooth countdown ─────────────── */
+  useEffect(() => {
+    if (!isCounting) return;
+
+    const start = performance.now();
+    const startLeft = timeLeft;
+    let frameId: number;
+
+    const tick = (now: number) => {
+      const elapsed = (now - start) / 1000;
+      const newLeft = Math.max(0, startLeft - elapsed);
+      setTimeLeft((prev) => (Math.abs(prev - newLeft) > 0.016 ? newLeft : prev));
+
+      if (newLeft <= 0) {
+        setIsCounting(false);
+        setIsComplete(true);
+        setAwaitingClick(true); // ← require explicit click
+        handleModuleComplete();
+        // subtle chime when complete
+        const audio = new Audio("/sounds/complete.mp3");
+        audio.volume = 0.4;
+        audio.play().catch(() => {});
+        cancelAnimationFrame(frameId);
+      } else frameId = requestAnimationFrame(tick);
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [isCounting]);
+
+  /* ─────────────── Narration ─────────────── */
+  const handleNarrate = () => {
+    const text = COURSE[currentLesson].modules[currentModule];
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1;
+    utter.onstart = () => setNarrating(true);
+    utter.onend = () => {
+      setNarrating(false);
+      setIsComplete(true);
+      setAwaitingClick(true); // ← require explicit click after narration
+      handleModuleComplete();
+    };
+    speechSynthesis.speak(utter);
+  };
+
+  /* ─────────────── Save progress ─────────────── */
+  const handleModuleComplete = async () => {
+    if (!userId) return;
+    const lesson = COURSE[currentLesson];
+    const key = `${lesson.id}-${currentModule}`;
+    if (completedModules[key]) return;
+    const moduleDuration = lesson.moduleDurations?.[currentModule] ?? 30;
+
+    const { error } = await supabase
+      .from("course_progress")
+      .upsert(
+        {
+          user_id: userId,
+          course_id: "FL_PERMIT_TRAINING",
+          lesson_id: lesson.id,
+          module_index: currentModule,
+          completed: true,
+          elapsed_seconds: moduleDuration,
+          completed_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,course_id,lesson_id,module_index" }
+      );
+
+    if (!error) setCompletedModules((prev) => ({ ...prev, [key]: true }));
+    else console.error("❌ Error saving progress:", error.message);
+  };
+
+  /* ─────────────── Navigation ─────────────── */
   const handleNext = () => {
-    if (currentModule < COURSE[currentLesson].modules.length - 1) {
+    // Absolute guard: never move unless user has clicked after completion
+    if (!awaitingClick) return;
+
+    const lesson = COURSE[currentLesson];
+    if (currentModule < lesson.modules.length - 1) {
       setCurrentModule(currentModule + 1);
     } else if (currentLesson < COURSE.length - 1) {
       setCurrentLesson(currentLesson + 1);
       setCurrentModule(0);
     }
+    // reset click requirement for the next module (timer setup also resets)
+    setAwaitingClick(false);
+    setIsComplete(false);
   };
 
   const handlePrev = () => {
-    if (currentModule > 0) {
-      setCurrentModule(currentModule - 1);
-    } else if (currentLesson > 0) {
+    if (currentModule > 0) setCurrentModule(currentModule - 1);
+    else if (currentLesson > 0) {
       const prev = COURSE[currentLesson - 1];
       setCurrentLesson(currentLesson - 1);
       setCurrentModule(prev.modules.length - 1);
     }
+    setAwaitingClick(false);
+    setIsComplete(false);
   };
 
-  /* ───────────────────────────────
-      UI
-  ─────────────────────────────── */
+  /* ─────────────── Progress ─────────────── */
+  const lesson = COURSE[currentLesson];
+  const moduleDuration = lesson.moduleDurations?.[currentModule] ?? 30;
+  const moduleFraction = isComplete ? 1 : clamp01((moduleDuration - timeLeft) / moduleDuration);
+  const lessonModuleCount = lesson.modules.length;
+  const progress = ((currentModule + moduleFraction) / lessonModuleCount) * 100;
+
+  const totalMinutes = useMemo(() => COURSE.reduce((acc, l) => acc + l.duration, 0), []);
+  const widthPercent = (l: Lesson) => (l.duration / totalMinutes) * 100;
+  const CARD_W = 300;
+  const CARD_MARGIN = 12;
+  const cardLeft =
+    Math.max(CARD_MARGIN, Math.min(mouseX - CARD_W / 2, Math.max(0, vw) - CARD_W - CARD_MARGIN)) + "px";
+
+  /* ─────────────── UI ─────────────── */
   return (
-    <main className="flex flex-col min-h-screen bg-white relative">
-
-
-      {/* ─────────────── PROGRESS BAR ─────────────── */}
+    <main className="flex flex-col bg-white relative overflow-hidden" style={{ height: "calc(100vh - (64px + 120px))" }}>
+      {/* Top progress bar */}
       <div className="w-full h-2 bg-gray-200">
-        <div
-          className="h-2 transition-all duration-500"
-          style={{ width: `${progress}%`, backgroundColor: BRAND_ORANGE }}
-        />
+        <div className="h-2" style={{ width: `${progress}%`, backgroundColor: BRAND_ORANGE }} />
       </div>
 
-      {/* ─────────────── COURSE MODULE SECTION ─────────────── */}
-      <section className="flex-1 flex flex-col px-8 py-6">
+      {/* Module content */}
+      <section className="flex flex-col px-8 py-6 overflow-auto flex-1">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-[#001f40]">
-            Module {currentModule + 1} of {COURSE[currentLesson].modules.length}
+            Module {currentModule + 1} of {lesson.modules.length}
           </h2>
           <button
-            onClick={() => {
-              const text = COURSE[currentLesson].modules[currentModule];
-              const utter = new SpeechSynthesisUtterance(text);
-              utter.rate = 1;
-              speechSynthesis.speak(utter);
-            }}
-            className="bg-[#2596be] text-white px-4 py-2 rounded hover:bg-[#1f7ea1]"
+            onClick={handleNarrate}
+            disabled={narrating}
+            className={`px-4 py-2 rounded text-white font-semibold ${
+              narrating ? "bg-gray-400 cursor-not-allowed" : "bg-[#2596be] hover:bg-[#1f7ea1]"
+            }`}
           >
-            🔊 Narrate
+            🔊 {narrating ? "Playing..." : "Narrate"}
           </button>
         </div>
 
-        <p className="text-[#001f40] leading-relaxed text-lg flex-1">
-          {COURSE[currentLesson].modules[currentModule]}
-        </p>
+        <p className="text-[#001f40] leading-relaxed text-lg flex-1">{lesson.modules[currentModule]}</p>
+        <div className="text-sm text-[#ca5608] mt-3 font-medium">
+          {awaitingClick ? "Module complete! ✅" : `Time remaining: ${fmt(timeLeft)}`}
+        </div>
+      </section>
 
-        <div className="flex justify-between items-center mt-8">
+      {/* Footer with buttons + timeline */}
+      <footer className="fixed left-0 right-0 border-t shadow-inner bg-white" style={{ bottom: "1px" }}>
+        <div className="flex justify-between items-center px-8 pb-1 py-6">
           <button
             onClick={handlePrev}
             className={`px-5 py-2 rounded font-semibold text-white ${
@@ -162,99 +312,100 @@ export default function CoursePage() {
           </button>
 
           <p className="text-sm text-[#666]">
-            {currentModule + 1} / {COURSE[currentLesson].modules.length}
+            {currentModule + 1} / {lesson.modules.length}
           </p>
 
           <button
             onClick={handleNext}
-            className={`px-5 py-2 rounded font-semibold text-white ${
-              currentLesson === COURSE.length - 1 &&
-              currentModule === COURSE[currentLesson].modules.length - 1
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-[#ca5608] hover:bg-[#b24b06]"
+            disabled={!awaitingClick}
+            aria-disabled={!awaitingClick}
+            className={`px-5 py-2 rounded font-semibold text-white transition-all ${
+              awaitingClick
+                ? "bg-[#ca5608] hover:bg-[#b24b06] animate-pulse cursor-pointer"
+                : "bg-gray-400 cursor-not-allowed"
             }`}
           >
-            Next
+            {awaitingClick ? "Next" : `Wait ${fmt(timeLeft)}`}
           </button>
         </div>
-      </section>
 
-      {/* ─────────────── TIMELINE FOOTER ─────────────── */}
-      <footer className="w-full border-t shadow-inner p-4 relative bg-white">
-        <div className="relative w-full h-6 flex">
-          {COURSE.map((l, i) => {
-            const done = i < currentLesson;
-            return (
-              <div
-                key={`seg-${l.id}`}
-                style={{ width: `${widthPercent(l)}%` }}
-                className="relative h-full flex"
-                onMouseEnter={(e) => {
-                  setHoverLesson(l);
-                  setMouseX(e.clientX);
-                }}
-                onMouseMove={(e) => setMouseX(e.clientX)}
-                onMouseLeave={() => setHoverLesson(null)}
-                onClick={() => {
-                  setCurrentLesson(i);
-                  setCurrentModule(0);
-                }}
-              >
+        {/* Timeline */}
+        <div className="p-4">
+          <div className="relative w-full h-6 flex">
+            {COURSE.map((l, i) => {
+              const done = i < currentLesson;
+              const active = i === currentLesson;
+              const locked = i > currentLesson;
+
+              return (
                 <div
-                  className="flex-1 h-2 self-center transition-colors cursor-pointer"
-                  style={{
-                    backgroundColor: done ? BRAND_BLUE : BRAND_ORANGE,
+                  key={`seg-${l.id}`}
+                  style={{ width: `${widthPercent(l)}%` }}
+                  className={`relative h-full flex items-center justify-center transition-all duration-300 ${
+                    locked ? "opacity-40" : "cursor-pointer"
+                  }`}
+                  onMouseEnter={(e) => {
+                    setHoverLesson(l);
+                    setMouseX(e.clientX);
                   }}
-                />
-                {i < COURSE.length - 1 && (
-                  <div className="w-[3px] h-full bg-white" />
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  onMouseMove={(e) => setMouseX(e.clientX)}
+                  onMouseLeave={() => setHoverLesson(null)}
+                  onClick={() => {
+                    if (!locked) {
+                      setCurrentLesson(i);
+                      setCurrentModule(0);
+                      setAwaitingClick(false);
+                      setIsComplete(false);
+                    }
+                  }}
+                >
+                  <div
+                    className={`flex-1 h-2 rounded-full transition-all duration-500 ${
+                      done
+                        ? "bg-[#001f40]" // Completed = Blue
+                        : active
+                        ? "bg-[#ca5608] shadow-[0_0_6px_#ca5608]" // Active = glowing orange
+                        : "bg-[#ca5608]/70" // Future = muted orange
+                    }`}
+                  />
+                  {i < COURSE.length - 1 && <div className="w-[3px] h-full bg-white" />}
 
-        {/* Durations under timeline */}
-        <div className="flex w-full mt-1">
-          {COURSE.map((l) => (
-            <div
-              key={`dur-${l.id}`}
-              style={{ width: `${widthPercent(l)}%` }}
-              className="flex justify-center"
-            >
-              <span className="text-[9px] text-[#ca5608]">
-                {l.duration > 0 ? `${l.duration} min` : ""}
-              </span>
-            </div>
-          ))}
+                  {/* 🚫 Hover Overlay for Locked Lessons */}
+                  {locked && (
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                      <span className="text-red-600 text-xl">🚫</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Duration labels */}
+          <div className="flex w-full mt-1">
+            {COURSE.map((l) => (
+              <div key={`dur-${l.id}`} style={{ width: `${widthPercent(l)}%` }} className="flex justify-center">
+                <span className="text-[9px] text-[#ca5608]">{l.duration > 0 ? `${l.duration} min` : ""}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </footer>
 
-      {/* ─────────────── HOVER CARD ─────────────── */}
+      {/* Hover card */}
       {hoverLesson && (
         <div
-          className="fixed z-30 bg-[var(--card-bg)] text-white shadow-xl rounded-lg p-4 w-[300px] pointer-events-none transition-transform"
-          style={
-            {
-              left: cardLeft,
-              bottom: "96px",
-              "--card-bg": BRAND_ORANGE,
-            } as React.CSSProperties
-          }
+          className="fixed z-30 bg-[var(--card-bg)] text-white shadow-xl rounded-lg p-4 w-[300px] pointer-events-none"
+          style={{ left: `${cardLeft}`, bottom: "80px", "--card-bg": BRAND_ORANGE } as React.CSSProperties}
         >
           <div
             className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent"
             style={{ borderTopColor: BRAND_ORANGE }}
           />
-          <h2 className="text-base font-bold mb-1 leading-snug">
-            {hoverLesson.title}
-          </h2>
-
+          <h2 className="text-base font-bold mb-1 leading-snug">{hoverLesson.title}</h2>
           {hoverLesson.thumbnail && (
             <>
-              <p className="text-xs opacity-90 mb-2">
-                Duration: {hoverLesson.duration} minutes
-              </p>
+              <p className="text-xs opacity-90 mb-2">Duration: {hoverLesson.duration} minutes</p>
               <div className="w-full h-20 bg-black/20 rounded flex items-center justify-center text-[11px]">
                 (Thumbnail: {hoverLesson.thumbnail})
               </div>
