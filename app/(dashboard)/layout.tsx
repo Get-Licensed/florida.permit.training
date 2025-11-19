@@ -22,46 +22,60 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push("/auth/sign-in");
+    router.replace("/");
   };
 
-  // ✅ Close menu when clicking outside
+  // Close menu when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
     };
-    if (menuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    } else {
-      document.removeEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    if (menuOpen) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
   return (
-    <main className="flex flex-col min-h-screen bg-white">
-      {/* Header */}
-      <header className="flex justify-between items-center p-4 text-white bg-[#001f40]">
-        <h1 className="text-xl font-bold">
-          <Link href="/dashboard" className="hover:text-[#ca5608] transition">
-            Florida Permit Training
-          </Link>
-        </h1>
+    <main
+      className="
+        flex flex-col bg-white
+        min-h-[100vh]
+        md:h-[100dvh]      /* Desktop: lock height */
+        md:overflow-hidden /* Prevent scroll on desktop */
+      "
+    >
+      {/* HEADER */}
+        <header className="flex justify-between items-center p-3 bg-[#001f40]">
+       <Link href="/dashboard" className="flex items-center">
+          <div className="h-12 w-12 bg-white rounded-full flex items-center justify-center p-2 shadow-md">
+            <img
+              src="/logo.png"
+              alt="Florida Permit Training"
+              className="h-full w-full object-contain"
+            />
+          </div>
+        </Link>
+
         <button
           onClick={() => setMenuOpen(true)}
-          className="text-3xl font-bold cursor-pointer"
+          className="text-3xl font-bold text-white cursor-pointer"
         >
           ☰
         </button>
       </header>
 
-      {/* Side Menu */}
+
+      {/* MOBILE-SAFE SIDE MENU */}
       {menuOpen && (
         <div
           ref={menuRef}
-          className="fixed top-0 right-0 w-64 h-full bg-[#001f40] text-white p-6 shadow-xl z-50 transition-transform duration-300"
+          className="
+            fixed top-0 right-0 w-64 
+            h-[100dvh] 
+            bg-[#001f40] text-white p-6 shadow-xl z-50 
+            overflow-y-auto
+          "
         >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold">Menu</h2>
@@ -94,7 +108,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <button
               onClick={handleLogout}
-              className="mt-4 text-left text-white hover:text-[#ca5608] transition-colors"
+              className="mt-6 text-left text-white hover:text-[#ca5608]"
             >
               Log Out
             </button>
@@ -102,8 +116,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      {/* Page Content */}
-      <div className="flex-1">{children}</div>
+      {/* CONTENT — desktop locked, mobile scrollable */}
+      <div
+        className="
+          flex-1 
+          overflow-y-auto 
+          md:overflow-y-hidden /* desktop lock */
+          touch-pan-y
+          overscroll-none
+        "
+      >
+        {children}
+      </div>
     </main>
   );
 }

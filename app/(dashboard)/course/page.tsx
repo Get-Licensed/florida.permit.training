@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import { useRouter } from "next/navigation";
+import { requireAuth } from "@/utils/requireAuth";
 
 /* ───────────────────────────────
-   COURSE LESSON STRUCTURE
+   COURSE DATA
 ────────────────────────────── */
 type Lesson = {
   id: number;
@@ -39,210 +41,208 @@ const BRAND_BLUE = "#001f40";
    MAIN COMPONENT
 ────────────────────────────── */
 export default function CoursePage() {
-  const [hoverLesson, setHoverLesson] = useState<Lesson | null>(null);
-  const [currentLesson, setCurrentLesson] = useState(0);
-  const [currentModule, setCurrentModule] = useState(0);
-  const [mouseX, setMouseX] = useState(0);
-  const [vw, setVw] = useState(0);
+  const router = useRouter();
 
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [isCounting, setIsCounting] = useState(false);
-  const [isComplete, setIsComplete] = useState(false);
-  const [awaitingClick, setAwaitingClick] = useState(false); // ← NEW: user must click Next
-  const [narrating, setNarrating] = useState(false);
+  /* 1) AUTH CHECK */
+  const [authDone, setAuthDone] = useState(false);
+  useEffect(() => {
+    async function run() {
+      await requireAuth(router);
+      setAuthDone(true);
+    }
+    run();
+  }, [router]);
+
+  /* 2) LOAD SAVED PROGRESS */
   const [userId, setUserId] = useState<string | null>(null);
   const [completedModules, setCompletedModules] = useState<Record<string, boolean>>({});
+  const [progressDone, setProgressDone] = useState(false);
 
-  /* Format helpers */
-  const fmt = (s: number) => {
-    const sec = Math.max(0, Math.ceil(s));
-    const m = Math.floor(sec / 60);
-    const ss = String(sec % 60).padStart(2, "0");
-    return m > 0 ? `${m}:${ss}` : `${sec}s`;
-  };
-  const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
-
-  /* ─────────────── Load user progress ─────────────── */
   useEffect(() => {
-    const loadProgress = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData?.user?.id;
-      setUserId(uid || null);
-      if (!uid) return;
+    const load = async () => {
+      const { data: u } = await supabase.auth.getUser();
+      const uid = u?.user?.id ?? null;
+      setUserId(uid);
 
-      const { data } = await supabase
-        .from("course_progress")
-        .select("lesson_id, module_index, completed")
-        .eq("user_id", uid)
-        .eq("completed", true);
+      if (uid) {
+        const { data } = await supabase
+          .from("course_progress")
+          .select("lesson_id,module_index,completed")
+          .eq("user_id", uid)
+          .eq("completed", true);
 
-      if (data) {
-        const map: Record<string, boolean> = {};
-        data.forEach((r) => (map[`${r.lesson_id}-${r.module_index}`] = true));
-        setCompletedModules(map);
+        if (data) {
+          const map: Record<string, boolean> = {};
+          data.forEach((r) => (map[`${r.lesson_id}-${r.module_index}`] = true));
+          setCompletedModules(map);
+        }
       }
+
+      setProgressDone(true);
     };
-    loadProgress();
+    load();
   }, []);
 
-  const isModuleCompleted = (lessonId: number, modIdx: number) =>
-    completedModules[`${lessonId}-${modIdx}`] === true;
-
-  /* ─────────────── Resume from last incomplete ─────────────── */
+  /* 3) DECIDE WHERE TO RESUME */
+  const [resumeLesson, setResumeLesson] = useState<number | null>(null);
+  const [resumeModule, setResumeModule] = useState<number | null>(null);
   useEffect(() => {
-    if (!Object.keys(completedModules).length) return;
+    if (!progressDone) return;
+
+    if (Object.keys(completedModules).length === 0) {
+      setResumeLesson(0);
+      setResumeModule(0);
+      return;
+    }
+
     for (let l = 0; l < COURSE.length; l++) {
-      const mods = COURSE[l].modules;
-      const firstIncomplete = mods.findIndex((_, idx) => !isModuleCompleted(COURSE[l].id, idx));
-      if (firstIncomplete !== -1) {
-        setCurrentLesson(l);
-        setCurrentModule(firstIncomplete);
+      const lesson = COURSE[l];
+      const idx = lesson.modules.findIndex((_, i) => completedModules[`${lesson.id}-${i}`] !== true);
+      if (idx !== -1) {
+        setResumeLesson(l);
+        setResumeModule(idx);
         return;
       }
     }
-  }, [completedModules]);
+  }, [progressDone, completedModules]);
 
-  /* ─────────────── Responsive width ─────────────── */
+  /* 4) SMOOTH PAGE-READY DELAY */
+  const [pageReady, setPageReady] = useState(false);
   useEffect(() => {
-    const update = () => setVw(window.innerWidth);
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
+    if (authDone && progressDone && resumeLesson !== null && resumeModule !== null) {
+      const t = setTimeout(() => setPageReady(true), 350);
+      return () => clearTimeout(t);
+    }
+  }, [authDone, progressDone, resumeLesson, resumeModule]);
 
-  /* ─────────────── Timer setup ─────────────── */
+  /* 5) ALWAYS-MOUNTED ACTIVE STATE */
+  const [currentLesson, setCurrentLesson] = useState(0);
+  const [currentModule, setCurrentModule] = useState(0);
+
   useEffect(() => {
+    if (resumeLesson !== null) setCurrentLesson(resumeLesson);
+  }, [resumeLesson]);
+  useEffect(() => {
+    if (resumeModule !== null) setCurrentModule(resumeModule);
+  }, [resumeModule]);
+
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [isCounting, setIsCounting] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const [awaitingClick, setAwaitingClick] = useState(false);
+  const [narrating, setNarrating] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+
+  // NEW: Narrator volume (0–1)
+  const [volume, setVolume] = useState(1);
+
+  const fmt = (s: number) => `${Math.ceil(Math.max(0, s))}s`;
+
+  /* RESET TIMER WHEN MODULE CHANGES */
+  const isModuleDone = (l: number, m: number) => completedModules[`${l}-${m}`] === true;
+  useEffect(() => {
+    if (resumeLesson === null || resumeModule === null) return;
     const lesson = COURSE[currentLesson];
 
-    // Starting any module resets the click requirement
     setAwaitingClick(false);
-
-    if (isModuleCompleted(lesson.id, currentModule)) {
+    if (isModuleDone(lesson.id, currentModule)) {
       setTimeLeft(0);
       setIsCounting(false);
       setIsComplete(true);
-      // In review mode, still require a click to advance
       setAwaitingClick(true);
       return;
     }
+
     const dur = lesson.moduleDurations?.[currentModule] ?? 30;
     setTimeLeft(dur);
     setIsCounting(true);
     setIsComplete(false);
   }, [currentLesson, currentModule]);
 
-  /* ─────────────── Pause on blur ─────────────── */
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.hidden) setIsCounting(false);
-      else if (timeLeft > 0 && !isComplete) setIsCounting(true);
-    };
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (timeLeft > 0 && !isComplete) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [timeLeft, isComplete]);
+  /* PAUSE / RESUME */
+  const togglePause = () => {
+    if (isPaused) {
+      setIsPaused(false);
+      setIsCounting(true);
+    } else {
+      setIsPaused(true);
+      setIsCounting(false);
+      speechSynthesis.cancel();
+      setNarrating(false);
+    }
+  };
 
-  /* ─────────────── Smooth countdown ─────────────── */
+  /* COUNTDOWN */
   useEffect(() => {
-    if (!isCounting) return;
+    if (!isCounting || isPaused) return;
 
     const start = performance.now();
-    const startLeft = timeLeft;
-    let frameId: number;
+    const startingLeft = timeLeft;
+    let id: number;
 
     const tick = (now: number) => {
+      if (isPaused) return;
       const elapsed = (now - start) / 1000;
-      const newLeft = Math.max(0, startLeft - elapsed);
-      setTimeLeft((prev) => (Math.abs(prev - newLeft) > 0.016 ? newLeft : prev));
+      const newLeft = Math.max(0, startingLeft - elapsed);
+
+      setTimeLeft((p) => (Math.abs(p - newLeft) > 0.016 ? newLeft : p));
 
       if (newLeft <= 0) {
         setIsCounting(false);
         setIsComplete(true);
-        setAwaitingClick(true); // ← require explicit click
+        setAwaitingClick(true);
         handleModuleComplete();
-        // subtle chime when complete
-        const audio = new Audio("/sounds/complete.mp3");
-        audio.volume = 0.4;
-        audio.play().catch(() => {});
-        cancelAnimationFrame(frameId);
-      } else frameId = requestAnimationFrame(tick);
+        cancelAnimationFrame(id);
+      } else id = requestAnimationFrame(tick);
     };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, [isCounting, isPaused]);
 
-    frameId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameId);
-  }, [isCounting]);
-
-  /* ─────────────── Narration ─────────────── */
-  const handleNarrate = () => {
-    const text = COURSE[currentLesson].modules[currentModule];
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = 1;
-    utter.onstart = () => setNarrating(true);
-    utter.onend = () => {
-      setNarrating(false);
-      setIsComplete(true);
-      setAwaitingClick(true); // ← require explicit click after narration
-      handleModuleComplete();
-    };
-    speechSynthesis.speak(utter);
-  };
-
-  /* ─────────────── Save progress ─────────────── */
+  /* SAVE COMPLETION */
   const handleModuleComplete = async () => {
     if (!userId) return;
     const lesson = COURSE[currentLesson];
     const key = `${lesson.id}-${currentModule}`;
     if (completedModules[key]) return;
-    const moduleDuration = lesson.moduleDurations?.[currentModule] ?? 30;
 
-    const { error } = await supabase
-      .from("course_progress")
-      .upsert(
-        {
-          user_id: userId,
-          course_id: "FL_PERMIT_TRAINING",
-          lesson_id: lesson.id,
-          module_index: currentModule,
-          completed: true,
-          elapsed_seconds: moduleDuration,
-          completed_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,course_id,lesson_id,module_index" }
-      );
+    const dur = lesson.moduleDurations?.[currentModule] ?? 30;
+    await supabase.from("course_progress").upsert(
+      {
+        user_id: userId,
+        course_id: "FL_PERMIT_TRAINING",
+        lesson_id: lesson.id,
+        module_index: currentModule,
+        completed: true,
+        elapsed_seconds: dur,
+        completed_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,course_id,lesson_id,module_index" }
+    );
 
-    if (!error) setCompletedModules((prev) => ({ ...prev, [key]: true }));
-    else console.error("❌ Error saving progress:", error.message);
+    setCompletedModules((prev) => ({ ...prev, [key]: true }));
   };
 
-  /* ─────────────── Navigation ─────────────── */
+  /* NEXT / PREVIOUS */
   const handleNext = () => {
-    // Absolute guard: never move unless user has clicked after completion
-    if (!awaitingClick) return;
-
+    if (!awaitingClick || isPaused) return;
     const lesson = COURSE[currentLesson];
+
     if (currentModule < lesson.modules.length - 1) {
       setCurrentModule(currentModule + 1);
     } else if (currentLesson < COURSE.length - 1) {
       setCurrentLesson(currentLesson + 1);
       setCurrentModule(0);
     }
-    // reset click requirement for the next module (timer setup also resets)
     setAwaitingClick(false);
     setIsComplete(false);
   };
 
   const handlePrev = () => {
-    if (currentModule > 0) setCurrentModule(currentModule - 1);
-    else if (currentLesson > 0) {
+    if (isPaused) return;
+    if (currentModule > 0) {
+      setCurrentModule(currentModule - 1);
+    } else if (currentLesson > 0) {
       const prev = COURSE[currentLesson - 1];
       setCurrentLesson(currentLesson - 1);
       setCurrentModule(prev.modules.length - 1);
@@ -251,168 +251,197 @@ export default function CoursePage() {
     setIsComplete(false);
   };
 
-  /* ─────────────── Progress ─────────────── */
-  const lesson = COURSE[currentLesson];
-  const moduleDuration = lesson.moduleDurations?.[currentModule] ?? 30;
-  const moduleFraction = isComplete ? 1 : clamp01((moduleDuration - timeLeft) / moduleDuration);
-  const lessonModuleCount = lesson.modules.length;
-  const progress = ((currentModule + moduleFraction) / lessonModuleCount) * 100;
-
+  /* PROGRESS BAR */
+  const lessonObj = COURSE[currentLesson];
+  const moduleDuration = lessonObj.moduleDurations?.[currentModule] ?? 30;
+  const moduleFraction = isComplete ? 1 : Math.max(0, Math.min(1, (moduleDuration - timeLeft) / moduleDuration));
+  const progress = ((currentModule + moduleFraction) / lessonObj.modules.length) * 100;
   const totalMinutes = useMemo(() => COURSE.reduce((acc, l) => acc + l.duration, 0), []);
   const widthPercent = (l: Lesson) => (l.duration / totalMinutes) * 100;
-  const CARD_W = 300;
-  const CARD_MARGIN = 12;
-  const cardLeft =
-    Math.max(CARD_MARGIN, Math.min(mouseX - CARD_W / 2, Math.max(0, vw) - CARD_W - CARD_MARGIN)) + "px";
 
-  /* ─────────────── UI ─────────────── */
+  /* RENDER */
   return (
-    <main className="flex flex-col bg-white relative overflow-hidden" style={{ height: "calc(100vh - (64px + 120px))" }}>
-      {/* Top progress bar */}
-      <div className="w-full h-2 bg-gray-200">
-        <div className="h-2" style={{ width: `${progress}%`, backgroundColor: BRAND_ORANGE }} />
+    <div className="relative min-h-screen bg-white">
+
+      {/* LOADER */}
+      <div
+        style={{
+          opacity: pageReady ? 0 : 1,
+          pointerEvents: pageReady ? "none" : "all",
+          transition: "opacity 0.45s ease",
+        }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-white"
+      >
+        <img src="/steering-wheel.png" className="w-20 h-20 steering-animation opacity-80" />
       </div>
 
-      {/* Module content */}
-      <section className="flex flex-col px-8 py-6 overflow-auto flex-1">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-[#001f40]">
-            Module {currentModule + 1} of {lesson.modules.length}
-          </h2>
-          <button
-            onClick={handleNarrate}
-            disabled={narrating}
-            className={`px-4 py-2 rounded text-white font-semibold ${
-              narrating ? "bg-gray-400 cursor-not-allowed" : "bg-[#2596be] hover:bg-[#1f7ea1]"
-            }`}
-          >
-            🔊 {narrating ? "Playing..." : "Narrate"}
-          </button>
+      {/* COURSE */}
+      <main
+        className="flex flex-col bg-white relative overflow-hidden"
+        style={{
+          opacity: pageReady ? 1 : 0,
+          transition: "opacity 0.45s ease",
+          height: "calc(100vh - (64px + 120px))",
+        }}
+      >
+        {/* TOP BAR */}
+        <div className="w-full h-2 bg-gray-200">
+          <div className="h-2" style={{ width: `${progress}%`, backgroundColor: BRAND_ORANGE }} />
         </div>
 
-        <p className="text-[#001f40] leading-relaxed text-lg flex-1">{lesson.modules[currentModule]}</p>
-        <div className="text-sm text-[#ca5608] mt-3 font-medium">
-          {awaitingClick ? "Module complete! ✅" : `Time remaining: ${fmt(timeLeft)}`}
-        </div>
-      </section>
+        {/* CONTENT */}
+        <section className="flex flex-col px-8 py-6 overflow-auto flex-1">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <h2 className="text-xl font-bold text-[#001f40]">
+              Module {currentModule + 1} of {lessonObj.modules.length}
+            </h2>
 
-      {/* Footer with buttons + timeline */}
-      <footer className="fixed left-0 right-0 border-t shadow-inner bg-white" style={{ bottom: "1px" }}>
-        <div className="flex justify-between items-center px-8 pb-1 py-6">
-          <button
-            onClick={handlePrev}
-            className={`px-5 py-2 rounded font-semibold text-white ${
-              currentLesson === 0 && currentModule === 0
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-[#001f40] hover:bg-[#00356e]"
-            }`}
-            disabled={currentLesson === 0 && currentModule === 0}
-          >
-            Previous
-          </button>
+            {/* Narrate + Volume */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  if (isPaused) return;
+                  const utter = new SpeechSynthesisUtterance(lessonObj.modules[currentModule]);
+                  utter.rate = 1;
+                  utter.volume = volume; // use current volume
+                  utter.onstart = () => setNarrating(true);
+                  utter.onend = () => {
+                    setNarrating(false);
+                    setIsComplete(true);
+                    setAwaitingClick(true);
+                    handleModuleComplete();
+                  };
+                  speechSynthesis.speak(utter);
+                }}
+                disabled={narrating || isPaused}
+                className={`w-12 h-12 flex items-center justify-center rounded-full text-white text-2xl transition-all ${
+                  isPaused
+                    ? "bg-gray-300 cursor-not-allowed"
+                    : narrating
+                    ? "bg-gray-400 scale-90"
+                    : "bg-[#2596be] hover:bg-[#1f7ea1] hover:scale-110"
+                }`}
+              >
+                🔊
+              </button>
 
-          <p className="text-sm text-[#666]">
-            {currentModule + 1} / {lesson.modules.length}
+              {/* Volume slider */}
+              <div className="flex flex-col items-start">
+                <span className="text-[11px] text-[#001f40] font-medium mb-1">
+                  Volume: {Math.round(volume * 100)}%
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={volume}
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="w-32 accent-[#ca5608]"
+                />
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[#001f40] leading-relaxed text-lg flex-1">
+            {lessonObj.modules[currentModule]}
           </p>
 
-          <button
-            onClick={handleNext}
-            disabled={!awaitingClick}
-            aria-disabled={!awaitingClick}
-            className={`px-5 py-2 rounded font-semibold text-white transition-all ${
-              awaitingClick
-                ? "bg-[#ca5608] hover:bg-[#b24b06] animate-pulse cursor-pointer"
-                : "bg-gray-400 cursor-not-allowed"
-            }`}
-          >
-            {awaitingClick ? "Next" : `Wait ${fmt(timeLeft)}`}
-          </button>
-        </div>
+          <div className="text-sm text-[#ca5608] mt-3 font-medium">
+            {awaitingClick ? "Module complete! ✅" : isPaused ? "Paused" : `Time remaining: ${fmt(timeLeft)}`}
+          </div>
+        </section>
 
-        {/* Timeline */}
-        <div className="p-4">
-          <div className="relative w-full h-6 flex">
-            {COURSE.map((l, i) => {
-              const done = i < currentLesson;
-              const active = i === currentLesson;
-              const locked = i > currentLesson;
+        {/* FOOTER */}
+        <footer className="fixed left-0 right-0 border-t shadow-inner bg-white" style={{ bottom: "1px" }}>
+          <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch px-4 pb-1 py-6">
 
-              return (
-                <div
-                  key={`seg-${l.id}`}
-                  style={{ width: `${widthPercent(l)}%` }}
-                  className={`relative h-full flex items-center justify-center transition-all duration-300 ${
-                    locked ? "opacity-40" : "cursor-pointer"
-                  }`}
-                  onMouseEnter={(e) => {
-                    setHoverLesson(l);
-                    setMouseX(e.clientX);
-                  }}
-                  onMouseMove={(e) => setMouseX(e.clientX)}
-                  onMouseLeave={() => setHoverLesson(null)}
-                  onClick={() => {
-                    if (!locked) {
-                      setCurrentLesson(i);
-                      setCurrentModule(0);
-                      setAwaitingClick(false);
-                      setIsComplete(false);
-                    }
-                  }}
-                >
+            {/* PREVIOUS */}
+            <button
+              onClick={handlePrev}
+              disabled={(currentLesson === 0 && currentModule === 0) || isPaused}
+              className={`w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white ${
+                (currentLesson === 0 && currentModule === 0) || isPaused
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-[#001f40] hover:bg-[#00356e]"
+              }`}
+            >
+              Previous
+            </button>
+
+            {/* PAUSE / RESUME */}
+            <button
+              onClick={togglePause}
+              className="w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white bg-[#ca5608] hover:bg-[#b24b06]"
+            >
+              {isPaused ? "▶️ Resume" : "⏸️ Pause"}
+            </button>
+
+            {/* NEXT */}
+            <button
+              onClick={handleNext}
+              disabled={!awaitingClick || isPaused}
+              className={`w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white ${
+                awaitingClick && !isPaused
+                  ? "bg-[#ca5608] hover:bg-[#b24b06] shadow-[0_0_8px_#ca5608]"
+                  : "bg-gray-400 cursor-not-allowed"
+              }`}
+            >
+              {awaitingClick ? "Next" : `Wait ${fmt(timeLeft)}`}
+            </button>
+
+          </div>
+
+          {/* TIMELINE */}
+          <div className="p-4">
+            <div className="relative w-full h-6 flex">
+              {COURSE.map((l, i) => {
+                const done = i < currentLesson;
+                const active = i === currentLesson;
+                const locked = i > currentLesson || isPaused;
+
+                return (
                   <div
-                    className={`flex-1 h-2 rounded-full transition-all duration-500 ${
-                      done
-                        ? "bg-[#001f40]" // Completed = Blue
-                        : active
-                        ? "bg-[#ca5608] shadow-[0_0_6px_#ca5608]" // Active = glowing orange
-                        : "bg-[#ca5608]/70" // Future = muted orange
+                    key={l.id}
+                    style={{ width: `${widthPercent(l)}%` }}
+                    className={`relative h-full flex items-center justify=center transition-all duration-300 ${
+                      locked ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
                     }`}
-                  />
-                  {i < COURSE.length - 1 && <div className="w-[3px] h-full bg-white" />}
+                    onClick={() => {
+                      if (!locked) {
+                        setCurrentLesson(i);
+                        setCurrentModule(0);
+                        setAwaitingClick(false);
+                        setIsComplete(false);
+                      }
+                    }}
+                  >
+                    <div
+                      className={`flex-1 h-2 rounded-full transition-all duration-500 ${
+                        done
+                          ? "bg-[#001f40]"
+                          : active
+                          ? "bg-[#ca5608] shadow-[0_0_6px_#ca5608]"
+                          : "bg-[#ca5608]/70"
+                      }`}
+                    />
+                    {i < COURSE.length - 1 && <div className="w-[3px] h-full bg-white" />}
+                  </div>
+                );
+              })}
+            </div>
 
-                  {/* 🚫 Hover Overlay for Locked Lessons */}
-                  {locked && (
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                      <span className="text-red-600 text-xl">🚫</span>
-                    </div>
-                  )}
+            {/* Duration Labels */}
+            <div className="flex w-full mt-1">
+              {COURSE.map((l) => (
+                <div key={l.id} style={{ width: `${widthPercent(l)}%` }} className="flex justify-center">
+                  <span className="text-[9px] text-[#ca5608]">{l.duration} min</span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-
-          {/* Duration labels */}
-          <div className="flex w-full mt-1">
-            {COURSE.map((l) => (
-              <div key={`dur-${l.id}`} style={{ width: `${widthPercent(l)}%` }} className="flex justify-center">
-                <span className="text-[9px] text-[#ca5608]">{l.duration > 0 ? `${l.duration} min` : ""}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </footer>
-
-      {/* Hover card */}
-      {hoverLesson && (
-        <div
-          className="fixed z-30 bg-[var(--card-bg)] text-white shadow-xl rounded-lg p-4 w-[300px] pointer-events-none"
-          style={{ left: `${cardLeft}`, bottom: "80px", "--card-bg": BRAND_ORANGE } as React.CSSProperties}
-        >
-          <div
-            className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent"
-            style={{ borderTopColor: BRAND_ORANGE }}
-          />
-          <h2 className="text-base font-bold mb-1 leading-snug">{hoverLesson.title}</h2>
-          {hoverLesson.thumbnail && (
-            <>
-              <p className="text-xs opacity-90 mb-2">Duration: {hoverLesson.duration} minutes</p>
-              <div className="w-full h-20 bg-black/20 rounded flex items-center justify-center text-[11px]">
-                (Thumbnail: {hoverLesson.thumbnail})
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </main>
+        </footer>
+      </main>
+    </div>
   );
 }

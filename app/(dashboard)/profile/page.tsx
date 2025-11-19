@@ -4,7 +4,11 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
+import { requireAuth } from "@/utils/requireAuth";
 
+/* ───────────────────────────────
+   FORM TYPE
+────────────────────────────── */
 type FormData = {
   full_name: string;
   preferred_name: string;
@@ -26,11 +30,25 @@ type FormData = {
 export default function UpdateProfilePage() {
   const router = useRouter();
 
+  /* ───────────────────────────────
+       AUTH PROTECTION
+     ─────────────────────────────── */
+  useEffect(() => {
+    async function check() {
+      await requireAuth(router);
+    }
+    check();
+  }, [router]);
+
+  /* ───────────────────────────────
+       PAGE STATE
+     ─────────────────────────────── */
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [noSSN, setNoSSN] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [resetStatus, setResetStatus] = useState<"idle" | "sent" | "error">("idle");
+  const [resetStatus, setResetStatus] =
+    useState<"idle" | "sent" | "error">("idle");
 
   const [formData, setFormData] = useState<FormData>({
     full_name: "",
@@ -50,28 +68,25 @@ export default function UpdateProfilePage() {
     non_alien_reg: "",
   });
 
+  /* ───────────────────────────────
+       LOAD PROFILE DATA
+     ─────────────────────────────── */
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.push("/auth/sign-in");
+        router.push("/");
         return;
       }
 
       const meta = user.user_metadata || {};
       const email = user.email || "";
 
-      const { data: profile, error } = await supabase
+      const { data: profile } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", user.id)
         .single();
-
-      if (error) {
-        console.error("Fetch profile error:", error);
-        setLoading(false);
-        return;
-      }
 
       setFormData({
         full_name: profile?.full_name || meta.full_name || "",
@@ -97,11 +112,17 @@ export default function UpdateProfilePage() {
     fetchProfile();
   }, [router]);
 
+  /* ───────────────────────────────
+       CHANGE HANDLER
+     ─────────────────────────────── */
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((f) => ({ ...f, [name]: value }));
   };
 
+  /* ───────────────────────────────
+       PASSWORD RESET
+     ─────────────────────────────── */
   const handleResetPassword = async () => {
     if (resetStatus !== "idle") return;
 
@@ -120,6 +141,9 @@ export default function UpdateProfilePage() {
     setTimeout(() => setResetStatus("idle"), 10000);
   };
 
+  /* ───────────────────────────────
+       SAVE PROFILE
+     ─────────────────────────────── */
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -142,7 +166,6 @@ export default function UpdateProfilePage() {
     });
 
     if (metaErr) {
-      console.error(metaErr);
       setErrorMsg("Failed to update user metadata.");
       setSaving(false);
       return;
@@ -155,32 +178,52 @@ export default function UpdateProfilePage() {
     });
 
     if (error) {
-      console.error("Profile update error:", error);
       setErrorMsg("Error saving profile.");
       setSaving(false);
       return;
     }
 
-    // ✅ Stay on profile page
     setSaving(false);
     setErrorMsg("Profile saved successfully!");
   };
 
   const cancelBtnClasses =
     "px-4 py-2 bg-gray-300 text-[#001f40] rounded hover:bg-gray-400 w-full sm:w-auto";
+
   const saveBtnClasses = (saving: boolean) =>
     `px-4 py-2 rounded text-white font-semibold w-full sm:w-auto ${
       saving ? "bg-gray-400" : "bg-[#ca5608] hover:bg-[#b24b06]"
     }`;
 
+  /* ───────────────────────────────
+       LOADER (NO PAGE FLASH ANYMORE)
+     ─────────────────────────────── */
+  if (loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white">
+        <img
+          src="/steering-wheel.png"
+          alt="Loading"
+          className="w-20 h-20 steering-animation opacity-80"
+        />
+      </main>
+    );
+  }
+
+  /* ───────────────────────────────
+       UI
+     ─────────────────────────────── */
   return (
-    <main className="flex flex-col min-h-screen bg-white">
+    <main className="min-h-screen w-full overflow-y-auto bg-white">
       <header className="h-4" />
 
-      {/* Heading row with title, reset link, and desktop buttons */}
-      <section className="px-6 pt-6 w-full max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-        <div className="flex flex-col items-start">
-          <h1 className="text-2xl font-bold text-[#001f40]">Update Your Profile</h1>
+      {/* Heading */}
+      <section className="px-6 pt-6 w-full max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3 items-center animate-fadeInUp">
+        <div>
+          <h1 className="text-2xl font-bold text-[#001f40]">
+            Update Your Profile
+          </h1>
+
           <p
             className={`text-sm underline cursor-pointer mt-1 ${
               resetStatus === "sent"
@@ -199,33 +242,33 @@ export default function UpdateProfilePage() {
           </p>
         </div>
 
-     {/* Desktop-only buttons in header */}
-            <div className="flex justify-end gap-[10px] hidden sm:flex">
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className={cancelBtnClasses}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={(e) => handleSave(e)}
-                className={saveBtnClasses(saving)}
-              >
-                {saving ? "Saving..." : "Save Changes"}
-              </button>
-            </div>
+        <div className="flex justify-end gap-3 hidden sm:flex">
+          <button
+            onClick={() => window.location.reload()}
+            type="button"
+            className={cancelBtnClasses}
+          >
+            Cancel
+          </button>
+
+          <button
+            disabled={saving}
+            onClick={(e) => handleSave(e)}
+            type="button"
+            className={saveBtnClasses(saving)}
+          >
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
       </section>
 
+      {/* Form */}
       <form
         onSubmit={handleSave}
         className={`flex-1 p-6 w-full max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 ${
           saving ? "opacity-50 pointer-events-none" : ""
-        }`}
+        } animate-fadeInUp`}
       >
-        {/* Inputs */}
         <Input label="Full Legal Name" name="full_name" value={formData.full_name} onChange={handleChange} required />
         <Input label="Preferred Name" name="preferred_name" value={formData.preferred_name} onChange={handleChange} />
         <Input label="Email Address" name="email" value={formData.email ?? ""} disabled />
@@ -242,23 +285,16 @@ export default function UpdateProfilePage() {
         <Input label="Country" name="country" value={formData.country} onChange={handleChange} />
         <Input label="Zip / Postal Code" name="zip" value={formData.zip} onChange={handleChange} />
 
-        {/* Identification section */}
+        {/* Identification Section */}
         <div className="col-span-full grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
-          {/* Col 1: Checkbox always visible */}
           <div className="flex items-center">
             <label className="text-sm font-semibold text-[#001f40] flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={noSSN}
-                onChange={(e) => setNoSSN(e.target.checked)}
-              />
+              <input type="checkbox" checked={noSSN} onChange={(e) => setNoSSN(e.target.checked)} />
               I do not have a Social Security Number
             </label>
           </div>
 
-          {/* Col 2 + Col 3: Conditional fields */}
           {!noSSN ? (
-            // Show SSN field spanning cols 2+3 when not checked
             <div className="sm:col-span-2">
               <Input
                 label="Social Security Number (Last 5 Digits)"
@@ -285,22 +321,22 @@ export default function UpdateProfilePage() {
           )}
         </div>
 
-       {errorMsg && (
+        {errorMsg && (
           <p
             className={`text-center col-span-full ${
               errorMsg.includes("successfully")
-                ? "text-[#ca5608]" // brand orange for success
-                : "text-red-600"   // red for errors
+                ? "text-[#ca5608]"
+                : "text-red-600"
             }`}
           >
             {errorMsg}
           </p>
         )}
 
-        {/* Mobile-only Save/Cancel buttons below the form */}
+        {/* Mobile Save/Cancel */}
         <div className="col-span-full block sm:hidden mt-6">
           <div className="flex flex-col gap-3">
-           <button
+            <button
               type="button"
               onClick={() => window.location.reload()}
               className={cancelBtnClasses}
@@ -322,6 +358,9 @@ export default function UpdateProfilePage() {
   );
 }
 
+/* ───────────────────────────────
+   INPUT COMPONENT
+────────────────────────────── */
 function Input({
   label,
   name,
