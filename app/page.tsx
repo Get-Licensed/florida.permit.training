@@ -343,7 +343,7 @@ function FooterTimeline({
             </div>
           </div>
 
-          {/* DURATION LABELS – MATCH COURSE PAGE */}
+      {/* DURATION LABELS – MATCH COURSE PAGE */}
           <div className="flex w-full mt-1">
             {TIMELINE.map((item: any) => (
               <div
@@ -351,7 +351,7 @@ function FooterTimeline({
                 style={{ width: `${widthPercent(item)}%` }}
                 className="flex justify-center"
               >
-                {item.id !== "start" && (
+                {item.id !== "start" && item.id !== "finalActions" && (
                   <span className="text-[9px] text-[#ca5608]">
                     {item.duration} min
                   </span>
@@ -359,6 +359,7 @@ function FooterTimeline({
               </div>
             ))}
           </div>
+
 
         </div>
       </div>
