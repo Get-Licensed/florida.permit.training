@@ -19,23 +19,25 @@ type Lesson = {
 };
 
 const COURSE: Lesson[] = [
-  { id: 1, title: "Introduction", duration: 5, thumbnail: "/thumbs/intro.jpg", modules: Array(10).fill("Introduction module content...") },
-  { id: 2, title: "The Traffic Safety Problem", duration: 25, thumbnail: "/thumbs/safety.jpg", modules: Array(10).fill("Traffic Safety Problem content...") },
-  { id: 3, title: "Physiological Effects of Alcohol and Other Drugs on Driving", duration: 25, thumbnail: "/thumbs/physiology.jpg", modules: Array(10).fill("Physiological Effects content...") },
-  { id: 4, title: "Psychological Factors That Affect Driving Ability", duration: 15, thumbnail: "/thumbs/psych.jpg", modules: Array(8).fill("Psychological Factors content...") },
-  { id: 5, title: "Driving Under the Influence", duration: 45, thumbnail: "/thumbs/dui.jpg", modules: Array(12).fill("DUI content...") },
-  { id: 6, title: "Florida’s Graduated Driver Licensing and Insurance Laws", duration: 15, thumbnail: "/thumbs/licensing.jpg", modules: Array(8).fill("Licensing Laws content...") },
-  { id: 7, title: "Driver Licensing Actions", duration: 15, thumbnail: "/thumbs/actions.jpg", modules: Array(8).fill("Licensing Actions content...") },
-  { id: 8, title: "Vehicle Safety Maintenance and Crash Avoidance", duration: 30, thumbnail: "/thumbs/avoidance.jpg", modules: Array(10).fill("Vehicle Safety content...") },
-  { id: 9, title: "Crash Dynamics and the Human Body While Driving", duration: 30, thumbnail: "/thumbs/dynamics.jpg", modules: Array(10).fill("Crash Dynamics content...") },
-  { id: 10, title: "Florida’s Traffic Laws – Part 1", duration: 45, thumbnail: "/thumbs/laws1.jpg", modules: Array(12).fill("Traffic Laws Part 1 content...") },
-  { id: 11, title: "Florida’s Traffic Laws – Part 2", duration: 45, thumbnail: "/thumbs/laws2.jpg", modules: Array(12).fill("Traffic Laws Part 2 content...") },
-  { id: 12, title: "Florida’s Traffic Laws – Part 3", duration: 45, thumbnail: "/thumbs/laws3.jpg", modules: Array(12).fill("Traffic Laws Part 3 content...") },
-  { id: 13, title: "Getting Behind the Wheel", duration: 45, thumbnail: "/thumbs/wheel.jpg", modules: Array(12).fill("Getting Behind the Wheel content...") },
+  { id: 1, title: "Introduction", duration: 10, thumbnail: "/thumbs/intro.jpg", modules: Array(10).fill("Introduction module content...") },
+  { id: 2, title: "The Traffic Safety Problem", duration: 35, thumbnail: "/thumbs/safety.jpg", modules: Array(10).fill("Traffic Safety Problem content...") },
+  { id: 3, title: "Physiological Effects of Alcohol and Other Drugs on Driving", duration: 35, thumbnail: "/thumbs/physiology.jpg", modules: Array(10).fill("Physiological Effects content...") },
+  { id: 4, title: "Psychological Factors That Affect Driving Ability", duration: 25, thumbnail: "/thumbs/psych.jpg", modules: Array(8).fill("Psychological Factors content...") },
+  { id: 5, title: "Driving Under the Influence", duration: 60, thumbnail: "/thumbs/dui.jpg", modules: Array(12).fill("DUI content...") },
+  { id: 6, title: "Florida’s Graduated Driver Licensing and Insurance Laws", duration: 25, thumbnail: "/thumbs/licensing.jpg", modules: Array(8).fill("Licensing Laws content...") },
+  { id: 7, title: "Driver Licensing Actions", duration: 25, thumbnail: "/thumbs/actions.jpg", modules: Array(8).fill("Licensing Actions content...") },
+  { id: 8, title: "Vehicle Safety Maintenance and Crash Avoidance", duration: 40, thumbnail: "/thumbs/avoidance.jpg", modules: Array(10).fill("Vehicle Safety content...") },
+  { id: 9, title: "Crash Dynamics and the Human Body While Driving", duration: 40, thumbnail: "/thumbs/dynamics.jpg", modules: Array(10).fill("Crash Dynamics content...") },
+  { id: 10, title: "Florida’s Traffic Laws – Part 1", duration: 55, thumbnail: "/thumbs/laws1.jpg", modules: Array(12).fill("Traffic Laws Part 1 content...") },
+  { id: 11, title: "Florida’s Traffic Laws – Part 2", duration: 55, thumbnail: "/thumbs/laws2.jpg", modules: Array(12).fill("Traffic Laws Part 2 content...") },
+  { id: 12, title: "Florida’s Traffic Laws – Part 3", duration: 55, thumbnail: "/thumbs/laws3.jpg", modules: Array(12).fill("Traffic Laws Part 3 content...") },
+  { id: 13, title: "Getting Behind the Wheel", duration: 55, thumbnail: "/thumbs/wheel.jpg", modules: Array(12).fill("Getting Behind the Wheel content...") },
 ];
+
 
 const BRAND_ORANGE = "#ca5608";
 const BRAND_BLUE = "#001f40";
+
 
 /* ───────────────────────────────
    MAIN COMPONENT
@@ -132,6 +134,8 @@ export default function CoursePage() {
   const [awaitingClick, setAwaitingClick] = useState(false);
   const [narrating, setNarrating] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [showFinalCard, setShowFinalCard] = useState(false);
+  const [finalSegmentX, setFinalSegmentX] = useState<number | null>(null);
 
   // NEW: Narrator volume (0–1)
   const [volume, setVolume] = useState(1);
@@ -347,101 +351,231 @@ export default function CoursePage() {
             {lessonObj.modules[currentModule]}
           </p>
 
-          <div className="text-sm text-[#ca5608] mt-3 font-medium">
-            {awaitingClick ? "Module complete! ✅" : isPaused ? "Paused" : `Time remaining: ${fmt(timeLeft)}`}
-          </div>
+         {/* <div className="text-sm text-[#ca5608] mt-3 font-medium">
+          {awaitingClick ? "Module complete! ✅" : isPaused ? "Paused" : `Time remaining: ${fmt(timeLeft)}`}
+        </div> */}
+
         </section>
 
-        {/* FOOTER */}
-        <footer className="fixed left-0 right-0 border-t shadow-inner bg-white" style={{ bottom: "1px" }}>
-          <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch px-4 pb-1 py-6">
 
-            {/* PREVIOUS */}
-            <button
-              onClick={handlePrev}
-              disabled={(currentLesson === 0 && currentModule === 0) || isPaused}
-              className={`w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white ${
-                (currentLesson === 0 && currentModule === 0) || isPaused
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-[#001f40] hover:bg-[#00356e]"
-              }`}
-            >
-              Previous
-            </button>
+              
+      {/* FOOTER */}
+      <footer
+        className="fixed left-0 right-0 border-t shadow-inner bg-white z-40"
+        style={{ bottom: "1px" }}
+      >
+        {/* Controls Row */}
+        <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch px-4 pb-1 py-6">
+          {/* PREVIOUS */}
+          <button
+            onClick={handlePrev}
+            disabled={(currentLesson === 0 && currentModule === 0) || isPaused}
+            className={`w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white ${
+              (currentLesson === 0 && currentModule === 0) || isPaused
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-[#001f40] hover:bg-[#00356e]"
+            }`}
+          >
+            Previous
+          </button>
 
-            {/* PAUSE / RESUME */}
-            <button
-              onClick={togglePause}
-              className="w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white bg-[#ca5608] hover:bg-[#b24b06]"
-            >
-              {isPaused ? "▶️ Resume" : "⏸️ Pause"}
-            </button>
+          {/* PAUSE / RESUME */}
+          <button
+            onClick={togglePause}
+            className="w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white bg-[#ca5608] hover:bg-[#b24b06]"
+          >
+            {isPaused ? "▶️ Resume" : "⏸️ Pause"}
+          </button>
 
-            {/* NEXT */}
-            <button
-              onClick={handleNext}
-              disabled={!awaitingClick || isPaused}
-              className={`w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white ${
-                awaitingClick && !isPaused
-                  ? "bg-[#ca5608] hover:bg-[#b24b06] shadow-[0_0_8px_#ca5608]"
-                  : "bg-gray-400 cursor-not-allowed"
-              }`}
-            >
-              {awaitingClick ? "Next" : `Wait ${fmt(timeLeft)}`}
-            </button>
+          {/* NEXT */}
+          <button
+            onClick={handleNext}
+            disabled={!awaitingClick || isPaused}
+            className={`w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white ${
+              awaitingClick && !isPaused
+                ? "bg-[#ca5608] hover:bg-[#b24b06] shadow-[0_0_8px_#ca5608]"
+                : "bg-gray-400 cursor-not-allowed"
+            }`}
+          >
+            {awaitingClick ? "Next" : `Wait ${fmt(timeLeft)}`}
+          </button>
+        </div>
 
-          </div>
+        {/* TIMELINE (Homepage Style + Final Segment) */}
+        <div className="p-4">
+          <div className="max-w-6xl mx-auto px-4">
+            <div className="relative w-full h-6 flex items-center">
 
-          {/* TIMELINE */}
-          <div className="p-4">
-            <div className="relative w-full h-6 flex">
-              {COURSE.map((l, i) => {
-                const done = i < currentLesson;
-                const active = i === currentLesson;
-                const locked = i > currentLesson || isPaused;
+              {/* Base rail */}
+              <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full" />
 
-                return (
-                  <div
-                    key={l.id}
-                    style={{ width: `${widthPercent(l)}%` }}
-                    className={`relative h-full flex items-center justify=center transition-all duration-300 ${
-                      locked ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-                    }`}
-                    onClick={() => {
-                      if (!locked) {
+              {/* Segments */}
+              <div className="relative w-full h-6 flex items-center">
+                {COURSE.map((l, i) => {
+                  const done = i < currentLesson;
+                  const active = i === currentLesson;
+                 // A segment is unlocked if user has completed anything up to it, OR it's the current one
+                  const unlocked =
+                    i <= currentLesson ||
+                    Object.keys(completedModules).some((key) =>
+                      key.startsWith(`${COURSE[i].id}-`)
+                    );
+
+                  // Paused only blocks forward jumping, not backward review
+                  const disabledClick = isPaused ? i > currentLesson : !unlocked;
+                  const canClick = !disabledClick;
+
+                  return (
+                    <div
+                      key={l.id}
+                      style={{ width: `${widthPercent(l)}%` }}
+                      className={`relative h-full flex items-center justify-center transition-all ${
+                        disabledClick ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                      }`}
+                      onClick={() => {
+                        if (disabledClick) return;
+
                         setCurrentLesson(i);
-                        setCurrentModule(0);
+                        const nextModule = COURSE[i].modules.findIndex(
+                          (_, idx) => !completedModules[`${COURSE[i].id}-${idx}`]
+                        );
+
+                        setCurrentModule(nextModule === -1 ? 0 : nextModule);
                         setAwaitingClick(false);
                         setIsComplete(false);
-                      }
-                    }}
+                      }}
+                    >
+                      <div
+                        className={`flex-1 h-2 transition-all duration-500 ${
+                          done
+                            ? "bg-[#001f40]"
+                            : active
+                            ? "bg-[#ca5608] shadow-[0_0_6px_#ca5608]"
+                            : "bg-[#ca5608]/70"
+                        } ${i === 0 ? "rounded-l-full" : ""}`}
+                      ></div>
+
+                      {i < COURSE.length - 1 && <div className="w-[3px] h-full bg-white" />}
+                    </div>
+                  );
+
+                })}
+
+                {/* Divider before final segment */}
+                <div className="w-[3px] h-full bg-white" />
+
+                {/* FINAL SEGMENT */}
+                  <div
+                    className="relative h-full flex items-center justify-center"
+                    style={{ width: "4%" }}
                   >
                     <div
-                      className={`flex-1 h-2 rounded-full transition-all duration-500 ${
-                        done
-                          ? "bg-[#001f40]"
-                          : active
-                          ? "bg-[#ca5608] shadow-[0_0_6px_#ca5608]"
-                          : "bg-[#ca5608]/70"
-                      }`}
+                      className="flex-1 h-2 bg-[#001f40] rounded-r-full cursor-pointer"
+                      onMouseEnter={(e) => {
+                        if (window.innerWidth >= 768) {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setFinalSegmentX(rect.left + rect.width / 2);
+                        }
+                        setShowFinalCard(true);
+                      }}
+                      onMouseLeave={() => {
+                        if (window.innerWidth >= 768) {
+                          setTimeout(() => setShowFinalCard(false), 200);
+                        }
+                      }}
+                      onClick={() => {
+                        if (window.innerWidth < 768) {
+                          setShowFinalCard(true);
+                        }
+                      }}
                     />
-                    {i < COURSE.length - 1 && <div className="w-[3px] h-full bg-white" />}
                   </div>
-                );
-              })}
+              </div>
             </div>
 
             {/* Duration Labels */}
             <div className="flex w-full mt-1">
-              {COURSE.map((l) => (
-                <div key={l.id} style={{ width: `${widthPercent(l)}%` }} className="flex justify-center">
-                  <span className="text-[9px] text-[#ca5608]">{l.duration} min</span>
+              {COURSE.map((l, i) => (
+                <div
+                  key={l.id}
+                  style={{ width: `${widthPercent(l)}%` }}
+                  className="flex justify-center"
+                >
+                  {i !== 0 && (
+                    <span className="text-[9px] text-[#ca5608]">{l.duration} min</span>
+                  )}
                 </div>
               ))}
+              {/* final-actions placeholder spacing */}
+              <div style={{ width: "4%" }} />
             </div>
           </div>
-        </footer>
-      </main>
+        </div>
+      </footer>
+
+      {showFinalCard && (
+        <div
+          className="fixed bg-[#001f40] text-white rounded-xl shadow-xl p-5 z-50"
+          style={{
+            bottom: "80px",
+            left:
+              window.innerWidth >= 768 && finalSegmentX
+                ? `${finalSegmentX}px`
+                : "50%",
+            transform:
+              window.innerWidth >= 768 && finalSegmentX
+                ? "translateX(-50%)"
+                : "translateX(-50%)",
+            width: "260px",
+          }}
+        >
+          <PromoText />
+          <Arrow />
+
+          {/* Mobile close button */}
+          <button
+            onClick={() => setShowFinalCard(false)}
+            className="absolute top-1 right-2 text-white text-lg block md:hidden"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+
+      </main> 
     </div>
+  );
+}
+
+/* ------------ FINAL ACTIONS CONTENT ------------ */
+function PromoText() {
+  return (
+    <>
+      <h3 className="font-bold text-lg">PAY $59.95</h3>
+      <p className="text-sm opacity-90 mb-3">After taking the course.</p>
+      <hr className="border-white/30 my-2" />
+      <h3 className="font-bold text-lg">FINAL EXAM</h3>
+      <p className="text-sm opacity-90 mb-3">
+        Pass final 40 question exam & WE WILL automatically send your results to the DMV!
+      </p>
+      <hr className="border-white/30 my-2" />
+      <h3 className="font-bold text-lg">SCHEDULE DMV APPT</h3>
+      <p className="text-sm opacity-90">Link here. Bring your birth certificate. Etc.</p>
+    </>
+  );
+}
+
+function Arrow() {
+  return (
+    <div
+      className="absolute left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8"
+      style={{
+        borderLeftColor: "transparent",
+        borderRightColor: "transparent",
+        borderTopColor: "#001f40",
+        bottom: "-7px",
+      }}
+    />
   );
 }

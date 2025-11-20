@@ -30,6 +30,17 @@ export default function AuthCallback() {
             { onConflict: "id" }
           );
 
+          /* ───────── NEW: Support popup login ───────── */
+          if (window.opener) {
+            window.opener.postMessage(
+              { type: "authSuccess", session },
+              window.location.origin
+            );
+            window.close();
+            return;
+          }
+
+          /* ───────── Standard redirect for full-page login ───────── */
           router.replace("/dashboard");
         }
       }

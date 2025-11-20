@@ -33,7 +33,7 @@ export default function SignUpPage() {
   useEffect(() => {
     async function checkSession() {
       const { data } = await supabase.auth.getSession();
-      if (data?.session) router.replace("/dashboard");
+      if (data?.session) router.replace("/course");
     }
     checkSession();
   }, [router]);
@@ -74,18 +74,40 @@ const TIMELINE = [
   const totalMinutes = useMemo(() => TIMELINE.reduce((s, l) => s + l.duration, 0), []);
   const widthPercent = (l: any) => (l.duration / totalMinutes) * 100;
 
-  /* ───────── GOOGLE SIGN-IN ───────── */
-  const handleGoogleSignup = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
-      });
-      if (error) throw error;
-    } catch (err) {
-      console.error("Google Sign-Up Error:", err);
+  /* ───────── GOOGLE POPUP SIGN-IN ───────── */const handleGoogleSignup = async () => {
+  try {
+    const redirect = `${window.location.origin}/auth/callback`;
+
+    // Try popup sign-in first
+    const res = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: redirect,
+        skipBrowserRedirect: true, // prevents forced redirect
+      },
+    });
+
+    // If popup URL is returned, open the popup window
+    if (res?.data?.url) {
+      window.open(
+        res.data.url,
+        "GoogleLogin",
+        `width=520,height=650,top=${window.screenY + 80},left=${window.screenX + 120}`
+      );
+      return;
     }
-  };
+
+    // Fallback when popup blocked or not supported
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: redirect },
+    });
+  } catch (err) {
+    console.error("Google Sign-Up Error:", err);
+  }
+};
+
+
 
   /* ───────── TIMELINE HOVER LOGIC ───────── */
   const defaultProgress = 15;
@@ -141,6 +163,20 @@ useEffect(() => {
       document.removeEventListener("touchstart", handleTouch);
     };
   }, [mobilePromoOpen]);
+
+
+  // Listen for auth popup success
+useEffect(() => {
+  function handleMessage(event: MessageEvent) {
+    if (event.origin !== window.location.origin) return;
+    if (event.data?.type === "authSuccess") {
+      router.replace("/course"); // instantly move into the app
+    }
+  }
+
+  window.addEventListener("message", handleMessage);
+  return () => window.removeEventListener("message", handleMessage);
+}, [router]);
 
   /* ─────────────────────────────────────────────── */
   return (
