@@ -7,10 +7,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { requireAuth } from "@/utils/requireAuth";
 
-// Loader Component
+/* ───────────────────────────────
+   LOADER
+────────────────────────────── */
 function Loader() {
   return (
-    <main className="min-h-screen flex items-center justify-center bg-white fade-in">
+    <main
+      style={{ opacity: 1, transition: "opacity 0.45s ease" }}
+      className="min-h-screen flex items-center justify-center bg-white"
+    >
       <img
         src="/steering-wheel.png"
         alt="Loading"
@@ -20,6 +25,9 @@ function Loader() {
   );
 }
 
+/* ───────────────────────────────
+   STATIC COURSE
+────────────────────────────── */
 const COURSE = [
   { id: 1, duration: 5, modules: Array(10).fill("") },
   { id: 2, duration: 25, modules: Array(10).fill("") },
@@ -36,17 +44,23 @@ const COURSE = [
   { id: 13, duration: 45, modules: Array(12).fill("") },
 ];
 
+/* ───────────────────────────────
+   DASHBOARD PAGE
+────────────────────────────── */
 export default function DashboardPage() {
   const router = useRouter();
 
-  /* ────────────── HOOKS (ALWAYS TOP-LEVEL, NEVER CONDITIONAL) ────────────── */
+  /* AUTH + PROGRESS STATE */
   const [authChecked, setAuthChecked] = useState(false);
   const [progress, setProgress] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [resumeLesson, setResumeLesson] = useState(0);
   const [resumeModule, setResumeModule] = useState(0);
 
-  /* ─────────────────── AUTH CHECK ─────────────────── */
+  /* PAGE VISIBILITY CONTROL */
+  const [pageReady, setPageReady] = useState(false);
+
+  /* ───────── AUTH CHECK ───────── */
   useEffect(() => {
     async function run() {
       const user = await requireAuth(router);
@@ -55,12 +69,14 @@ export default function DashboardPage() {
     run();
   }, [router]);
 
-  /* ─────────────────── LOAD USER PROGRESS ─────────────────── */
+  /* ───────── LOAD PROGRESS ───────── */
   useEffect(() => {
     if (!authChecked) return;
 
-    const fetchData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+    async function fetchData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data } = await supabase
@@ -72,67 +88,64 @@ export default function DashboardPage() {
       if (!data || data.length === 0) {
         setProgress(0);
         setTimeRemaining(0);
+        setPageReady(true);
         return;
       }
 
-      const totalModules = COURSE.reduce(
-        (sum, l) => sum + l.modules.length,
-        0
-      );
-
+      const totalModules = COURSE.reduce((sum, l) => sum + l.modules.length, 0);
       const completedModules = data.length;
 
-      setProgress(
-        Math.min(100, Math.round((completedModules / totalModules) * 100))
-      );
+      setProgress(Math.min(100, Math.round((completedModules / totalModules) * 100)));
 
       const totalSeconds = COURSE.reduce(
         (sum, l) => sum + l.modules.length * 30,
         0
       );
-
       const completedSeconds = data.reduce(
         (sum, r) => sum + (r.elapsed_seconds ?? 30),
         0
       );
-
       setTimeRemaining((totalSeconds - completedSeconds) / 3600);
 
       for (let l = 0; l < COURSE.length; l++) {
-        const doneCount = data.filter(
-          (r) => r.lesson_id === COURSE[l].id
-        ).length;
-
+        const doneCount = data.filter((r) => r.lesson_id === COURSE[l].id).length;
         if (doneCount < COURSE[l].modules.length) {
           setResumeLesson(l);
           setResumeModule(doneCount);
           break;
         }
       }
-    };
+
+      /* Delay UI reveal smoothly */
+      setTimeout(() => setPageReady(true), 350);
+    }
 
     fetchData();
   }, [authChecked]);
 
-  /* ────────────── CONDITIONAL RENDERING (SAFE NOW) ────────────── */
-  if (!authChecked) {
-    return <Loader />;
-  }
-
-  /* ─────────────── CONTINUE COURSE ─────────────── */
+  /* ───────── CONTINUE BUTTON ───────── */
   const handleContinue = () => {
     router.push(`/course?lesson=${resumeLesson}&module=${resumeModule}`);
   };
 
   const cardBtn =
-    "px-4 py-2 bg-gray-200 text-[#001f40] rounded hover:bg-gray-300 w-full font-semibold text-center";
+    "px-4 py-2 bg-gray-300 text-[#001f40] rounded hover:bg-gray-400 w-full text-center";
 
   const continueBtn =
     "px-4 py-2 rounded text-white font-semibold w-full text-center bg-[#ca5608] hover:bg-[#b24b06]";
 
-  /* ─────────────── RENDER ─────────────── */
+  /* ───────── CONDITIONAL RENDER ───────── */
+  if (!pageReady) return <Loader />;
+
+  /* ───────── RENDER DASHBOARD ───────── */
   return (
-    <main className="min-h-screen bg-white text-[#001f40] fade-in">
+    <main
+      className="min-h-screen bg-white text-[#001f40]"
+      style={{
+        opacity: pageReady ? 1 : 0,
+        transition: "opacity 0.45s ease",
+      }}
+    >
       <div className="p-6 flex justify-center">
         <section className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-5xl">
 
@@ -171,26 +184,22 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* Profile + Permit Panel */}
+          {/* Profile / Permit */}
           <div className="bg-white rounded-2xl shadow-lg w-full p-6 border border-gray-200 flex flex-col gap-6">
             <h2 className="text-xl font-semibold">Driving Updates</h2>
 
             <div className="flex flex-col gap-2">
               <Link href="/profile" className={cardBtn}>
-                👤 Update Profile
+                Update Profile
               </Link>
-              <p className="text-sm text-gray-500">
-                Your personal information is incomplete.
-              </p>
+              <p className="text-sm text-gray-500">Your personal information is incomplete.</p>
             </div>
 
             <div className="flex flex-col gap-2">
               <Link href="/my-permit" className={cardBtn}>
-                🧾 My Permit
+                My Permit
               </Link>
-              <p className="text-sm text-gray-500">
-                Complete payment to unlock your final exam.
-              </p>
+              <p className="text-sm text-gray-500">Complete payment to unlock your final exam.</p>
             </div>
           </div>
 
