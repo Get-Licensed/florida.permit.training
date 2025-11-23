@@ -9,46 +9,56 @@ export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
+    let didRedirect = false;
+
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === "SIGNED_IN" && session) {
-          const user = session.user;
+        if (didRedirect) return;
+        if (event !== "SIGNED_IN" || !session) return;
 
-          // Ensure profile exists
-          await supabase.from("profiles").upsert(
-            {
-              id: user.id,
-              full_name:
-                user.user_metadata?.full_name ||
-                user.user_metadata?.name ||
-                user.email?.split("@")[0],
-              email: user.email,
-              dob: user.user_metadata?.dob || null,
-              pin: user.user_metadata?.pin || "",
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "id" }
-          );
+        didRedirect = true;
+        const user = session.user;
 
-          /* ───────── NEW: Support popup login ───────── */
-          if (window.opener) {
-            window.opener.postMessage(
-              { type: "authSuccess", session },
-              window.location.origin
-            );
-            window.close();
-            return;
-          }
+        // Save / update profile
+        await supabase.from("profiles").upsert(
+          {
+            id: user.id,
+            full_name:
+              user.user_metadata?.full_name ||
+              user.user_metadata?.name ||
+              user.email?.split("@")[0],
+            email: user.email,
+            dob: user.user_metadata?.dob ?? null,
+            pin: user.user_metadata?.pin ?? "",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
 
-          /* ───────── Standard redirect for full-page login ───────── */
-          router.replace("/dashboard");
+        // Get admin role
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("is_admin")
+          .eq("id", user.id)
+          .single();
+
+        // Popup handling
+        if (window.opener) {
+          window.opener.postMessage({ type: "authSuccess", session }, "*");
+          window.close();
+          return;
+        }
+
+        // Final Redirect
+        if (profile?.is_admin) {
+          router.replace("/admin");
+        } else {
+          router.replace("/course");
         }
       }
     );
 
-    return () => {
-      listener.subscription.unsubscribe();
-    };
+    return () => listener.subscription.unsubscribe();
   }, [router]);
 
   return (
