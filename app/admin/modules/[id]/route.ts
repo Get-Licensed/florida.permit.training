@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/utils/supabaseClient";
 
-export async function GET(request: NextRequest, context: { params: { id: string } }) {
-  const { id } = context.params;
+// GET module by ID
+export async function GET(request: NextRequest, context: any) {
+  const id = context.params.id;
 
   try {
     const { data, error } = await supabase
@@ -12,15 +13,15 @@ export async function GET(request: NextRequest, context: { params: { id: string 
       .single();
 
     if (error) throw error;
-
     return NextResponse.json(data);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
-  const { id } = context.params;
+// DELETE module by ID
+export async function DELETE(request: NextRequest, context: any) {
+  const id = context.params.id;
 
   try {
     const { error } = await supabase
@@ -29,7 +30,6 @@ export async function DELETE(request: NextRequest, context: { params: { id: stri
       .eq("id", id);
 
     if (error) throw error;
-
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
