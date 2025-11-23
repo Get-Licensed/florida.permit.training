@@ -15,7 +15,7 @@ export default function SignUpPage() {
   const [mouseX, setMouseX] = useState(0);
   const [vw, setVw] = useState(0);
 
-  const [showPromoBox, setShowPromoBox] = useState(false);
+  const [showPromoBox, setShowPromoBox] = useState(true);
   const [mobilePromoOpen, setMobilePromoOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [progress, setProgress] = useState(15);
@@ -42,7 +42,7 @@ export default function SignUpPage() {
 
   /* ───────── TIMELINE DATA ───────── */
   const TIMELINE = [
-    { id: "start", title: "Join Florida Permit Training", duration: 12, thumbnail: "/logo.png" },
+    { id: "start", title: "Join Florida Permit Training", duration: 12, thumbnail: "/logo.png", displayDuration: "6 hours" },
     { id: 1, title: "Introduction", duration: 10, thumbnail: "/thumbs/intro.jpg" },
     { id: 2, title: "Traffic Safety Problem", duration: 35, thumbnail: "/thumbs/safety.jpg" },
     { id: 3, title: "Physiological Effects", duration: 35, thumbnail: "/thumbs/physiology.jpg" },
@@ -64,68 +64,96 @@ export default function SignUpPage() {
 
   /* ───────── GOOGLE POPUP SIGN-IN ───────── */
   const handleGoogleSignup = async () => {
-    const redirect = `${window.location.origin}/auth/callback`;
-    const res = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: redirect, skipBrowserRedirect: true },
-    });
-    if (res?.data?.url)
-      return window.open(res.data.url, "GoogleLogin", `width=520,height=650`);
-    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: redirect } });
+    try {
+      const redirect = `${window.location.origin}/auth/callback`;
+
+      const res = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: redirect, skipBrowserRedirect: true },
+      });
+
+      if (res?.data?.url) {
+        window.open(
+          res.data.url,
+          "GoogleLogin",
+          `width=520,height=650,top=${window.screenY + 80},left=${window.screenX + 120}`
+        );
+        return;
+      }
+
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: redirect },
+      });
+    } catch (err) {
+      console.error("Google Sign-Up Error:", err);
+    }
   };
 
   /* ───────── TIMELINE HOVER → TOP BAR PROGRESS ───────── */
   const defaultProgress = 15;
   const handleHoverTimeline = (item: any) => {
     if (!item || item.id === "start") {
+      if (vw >= 768) setShowPromoBox(false);
       setProgress(defaultProgress);
-      setShowPromoBox(false);
       return;
     }
+
     if (item.id === "finalActions") {
-      setProgress(99);
       if (vw >= 768) setShowPromoBox(true);
+      setProgress(99);
       return;
     }
+
     if (vw >= 768) setShowPromoBox(false);
+
     const idx = TIMELINE.indexOf(item);
     const pct = Math.round((idx / (TIMELINE.length - 1)) * 100);
     setProgress(Math.max(defaultProgress, pct));
   };
 
-  /* ───────── MOBILE PROMO TAP ───────── */
+  /* ───────── MOBILE PROMO CLOSE ON OUTSIDE TAP ───────── */
   useEffect(() => {
-    if (vw < 768) setShowPromoBox(false);
-  }, [vw]);
+    function handleTouch(e: any) {
+      if (mobileSheetRef.current && !mobileSheetRef.current.contains(e.target)) {
+        setMobilePromoOpen(false);
+      }
+    }
+    if (mobilePromoOpen) {
+      document.addEventListener("mousedown", handleTouch);
+      document.addEventListener("touchstart", handleTouch);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleTouch);
+      document.removeEventListener("touchstart", handleTouch);
+    };
+  }, [mobilePromoOpen]);
 
-  /* ───────── POPUP LOGIN MESSAGE ───────── */
+  /* ───────── OAUTH POPUP LOGIN MESSAGE HANDLER ───────── */
   useEffect(() => {
-    function onMsg(event: MessageEvent) {
+    function handleMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "authSuccess") router.replace("/course");
     }
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, [router]);
 
   /* ───────────────────────────────────────────────────────────── */
   return (
     <main className="flex flex-col bg-white relative overflow-hidden" style={{ height: "calc(100vh - 2px)", marginTop: "2px" }}>
-
-      {/* PROGRESS BAR */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-gray-200 h-2">
+      
+      {/* ===== FIXED PROGRESS BAR ===== */}
+      <div className="fixed top-0 left-0 right-0 z-[70] bg-gray-200 h-[3px] pointer-events-none">
         <TopProgressBar percent={progress} />
       </div>
 
+      {/* ===== PUBLIC HEADER ===== */}
       <PublicHeader />
 
-      {/* SIGNUP BLOCK */}
-      <section
-        className="flex-1 flex items-center justify-center overflow-auto pt-8"
-        style={{ transform: "translateY(-15vh)" }}
-      >
+      {/* ===== HERO SIGN-UP BLOCK ===== */}
+      <section className="flex-1 flex items-center justify-center overflow-auto pt-6">
         <div className="flex flex-col items-center text-center max-w-md w-full">
-
           <Image src="/logo.png" alt="Florida Permit Training" width={520} height={200} className="object-contain max-h-[180px] mb-10" priority />
           <button
             onClick={handleGoogleSignup}
@@ -136,46 +164,14 @@ export default function SignUpPage() {
           </button>
           <p className="text-[15px] text-[#001f40] text-center mt-4">
             Don’t have a Google account?{" "}
-            <a href="https://accounts.google.com/signup" target="_blank" className="text-[#ca5608] underline">Create one</a>.
+            <a href="https://accounts.google.com/signup" target="_blank" className="text-[#ca5608] underline">
+              Create one
+            </a>.
           </p>
         </div>
       </section>
 
-      {/* DESKTOP FINAL PROMO */}
-      {ready && showPromoBox && vw >= 768 && (
-        <div
-          className="fixed bg-[#001f40] text-white rounded-xl shadow-xl p-5 z-30"
-          style={{
-            bottom: "80px",
-            left: `${Math.min(Math.max(mouseX, 200), vw - 200)}px`,
-            transform: "translateX(-50%)",
-            width: "260px",
-          }}
-        >
-          <button onClick={() => setShowPromoBox(false)} className="absolute top-1 right-2 text-white text-lg">✕</button>
-          <PromoText />
-          <Arrow />
-        </div>
-      )}
-
-      {/* MOBILE PROMO BOTTOM SHEET */}
-      {vw < 768 && (
-        <>
-          {mobilePromoOpen && <div className="fixed inset-0 bg-black/40 z-20"></div>}
-          <div
-            ref={mobileSheetRef}
-            className={`fixed left-0 right-0 bg-[#001f40] text-white z-30 p-6 rounded-t-xl shadow-2xl transition-transform duration-300 ${
-              mobilePromoOpen ? "translate-y-0" : "translate-y-full"
-            }`}
-            style={{ bottom: 0 }}
-          >
-            <button onClick={() => setMobilePromoOpen(false)} className="absolute top-1 right-3 text-white text-xl">✕</button>
-            <PromoText />
-          </div>
-        </>
-      )}
-
-      {/* FOOTER TIMELINE */}
+      {/* ===== PROMO + MOBILE SHEET + TIMELINE + TOOLTIP ===== */}
       <FooterTimeline
         TIMELINE={TIMELINE}
         widthPercent={widthPercent}
@@ -188,15 +184,60 @@ export default function SignUpPage() {
         vw={vw}
       />
 
-      {hoverItem && hoverItem.id !== "finalActions" && (
-        <Tooltip hoverItem={hoverItem} vw={vw} mouseX={mouseX} />
+      {ready && showPromoBox && (hoverItem?.id === "finalActions" || hoverItem === null) && vw >= 768 && (
+        <PromoBox hoverItem={hoverItem} mouseX={mouseX} vw={vw} setShowPromoBox={setShowPromoBox} />
       )}
+
+      {vw < 768 && <MobilePromo mobileSheetRef={mobileSheetRef} mobilePromoOpen={mobilePromoOpen} setMobilePromoOpen={setMobilePromoOpen} />}
+
+      {hoverItem && hoverItem.id !== "finalActions" && <Tooltip hoverItem={hoverItem} vw={vw} mouseX={mouseX} />}
+
     </main>
   );
 }
 
-/* ───────── SMALL COMPONENTS ───────── */
+/* ───────────────────────────────────────────────────────────── */
+/* PROMO BOX COMPONENT */
+function PromoBox({ hoverItem, mouseX, vw, setShowPromoBox }: any) {
+  return (
+    <div
+      className="fixed bg-[#001f40] text-white rounded-xl shadow-xl p-5 z-30"
+      style={{
+        bottom: "80px",
+        left: hoverItem?.id === "finalActions"
+          ? `${Math.min(Math.max(mouseX, 200), vw - 200)}px`
+          : `${vw - 200}px`,
+        transform: "translateX(-50%)",
+        width: "260px",
+      }}
+    >
+      <button onClick={() => setShowPromoBox(false)} className="absolute top-1 right-2 text-white text-lg">✕</button>
+      <PromoText />
+      <Arrow />
+    </div>
+  );
+}
 
+/* MOBILE PROMO */
+function MobilePromo({ mobileSheetRef, mobilePromoOpen, setMobilePromoOpen }: any) {
+  return (
+    <>
+      {mobilePromoOpen && <div className="fixed inset-0 bg-black/40 z-20"></div>}
+      <div
+        ref={mobileSheetRef}
+        className={`fixed left-0 right-0 bg-[#001f40] text-white z-30 p-6 rounded-t-xl shadow-2xl transition-transform duration-300 ${
+          mobilePromoOpen ? "translate-y-0" : "translate-y-full"
+        }`}
+        style={{ bottom: 0 }}
+      >
+        <button onClick={() => setMobilePromoOpen(false)} className="absolute top-1 right-3 text-white text-xl">✕</button>
+        <PromoText />
+      </div>
+    </>
+  );
+}
+
+/* PROMO TEXT */
 function PromoText() {
   return (
     <>
@@ -214,6 +255,7 @@ function PromoText() {
   );
 }
 
+/* ARROW POPUP POINTER */
 function Arrow() {
   return (
     <div
@@ -228,47 +270,24 @@ function Arrow() {
   );
 }
 
-/* ───────── FOOTER TIMELINE ───────── */
-
-function FooterTimeline({
-  TIMELINE,
-  widthPercent,
-  setHoverItem,
-  setMouseX,
-  handleHoverTimeline,
-  setMobilePromoOpen,
-  setShowPromoBox,
-  vw,
-}: any) {
+/* FOOTER TIMELINE */
+function FooterTimeline({ TIMELINE, widthPercent, defaultProgress, setHoverItem, setMouseX, handleHoverTimeline, setMobilePromoOpen, setShowPromoBox, vw }: any) {
   return (
     <footer className="bg-white fixed left-0 right-0" style={{ bottom: "1px" }}>
       <div className="w-full px-4 md:px-0">
         <div className="md:max-w-6xl md:mx-auto p-4">
-          
-          {/* STATIC ARROWS */}
-          <div
-            className="flex justify-between items-center select-none"
-            style={{ paddingLeft: "8px", paddingRight: "8px", paddingBottom: "40px" }}
-          >
-            <img
-              src="/back-arrow.png"
-              alt=""
-              className="w-14 sm:w-20 object-contain pointer-events-none select-none"
-              style={{ filter: "grayscale(1) brightness(1.64)", cursor: "default" }}
-            />
-            <img
-              src="/forward-arrow.png"
-              alt=""
-              className="w-14 sm:w-20 object-contain pointer-events-none select-none"
-              style={{ filter: "grayscale(1) brightness(1.64)", cursor: "default" }}
-            />
+
+          {/* ARROWS */}
+          <div className="flex justify-between items-center select-none" style={{ paddingLeft: "8px", paddingRight: "8px", paddingBottom: "40px" }}>
+            <img src="/back-arrow.png" alt="Previous" className="w-14 sm:w-20 object-contain pointer-events-none" style={{ filter: "grayscale(1) brightness(1.64)" }} />
+            <img src="/forward-arrow.png" alt="Next" className="w-14 sm:w-20 object-contain pointer-events-none" style={{ filter: "grayscale(1) brightness(1.64)" }} />
           </div>
 
-          {/* RAIL + SEGMENTS */}
+          {/* TIMELINE RAIL */}
           <div className="relative w-full h-6 flex items-center">
             <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full" />
 
-            {/* Orb */}
+            {/* GLOW ORB */}
             <div
               className="absolute top-1/2 -translate-y-1/2 w-[18px] h-[18px] rounded-full border border-[#fff8f0] pointer-events-none"
               style={{
@@ -278,12 +297,13 @@ function FooterTimeline({
               }}
             />
 
+            {/* MODULE SEGMENTS */}
             <div className="relative w-full h-6 flex items-center">
               {TIMELINE.map((item: any, i: number) => (
                 <div
                   key={item.id}
                   style={{ width: `${widthPercent(item)}%` }}
-                  className="relative h-full flex items-center justify-center transition-all"
+                  className="relative h-full flex items-center justify-center transition-all cursor-pointer"
                   onMouseEnter={(e) => {
                     setHoverItem(item);
                     setMouseX(e.clientX);
@@ -292,32 +312,30 @@ function FooterTimeline({
                   onMouseMove={(e) => setMouseX(e.clientX)}
                   onMouseLeave={() => setHoverItem(null)}
                   onClick={() => {
-                    if (vw < 768 && item.id === "finalActions") setMobilePromoOpen(true);
-                    if (vw < 768 && item.id !== "finalActions") setShowPromoBox(false);
+                    if (vw < 768 && item.id === "finalActions") {
+                      setMobilePromoOpen(true);
+                    }
                   }}
                 >
                   <div
                     className={`flex-1 h-2 ${
-                      i === 0
-                        ? "bg-[#ca5608] rounded-l-full"
-                        : i === TIMELINE.length - 1
-                        ? "bg-[#001f40] rounded-r-full"
-                        : "bg-[#001f40]"
+                      i === 0 ? "bg-[#ca5608] rounded-l-full" : i === TIMELINE.length - 1 ? "bg-[#001f40] rounded-r-full" : "bg-[#001f40]"
                     }`}
                   />
+
                   {i < TIMELINE.length - 1 && <div className="w-[3px] h-full bg-white" />}
                 </div>
               ))}
             </div>
           </div>
+
         </div>
       </div>
     </footer>
   );
 }
 
-/* ───────── TOOLTIP ───────── */
-
+/* TOOLTIP */
 function Tooltip({ hoverItem, vw, mouseX }: any) {
   return (
     <div

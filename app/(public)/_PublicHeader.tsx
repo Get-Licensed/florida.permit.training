@@ -10,7 +10,7 @@ export default function PublicMenuHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  /* ===== PUBLIC NAV ITEMS (DISABLED) ===== */
+  /* === DISABLED NAV ITEMS === */
   const navItems = [
     { name: "Dashboard", href: "/dashboard" },
     { name: "My Course", href: "/course" },
@@ -19,7 +19,7 @@ export default function PublicMenuHeader() {
     { name: "Support", href: "/support" },
   ];
 
-  /* ===== LOGIN POPUP (SAME AS HOMEPAGE) ===== */
+  /* === GOOGLE POPUP LOGIN === */
   const handleLogin = async () => {
     try {
       const redirect = `${window.location.origin}/auth/callback`;
@@ -50,7 +50,7 @@ export default function PublicMenuHeader() {
     }
   };
 
-  /* ===== CLOSE MENU WHEN CLICKING OUTSIDE ===== */
+  /* === CLOSE WHEN CLICKING OUTSIDE === */
   useEffect(() => {
     if (!menuOpen) return;
     const handler = (e: MouseEvent) => {
@@ -65,8 +65,8 @@ export default function PublicMenuHeader() {
   /* ======================================================== */
   return (
     <>
-      {/* WHITE HEADER */}
-      <header className="flex justify-between items-center p-3 bg-white border-b border-gray-200">
+      {/* PUBLIC WHITE HEADER – always above progress bar */}
+      <header className="flex justify-between items-center p-3 bg-white border-b border-gray-200 relative z-[60]">
         <Link href="/" className="flex items-center">
           <div className="h-12 w-12 bg-white rounded-full flex items-center justify-center p-2 shadow-md">
             <img src="/logo.png" alt="Florida Permit Training" className="h-full w-full object-contain" />
@@ -76,23 +76,23 @@ export default function PublicMenuHeader() {
         {/* Blue Hamburger */}
         <button
           onClick={() => setMenuOpen(true)}
-          className="text-3xl font-bold text-[#001f40] cursor-pointer"
+          className="text-3xl font-bold text-[#001f40]"
         >
           ☰
         </button>
       </header>
 
-      {/* WHITE SIDE MENU */}
+      {/* PUBLIC SIDE MENU */}
       {menuOpen && (
         <div
           ref={menuRef}
-          className="fixed top-0 right-0 w-64 h-[100dvh] bg-white text-[#001f40] p-6 shadow-xl z-50 overflow-y-auto"
+          className="fixed top-0 right-0 w-64 h-[100dvh] bg-white text-[#001f40] p-6 shadow-xl z-[70] overflow-y-auto"
         >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold">Menu</h2>
             <button
               onClick={() => setMenuOpen(false)}
-              className="text-2xl font-bold cursor-pointer text-[#001f40]"
+              className="text-2xl font-bold text-[#001f40]"
             >
               ✕
             </button>
@@ -102,8 +102,7 @@ export default function PublicMenuHeader() {
             {navItems.map((item) => (
               <span
                 key={item.name}
-                className={`
-                  transition-colors duration-200 cursor-not-allowed 
+                className={`transition-colors duration-200 select-none cursor-not-allowed
                   ${
                     pathname === item.href
                       ? "text-[#001f40] font-semibold underline"
@@ -115,15 +114,13 @@ export default function PublicMenuHeader() {
               </span>
             ))}
 
-            {/* LOGIN BUTTON – SAME AS HOMEPAGE GOOGLE BUTTON */}
+            {/* LOGIN BUTTON */}
             <button
               onClick={handleLogin}
               className="
                 mt-6 flex items-center justify-center 
-                border border-[#001f40] 
-                bg-white text-[#001f40] 
-                text-[18px] font-bold 
-                px-4 py-2 rounded-md cursor-pointer 
+                border border-[#001f40] bg-white text-[#001f40] 
+                text-[18px] font-bold px-4 py-2 rounded-md 
                 hover:shadow-lg transition-all
               "
             >

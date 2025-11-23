@@ -17,6 +17,9 @@ export async function requireAdmin() {
     .eq("id", user.id)
     .single();
 
+
+    console.log("SERVER SESSION:", session?.user?.email);
+
   if (!profile?.is_admin) redirect("/admin/not-authorized");
 
   return { id: user.id, email: user.email! };
