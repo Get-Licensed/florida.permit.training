@@ -1,6 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
+import TopProgressBar from "@/components/TopProgressBar";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
@@ -288,9 +289,9 @@ export default function CoursePage() {
           height: "calc(100vh - (64px + 120px))",
         }}
       >
-        {/* TOP BAR */}
-        <div className="w-full h-2 bg-gray-200">
-          <div className="h-2" style={{ width: `${progress}%`, backgroundColor: BRAND_ORANGE }} />
+        {/* FIXED TOP PROGRESS BAR – ONLY ON COURSE PAGE */}
+        <div className="fixed top-0 left-0 right-0 z-50 bg-gray-200 h-2">
+          <TopProgressBar percent={progress} />
         </div>
 
         {/* CONTENT */}
@@ -364,22 +365,33 @@ export default function CoursePage() {
         className="fixed left-0 right-0 border-t shadow-inner bg-white z-40"
         style={{ bottom: "1px" }}
       >
-        {/* Controls Row */}
-        <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch px-4 pb-1 py-6">
-          {/* PREVIOUS */}
+      <div className="p-4">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="flex justify-between items-center px-0 sm:px-0 lg:px-0 mb-0 select-none">
+
+
+        {/* PREVIOUS ARROW */}
           <button
             onClick={handlePrev}
             disabled={(currentLesson === 0 && currentModule === 0) || isPaused}
-            className={`w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white ${
-              (currentLesson === 0 && currentModule === 0) || isPaused
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-[#001f40] hover:bg-[#00356e]"
-            }`}
+            className={`
+              p-1 sm:p-2 
+              transition-opacity
+              ${(currentLesson === 0 && currentModule === 0) || isPaused 
+                ? "opacity-30 cursor-default" 
+                : "cursor-pointer"}
+            `}
           >
-            Previous
+            <img
+              src="/back-arrow.png"
+              alt="Previous"
+              className="w-16 sm:w-20 object-contain pointer-events-none"
+            />
           </button>
 
-          {/* PAUSE / RESUME */}
+
+
+          {/* PAUSE / RESUME (KEEP TEXT) */}
           <button
             onClick={togglePause}
             className="w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white bg-[#ca5608] hover:bg-[#b24b06]"
@@ -387,19 +399,28 @@ export default function CoursePage() {
             {isPaused ? "▶️ Resume" : "⏸️ Pause"}
           </button>
 
-          {/* NEXT */}
+        {/* NEXT ARROW */}
           <button
             onClick={handleNext}
             disabled={!awaitingClick || isPaused}
-            className={`w-full sm:w-[160px] text-center px-5 py-2 rounded font-semibold text-white ${
-              awaitingClick && !isPaused
-                ? "bg-[#ca5608] hover:bg-[#b24b06] shadow-[0_0_8px_#ca5608]"
-                : "bg-gray-400 cursor-not-allowed"
-            }`}
+            className={`
+              p-1 sm:p-2 
+              transition-opacity
+              ${(!awaitingClick || isPaused)
+                ? "opacity-30 cursor-default"
+                : "cursor-pointer"}
+            `}
           >
-            {awaitingClick ? "Next" : `Wait ${fmt(timeLeft)}`}
+            <img
+              src="/forward-arrow.png"
+              alt="Next"
+              className="w-16 sm:w-20 object-contain pointer-events-none"
+            />
           </button>
         </div>
+      </div>
+   </div>
+
 
         {/* TIMELINE (Homepage Style + Final Segment) */}
         <div className="p-4">
@@ -491,23 +512,6 @@ export default function CoursePage() {
                     />
                   </div>
               </div>
-            </div>
-
-            {/* Duration Labels */}
-            <div className="flex w-full mt-1">
-              {COURSE.map((l, i) => (
-                <div
-                  key={l.id}
-                  style={{ width: `${widthPercent(l)}%` }}
-                  className="flex justify-center"
-                >
-                  {i !== 0 && (
-                    <span className="text-[9px] text-[#ca5608]">{l.duration} min</span>
-                  )}
-                </div>
-              ))}
-              {/* final-actions placeholder spacing */}
-              <div style={{ width: "4%" }} />
             </div>
           </div>
         </div>

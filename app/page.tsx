@@ -1,6 +1,8 @@
 "use client";
 export const dynamic = "force-dynamic";
 
+import HeaderClient from "@/app/(dashboard)/_HeaderClient";
+import TopProgressBar from "@/components/TopProgressBar";
 import Image from "next/image";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/utils/supabaseClient";
@@ -15,6 +17,7 @@ export default function SignUpPage() {
   const [hoverItem, setHoverItem] = useState<any>(null);
   const [mouseX, setMouseX] = useState(0);
   const [vw, setVw] = useState(0);
+  
 
   // promo box state
   const [showPromoBox, setShowPromoBox] = useState(true);
@@ -23,7 +26,7 @@ export default function SignUpPage() {
   // viewport ready
   const [ready, setReady] = useState(false);
 
-  // track timeline progress (still used internally but bar hidden)
+  // timeline hover = progress (for top bar)
   const [progress, setProgress] = useState(15);
 
   // ref to detect tap outside mobile promo
@@ -48,106 +51,95 @@ export default function SignUpPage() {
   }, []);
 
   /* ───────── TIMELINE DATA ───────── */
-const TIMELINE = [
-  {
-    id: "start",
-    title: "Join Florida Permit Training",
-    duration: 12,
-    thumbnail: "/logo.png",
-    displayDuration: "6 hours",
-  },
-  { id: 1, title: "Introduction", duration: 10, thumbnail: "/thumbs/intro.jpg" },
-  { id: 2, title: "Traffic Safety Problem", duration: 35, thumbnail: "/thumbs/safety.jpg" },
-  { id: 3, title: "Physiological Effects", duration: 35, thumbnail: "/thumbs/physiology.jpg" },
-  { id: 4, title: "Psychological Factors", duration: 25, thumbnail: "/thumbs/psych.jpg" },
-  { id: 5, title: "Driving Under the Influence", duration: 60, thumbnail: "/thumbs/dui.jpg" },
-  { id: 6, title: "Licensing & Insurance", duration: 25, thumbnail: "/thumbs/licensing.jpg" },
-  { id: 7, title: "Licensing Actions", duration: 25, thumbnail: "/thumbs/actions.jpg" },
-  { id: 8, title: "Vehicle Safety", duration: 40, thumbnail: "/thumbs/avoidance.jpg" },
-  { id: 9, title: "Crash Dynamics", duration: 40, thumbnail: "/thumbs/dynamics.jpg" },
-  { id: 10, title: "Traffic Laws I", duration: 55, thumbnail: "/thumbs/laws1.jpg" },
-  { id: 11, title: "Traffic Laws II", duration: 55, thumbnail: "/thumbs/laws2.jpg" },
-  { id: 12, title: "Traffic Laws III", duration: 55, thumbnail: "/thumbs/laws3.jpg" },
-  { id: 13, title: "Behind the Wheel", duration: 55, thumbnail: "/thumbs/wheel.jpg" },
-  { id: "finalActions", title: "PAY / EXAM / DMV", duration: 48, thumbnail: null },
-];
+  const TIMELINE = [
+    {
+      id: "start",
+      title: "Join Florida Permit Training",
+      duration: 12,
+      thumbnail: "/logo.png",
+      displayDuration: "6 hours",
+    },
+    { id: 1, title: "Introduction", duration: 10, thumbnail: "/thumbs/intro.jpg" },
+    { id: 2, title: "Traffic Safety Problem", duration: 35, thumbnail: "/thumbs/safety.jpg" },
+    { id: 3, title: "Physiological Effects", duration: 35, thumbnail: "/thumbs/physiology.jpg" },
+    { id: 4, title: "Psychological Factors", duration: 25, thumbnail: "/thumbs/psych.jpg" },
+    { id: 5, title: "Driving Under the Influence", duration: 60, thumbnail: "/thumbs/dui.jpg" },
+    { id: 6, title: "Licensing & Insurance", duration: 25, thumbnail: "/thumbs/licensing.jpg" },
+    { id: 7, title: "Licensing Actions", duration: 25, thumbnail: "/thumbs/actions.jpg" },
+    { id: 8, title: "Vehicle Safety", duration: 40, thumbnail: "/thumbs/avoidance.jpg" },
+    { id: 9, title: "Crash Dynamics", duration: 40, thumbnail: "/thumbs/dynamics.jpg" },
+    { id: 10, title: "Traffic Laws I", duration: 55, thumbnail: "/thumbs/laws1.jpg" },
+    { id: 11, title: "Traffic Laws II", duration: 55, thumbnail: "/thumbs/laws2.jpg" },
+    { id: 12, title: "Traffic Laws III", duration: 55, thumbnail: "/thumbs/laws3.jpg" },
+    { id: 13, title: "Behind the Wheel", duration: 55, thumbnail: "/thumbs/wheel.jpg" },
+    { id: "finalActions", title: "PAY / EXAM / DMV", duration: 48, thumbnail: null },
+  ];
+
   const totalMinutes = useMemo(() => TIMELINE.reduce((s, l) => s + l.duration, 0), []);
   const widthPercent = (l: any) => (l.duration / totalMinutes) * 100;
 
-  /* ───────── GOOGLE POPUP SIGN-IN ───────── */const handleGoogleSignup = async () => {
-  try {
-    const redirect = `${window.location.origin}/auth/callback`;
+  /* ───────── GOOGLE POPUP SIGN-IN ───────── */
+  const handleGoogleSignup = async () => {
+    try {
+      const redirect = `${window.location.origin}/auth/callback`;
 
-    // Try popup sign-in first
-    const res = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: redirect,
-        skipBrowserRedirect: true, // prevents forced redirect
-      },
-    });
+      const res = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: redirect,
+          skipBrowserRedirect: true,
+        },
+      });
 
-    // If popup URL is returned, open the popup window
-    if (res?.data?.url) {
-      window.open(
-        res.data.url,
-        "GoogleLogin",
-        `width=520,height=650,top=${window.screenY + 80},left=${window.screenX + 120}`
-      );
+      if (res?.data?.url) {
+        window.open(
+          res.data.url,
+          "GoogleLogin",
+          `width=520,height=650,top=${window.screenY + 80},left=${window.screenX + 120}`
+        );
+        return;
+      }
+
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: redirect },
+      });
+    } catch (err) {
+      console.error("Google Sign-Up Error:", err);
+    }
+  };
+
+  /* ───────── TIMELINE HOVER → TOP BAR PROGRESS ───────── */
+  const defaultProgress = 15;
+  const handleHoverTimeline = (item: any) => {
+    if (!item || item.id === "start") {
+      if (vw >= 768) setShowPromoBox(false);
+      setProgress(defaultProgress);
       return;
     }
 
-    // Fallback when popup blocked or not supported
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: redirect },
-    });
-  } catch (err) {
-    console.error("Google Sign-Up Error:", err);
-  }
-};
+    if (item.id === "finalActions") {
+      if (vw >= 768) setShowPromoBox(true);
+      setProgress(99);
+      return;
+    }
 
-
-
-  /* ───────── TIMELINE HOVER LOGIC ───────── */
-  const defaultProgress = 15;
-const handleHoverTimeline = (item: any) => {
-  // started box open, but hovering start or empty should hide it
-  if (!item || item.id === "start") {
     if (vw >= 768) setShowPromoBox(false);
-    setProgress(defaultProgress);
-    return;
-  }
 
-  // Hovering ONLY merged final segment shows box
-  if (item.id === "finalActions") {
-    if (vw >= 768) setShowPromoBox(true);
-    setProgress(99);
-    return;
-  }
-
-  // Hovering ANY other section hides box
-  if (vw >= 768) setShowPromoBox(false);
-
-  // Normal progress for non-final segments
-  const idx = TIMELINE.indexOf(item);
-  const pct = Math.round((idx / (TIMELINE.length - 1)) * 100);
-  setProgress(Math.max(defaultProgress, pct));
-};
-
-
+    const idx = TIMELINE.indexOf(item);
+    const pct = Math.round((idx / (TIMELINE.length - 1)) * 100);
+    setProgress(Math.max(defaultProgress, pct));
+  };
 
   /* ───────── MOBILE TAP TO OPEN/CLOSE ───────── */
-useEffect(() => {
-  if (vw < 768) {
-    setShowPromoBox(false); // mobile hides initially
-  } else {
-    setShowPromoBox(true);  // desktop starts OPEN
-  }
-}, [vw]);
+  useEffect(() => {
+    if (vw < 768) {
+      setShowPromoBox(false);
+    } else {
+      setShowPromoBox(true);
+    }
+  }, [vw]);
 
-
-  // close mobile box when tapping outside
   useEffect(() => {
     function handleTouch(e: any) {
       if (mobileSheetRef.current && !mobileSheetRef.current.contains(e.target)) {
@@ -164,52 +156,67 @@ useEffect(() => {
     };
   }, [mobilePromoOpen]);
 
-
-  // Listen for auth popup success
-useEffect(() => {
-  function handleMessage(event: MessageEvent) {
-    if (event.origin !== window.location.origin) return;
-    if (event.data?.type === "authSuccess") {
-      router.replace("/course"); // instantly move into the app
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "authSuccess") {
+        router.replace("/course");
+      }
     }
-  }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [router]);
 
-  window.addEventListener("message", handleMessage);
-  return () => window.removeEventListener("message", handleMessage);
-}, [router]);
+  /* ───────────────────────────────────────────────────────────── */
+return (
+    <main
+      className="flex flex-col bg-white relative overflow-hidden"
+      style={{ height: "calc(100vh - 2px)", marginTop: "2px" }}
+>
+    {/* ===== PROGRESS BAR (Homepage style) ===== */}
+    <div className="fixed top-0 left-0 right-0 z-50 bg-gray-200 h-2">
+      <TopProgressBar percent={progress} />
+    </div>
 
-  /* ─────────────────────────────────────────────── */
-  return (
-    <main className="flex flex-col bg-white relative overflow-hidden" style={{ height: "100vh" }}>
 
-      {/* MAIN GRID */}
-      <section className="flex-1 flex items-center justify-center overflow-auto">
-        <div className="max-w-6xl w-full grid grid-cols-1 md:grid-cols-2 h-[80vh]">
+    {/* ===== GLOBAL DASHBOARD HEADER (imported) ===== */}
+    <HeaderClient />
 
-          {/* LOGO SECTION */}
-          <section className="flex justify-center md:justify-end items-center p-3">
-            <Image src="/logo.png" alt="Florida Permit Training" width={520} height={200} className="object-contain max-h-[80%]" priority />
+          {/* CENTERED SIGNUP BLOCK */}
+          <section className="flex-1 flex items-center justify-center overflow-auto pt-8">
+            <div className="flex flex-col items-center text-center max-w-md w-full">
+
+              <Image
+                src="/logo.png"
+                alt="Florida Permit Training"
+                width={520}
+                height={200}
+                className="object-contain max-h-[180px] mb-10"
+                priority
+              />
+
+              <button
+                onClick={handleGoogleSignup}
+                className="flex items-center justify-center border border-[#001f40] bg-white text-[#001f40] text-[22px] font-bold px-6 py-3 rounded-md cursor-pointer hover:shadow-lg transition-all"
+              >
+                <Image src="/Google-Icon.png" alt="Google Icon" width={26} height={26} className="mr-3" />
+                Continue with Google
+              </button>
+
+              <p className="text-[15px] text-[#001f40] text-center mt-4">
+                Don’t have a Google account?{" "}
+                <a
+                  href="https://accounts.google.com/signup"
+                  target="_blank"
+                  className="text-[#ca5608] underline"
+                >
+                  Create one
+                </a>.
+              </p>
+
+            </div>
           </section>
 
-          {/* SIGNUP SECTION */}
-          <section className="flex flex-col items-center md:items-start justify-center gap-6 p-4">
-            <button
-              onClick={handleGoogleSignup}
-              className="flex items-center border border-[#001f40] bg-white text-[#001f40] text-[24px] font-bold px-5 py-3 rounded-md cursor-pointer"
-            >
-              <Image src="/Google-Icon.png" alt="Google Icon" width={28} height={28} className="mr-3" />
-              Continue with Google
-            </button>
-
-            <p className="text-[15px] text-[#001f40] text-center md:text-left">
-              Don’t have a Google account?{" "}
-              <a href="https://accounts.google.com/signup" target="_blank" className="text-[#ca5608] underline">
-                Create one
-              </a>.
-            </p>
-          </section>
-        </div>
-      </section>
 
       {/* DESKTOP PROMO BOX (ARROW TRACKED) */}
       {ready && showPromoBox && (hoverItem?.id === "finalActions" || hoverItem === null) && vw >= 768 && (
@@ -309,6 +316,26 @@ function Arrow() {
   );
 }
 
+
+{/* STATIC COURSE-STYLE ARROWS (NO CONTROL) */}
+<div className="flex justify-between items-center px-10 sm:px-20 mt-3 mb-1 select-none">
+  <div className="cursor-pointer hover:brightness-110">
+    <img
+      src="/back-arrow.png"
+      alt=""
+      className="w-16 sm:w-20 object-contain pointer-events-none"
+    />
+  </div>
+
+  <div className="cursor-pointer hover:brightness-110">
+    <img
+      src="/forward-arrow.png"
+      alt=""
+      className="w-16 sm:w-20 object-contain pointer-events-none"
+    />
+  </div>
+</div>
+
 /* ───────── FOOTER TIMELINE COMPONENT ───────── */
 
 function FooterTimeline({
@@ -326,10 +353,36 @@ function FooterTimeline({
     <footer className="bg-white fixed left-0 right-0" style={{ bottom: "1px" }}>
       <div className="w-full px-4 md:px-0">
         <div className="md:max-w-6xl md:mx-auto p-4">
-          <div className="relative w-full h-6 flex items-center">
+          {/* ARROWS – SAME PLACEMENT AS COURSE PAGE */}
+            <div
+              className="flex justify-between items-center select-none"
+              style={{
+                paddingLeft: "8px",
+                paddingRight: "8px",
+                paddingBottom: "40px" // lifts arrows upward
+              }}
+            >
+            <div className="cursor-pointer hover:brightness-110">
+              <img
+                src="/back-arrow.png"
+                alt="Previous"
+                className="w-14 sm:w-20 object-contain pointer-events-none"
+              />
+            </div>
 
+            <div className="cursor-pointer hover:brightness-110">
+              <img
+                src="/forward-arrow.png"
+                alt="Next"
+                className="w-14 sm:w-20 object-contain pointer-events-none"
+              />
+            </div>
+          </div>
+
+          {/* TIMELINE RAIL + SEGMENTS */}
+          <div className="relative w-full h-6 flex items-center">
             {/* rail */}
-            <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full"></div>
+            <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full" />
 
             {/* glowing orb */}
             <div
@@ -369,7 +422,7 @@ function FooterTimeline({
                         ? "bg-[#001f40] rounded-r-full"
                         : "bg-[#001f40]"
                     }`}
-                  ></div>
+                  />
 
                   {i < TIMELINE.length - 1 && (
                     <div className="w-[3px] h-full bg-white" />
@@ -378,31 +431,12 @@ function FooterTimeline({
               ))}
             </div>
           </div>
-
-      {/* DURATION LABELS – MATCH COURSE PAGE */}
-          <div className="flex w-full mt-1">
-            {TIMELINE.map((item: any) => (
-              <div
-                key={item.id}
-                style={{ width: `${widthPercent(item)}%` }}
-                className="flex justify-center"
-              >
-                {item.id !== "start" && item.id !== "finalActions" && (
-                  <span className="text-[9px] text-[#ca5608]">
-                    {item.duration} min
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-
-
+             
         </div>
       </div>
     </footer>
   );
 }
-
 
 /* ───────── TOOLTIP COMPONENT ───────── */
 
