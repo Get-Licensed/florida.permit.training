@@ -1,40 +1,37 @@
-import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/utils/supabaseServer";
+import { NextRequest, NextResponse } from "next/server";
+import { supabase } from "@/utils/supabaseClient";
 
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const supabase = await createSupabaseServerClient(); // MUST await
+export async function GET(request: NextRequest, context: { params: { id: string } }) {
+  const { id } = context.params;
 
-  // Hard delete for compliance
-  const { error } = await supabase
-    .from("modules")
-    .delete()
-    .eq("id", params.id);
+  try {
+    const { data, error } = await supabase
+      .from("course_modules")
+      .select("*")
+      .eq("id", id)
+      .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) throw error;
+
+    return NextResponse.json(data);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
-
-  return NextResponse.json({ success: true });
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const supabase = await createSupabaseServerClient(); // MUST await
+export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+  const { id } = context.params;
 
-  const { data, error } = await supabase
-    .from("modules")
-    .select("*")
-    .eq("id", params.id)
-    .single();
+  try {
+    const { error } = await supabase
+      .from("course_modules")
+      .delete()
+      .eq("id", id);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
-
-  return NextResponse.json(data);
 }
