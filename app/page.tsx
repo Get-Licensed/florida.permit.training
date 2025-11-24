@@ -135,15 +135,26 @@ const handleHoverTimeline = (item: any, x?: number) => {
     };
   }, [mobilePromoOpen]);
 
-  /* ───────── OAUTH POPUP LOGIN MESSAGE HANDLER ───────── */
-  useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type === "authSuccess") router.replace("/course");
+/* ───────── OAUTH POPUP LOGIN MESSAGE HANDLER ───────── */
+useEffect(() => {
+  function handlePopupMessage(event: MessageEvent) {
+    // Only accept messages from your own site
+    if (!event.origin || !event.origin.startsWith(window.location.origin)) return;
+
+    // Only handle Supabase auth success message
+    if (event.data?.type === "authSuccess") {
+      // Always go through /auth/callback so it can:
+      // - sync cookies
+      // - upsert profile
+      // - check admin status
+      // - redirect correctly
+      window.location.href = "/auth/callback";
     }
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [router]);
+  }
+
+  window.addEventListener("message", handlePopupMessage);
+  return () => window.removeEventListener("message", handlePopupMessage);
+}, []);
 
   /* ───────────────────────────────────────────────────────────── */
   return (

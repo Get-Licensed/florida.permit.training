@@ -13,8 +13,8 @@ export default function AuthCallback() {
 
     const handleSession = async (session: any) => {
       if (didRedirect || !session) return;
-
       didRedirect = true;
+
       const user = session.user;
 
       // Save / update profile
@@ -40,18 +40,32 @@ export default function AuthCallback() {
         .eq("id", user.id)
         .single();
 
-      // Popup handling (Google Sign In via popup)
+      // Popup handling (Google Sign-In)
       if (window.opener) {
         window.opener.postMessage({ type: "authSuccess", session }, "*");
         window.close();
         return;
       }
 
-      // Final Redirect (after upsert + admin check)
+      // Final Redirect
       if (profile?.is_admin) {
         router.replace("/admin");
       } else {
         router.replace("/course");
+      }
+    };
+
+    // Retry logic to allow middleware to refresh cookies first
+    const ensureSessionAndRedirect = async (incomingSession: any) => {
+      let tries = 0;
+      while (tries < 10) {
+        const { data: refreshed } = await supabase.auth.getSession();
+        if (refreshed?.session) {
+          await handleSession(refreshed.session);
+          return;
+        }
+        tries++;
+        await new Promise((resolve) => setTimeout(resolve, 150)); // wait 150ms
       }
     };
 
@@ -66,6 +80,7 @@ export default function AuthCallback() {
         return;
       }
 
+      // Exchange OAuth code if provided
       if (code) {
         const {
           data: exchangeData,
@@ -77,19 +92,19 @@ export default function AuthCallback() {
           return;
         }
 
+        // If exchange returned a session immediately, handle it
         if (exchangeData?.session) {
-          // Handle immediately if a session is included in the exchange response
-          await handleSession(exchangeData.session);
+          await ensureSessionAndRedirect(exchangeData.session);
           return;
         }
       }
 
-      // Fallback: handle existing session (no SIGNED_IN event fired)
+      // Fallback to existing session after middleware refresh
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      await handleSession(session);
+      await ensureSessionAndRedirect(session);
     }
 
     const { data: listener } = supabase.auth.onAuthStateChange(
@@ -106,7 +121,7 @@ export default function AuthCallback() {
           session = existingSession;
         }
 
-        await handleSession(session);
+        await ensureSessionAndRedirect(session);
       }
     );
 
@@ -118,7 +133,7 @@ export default function AuthCallback() {
   return (
     <main className="flex items-center justify-center min-h-screen bg-white">
       <h1 className="text-[#001f40] text-lg font-bold">
-        Signing you in, please wait...
+        Signing you in, please wait…
       </h1>
     </main>
   );
