@@ -11,52 +11,99 @@ export default function AuthCallback() {
   useEffect(() => {
     let didRedirect = false;
 
+    const handleSession = async (session: any) => {
+      if (didRedirect || !session) return;
+
+      didRedirect = true;
+      const user = session.user;
+
+      // Save / update profile
+      await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          full_name:
+            user.user_metadata?.full_name ||
+            user.user_metadata?.name ||
+            user.email?.split("@")[0],
+          email: user.email,
+          dob: user.user_metadata?.dob ?? null,
+          pin: user.user_metadata?.pin ?? "",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+
+      // Get admin role
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", user.id)
+        .single();
+
+      // Popup handling
+      if (window.opener) {
+        window.opener.postMessage({ type: "authSuccess", session }, "*");
+        window.close();
+        return;
+      }
+
+      // Final Redirect
+      if (profile?.is_admin) {
+        router.replace("/admin");
+      } else {
+        router.replace("/course");
+      }
+    };
+
+    async function syncSession() {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+      const error = url.searchParams.get("error");
+
+      if (error) {
+        console.error("Supabase auth error:", error);
+        return;
+      }
+
+      if (code) {
+        const { error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(code);
+
+        if (exchangeError) {
+          console.error("Failed to exchange code for session", exchangeError);
+          return;
+        }
+      }
+
+      // After exchanging the code, immediately handle any available session so
+      // the page doesn't hang if no new SIGNED_IN event is fired.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      await handleSession(session);
+    }
+
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (didRedirect) return;
-        if (event !== "SIGNED_IN" || !session) return;
 
-        didRedirect = true;
-        const user = session.user;
+        if (event !== "SIGNED_IN" || !session) {
+          // If no new SIGNED_IN event fired, fallback to existing session
+          const {
+            data: { session: existingSession },
+          } = await supabase.auth.getSession();
 
-        // Save / update profile
-        await supabase.from("profiles").upsert(
-          {
-            id: user.id,
-            full_name:
-              user.user_metadata?.full_name ||
-              user.user_metadata?.name ||
-              user.email?.split("@")[0],
-            email: user.email,
-            dob: user.user_metadata?.dob ?? null,
-            pin: user.user_metadata?.pin ?? "",
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "id" }
-        );
+          if (!existingSession) return;
 
-        // Get admin role
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("is_admin")
-          .eq("id", user.id)
-          .single();
-
-        // Popup handling
-        if (window.opener) {
-          window.opener.postMessage({ type: "authSuccess", session }, "*");
-          window.close();
-          return;
+          session = existingSession;
         }
 
-        // Final Redirect
-        if (profile?.is_admin) {
-          router.replace("/admin");
-        } else {
-          router.replace("/course");
-        }
+        await handleSession(session);
       }
     );
+
+    syncSession();
 
     return () => listener.subscription.unsubscribe();
   }, [router]);

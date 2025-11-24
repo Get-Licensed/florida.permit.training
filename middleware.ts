@@ -29,9 +29,7 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // This keeps the auth cookies updated on every request the middleware handles.
   await supabase.auth.getSession();
-
   return res;
 }
 
