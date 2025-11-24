@@ -40,14 +40,14 @@ export default function AuthCallback() {
         .eq("id", user.id)
         .single();
 
-      // Popup handling
+      // Popup handling (Google Sign In via popup)
       if (window.opener) {
         window.opener.postMessage({ type: "authSuccess", session }, "*");
         window.close();
         return;
       }
 
-      // Final Redirect
+      // Final Redirect (after upsert + admin check)
       if (profile?.is_admin) {
         router.replace("/admin");
       } else {
@@ -59,24 +59,32 @@ export default function AuthCallback() {
       const url = new URL(window.location.href);
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
+      const errorDescription = url.searchParams.get("error_description");
 
-      if (error) {
-        console.error("Supabase auth error:", error);
+      if (error || errorDescription) {
+        console.error("Supabase auth error:", error || errorDescription);
         return;
       }
 
       if (code) {
-        const { error: exchangeError } =
-          await supabase.auth.exchangeCodeForSession(code);
+        const {
+          data: exchangeData,
+          error: exchangeError,
+        } = await supabase.auth.exchangeCodeForSession(code);
 
         if (exchangeError) {
           console.error("Failed to exchange code for session", exchangeError);
           return;
         }
+
+        if (exchangeData?.session) {
+          // Handle immediately if a session is included in the exchange response
+          await handleSession(exchangeData.session);
+          return;
+        }
       }
 
-      // After exchanging the code, immediately handle any available session so
-      // the page doesn't hang if no new SIGNED_IN event is fired.
+      // Fallback: handle existing session (no SIGNED_IN event fired)
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -89,7 +97,6 @@ export default function AuthCallback() {
         if (didRedirect) return;
 
         if (event !== "SIGNED_IN" || !session) {
-          // If no new SIGNED_IN event fired, fallback to existing session
           const {
             data: { session: existingSession },
           } = await supabase.auth.getSession();
