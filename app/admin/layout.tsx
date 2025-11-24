@@ -6,13 +6,10 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // This will redirect automatically if user is not admin or not logged in
-  await requireAdmin();
+  const profile = await requireAdmin();
 
   return (
     <div className="min-h-screen bg-gray-50 text-[#001f40]">
-
-      {/* Top AppBar */}
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <h1 className="text-lg font-bold tracking-tight">Admin Portal</h1>
@@ -25,7 +22,6 @@ export default async function AdminLayout({
         </div>
       </header>
 
-      {/* Page Content */}
       <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
     </div>
   );
