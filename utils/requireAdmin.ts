@@ -1,15 +1,30 @@
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 import { redirect } from "next/navigation";
-import { getServerSupabase } from "./supabaseServer";
 
 export async function requireAdmin() {
-  const supabase = await getServerSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
+  const cookieStore = cookies() as any;
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name: string) => cookieStore.get(name)?.value,
+      },
+    }
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) redirect("/auth/sign-in");
 
+  // Fetch profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_admin, email")
+    .select("id,email,full_name,is_admin")
     .eq("id", user.id)
     .single();
 

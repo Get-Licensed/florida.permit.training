@@ -24,14 +24,14 @@ export default function SignUpPage() {
   const [lastPromoX, setLastPromoX] = useState<number | null>(null);
 
 
-  /* ───────── CHECK IF LOGGED IN ───────── */
+  /* ───────── CHECK IF LOGGED IN ───────── 
   useEffect(() => {
     async function checkSession() {
       const { data } = await supabase.auth.getSession();
       if (data?.session) router.replace("/course");
     }
     checkSession();
-  }, [router]);
+  }, [router]);*/
 
   /* ───────── VIEWPORT DETECTION ───────── */
   useEffect(() => {
@@ -138,23 +138,19 @@ const handleHoverTimeline = (item: any, x?: number) => {
 /* ───────── OAUTH POPUP LOGIN MESSAGE HANDLER ───────── */
 useEffect(() => {
   function handlePopupMessage(event: MessageEvent) {
-    // Only accept messages from your own site
     if (!event.origin || !event.origin.startsWith(window.location.origin)) return;
+    if (event.data?.type !== "authSuccess") return;
 
-    // Only handle Supabase auth success message
-    if (event.data?.type === "authSuccess") {
-      // Always go through /auth/callback so it can:
-      // - sync cookies
-      // - upsert profile
-      // - check admin status
-      // - redirect correctly
-      window.location.href = "/auth/callback";
-    }
+    const redirectTo = typeof event.data.redirectTo === "string"
+      ? event.data.redirectTo
+      : "/course";
+
+    router.replace(redirectTo);
   }
 
   window.addEventListener("message", handlePopupMessage);
   return () => window.removeEventListener("message", handlePopupMessage);
-}, []);
+}, [router]);
 
   /* ───────────────────────────────────────────────────────────── */
   return (
