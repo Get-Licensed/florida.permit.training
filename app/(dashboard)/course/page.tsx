@@ -555,20 +555,41 @@ export default function CoursePage() {
 /* ------------ FINAL ACTIONS CONTENT ------------ */
 function PromoText() {
   return (
-    <>
-      <h3 className="font-bold text-lg">PAY $59.95</h3>
-      <p className="text-sm opacity-90 mb-3">After taking the course.</p>
-      <hr className="border-white/30 my-2" />
-      <h3 className="font-bold text-lg">FINAL EXAM</h3>
-      <p className="text-sm opacity-90 mb-3">
-        Pass final 40 question exam & WE WILL automatically send your results to the DMV!
+    <div className="text-center">
+      {/* STEP 1 */}
+      <p className="text-[12px] italic opacity-90">(No cost)</p>
+      <h3 className="font-bold text-[15px] leading-tight mb-2">6 hour course</h3>
+
+      <hr className="border-white/30 my-3" />
+
+      {/* STEP 2 */}
+      <p className="text-[12px] italic opacity-90">(No cost)</p>
+      <h3 className="font-bold text-[15px] leading-tight mb-2">
+        Pass 40 question final
+      </h3>
+
+      <hr className="border-white/30 my-3" />
+
+      {/* STEP 3 */}
+      <h3 className="text-[12px] font-semibold leading-tight mb-1">Pay $59.95</h3>
+      <p className="text-[12px] opacity-90 mb-3">
+        Electronically submit your test<br /> results to the DMV
       </p>
-      <hr className="border-white/30 my-2" />
-      <h3 className="font-bold text-lg">SCHEDULE DMV APPT</h3>
-      <p className="text-sm opacity-90">Link here. Bring your birth certificate. Etc.</p>
-    </>
+
+      <hr className="border-white/30 my-3" />
+
+      {/* STEP 4 (NO LINE BREAKS, ALL 12px) */}
+      <p className="text-[12px] opacity-90">
+        Set DMV appointment! Bring: 2 forms of proof of Residency, Social Security card,
+        Birth certificate & a smile for the camera!
+        <br />
+        <span className="font-semibold">$48 Payable to the FL DMV</span>
+      </p>
+    </div>
   );
 }
+
+
 
 function Arrow() {
   return (

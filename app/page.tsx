@@ -21,6 +21,8 @@ export default function SignUpPage() {
   const [progress, setProgress] = useState(15);
 
   const mobileSheetRef = useRef<HTMLDivElement>(null);
+  const [lastPromoX, setLastPromoX] = useState<number | null>(null);
+
 
   /* ───────── CHECK IF LOGGED IN ───────── */
   useEffect(() => {
@@ -92,25 +94,29 @@ export default function SignUpPage() {
 
   /* ───────── TIMELINE HOVER → TOP BAR PROGRESS ───────── */
   const defaultProgress = 15;
-  const handleHoverTimeline = (item: any) => {
-    if (!item || item.id === "start") {
-      if (vw >= 768) setShowPromoBox(false);
-      setProgress(defaultProgress);
-      return;
-    }
-
-    if (item.id === "finalActions") {
-      if (vw >= 768) setShowPromoBox(true);
-      setProgress(99);
-      return;
-    }
-
+const handleHoverTimeline = (item: any, x?: number) => {
+  if (!item || item.id === "start") {
     if (vw >= 768) setShowPromoBox(false);
+    setProgress(defaultProgress);
+    return;
+  }
 
-    const idx = TIMELINE.indexOf(item);
-    const pct = Math.round((idx / (TIMELINE.length - 1)) * 100);
-    setProgress(Math.max(defaultProgress, pct));
-  };
+  if (item.id === "finalActions") {
+    setHoverItem(item);
+    if (vw >= 768) setShowPromoBox(true);
+    setProgress(99);
+
+    if (x) setLastPromoX(x); // store live
+    return;
+  }
+
+  if (vw >= 768) setShowPromoBox(false);
+
+  const idx = TIMELINE.indexOf(item);
+  const pct = Math.round((idx / (TIMELINE.length - 1)) * 100);
+  setProgress(Math.max(defaultProgress, pct));
+};
+
 
   /* ───────── MOBILE PROMO CLOSE ON OUTSIDE TAP ───────── */
   useEffect(() => {
@@ -181,12 +187,14 @@ export default function SignUpPage() {
         handleHoverTimeline={handleHoverTimeline}
         setMobilePromoOpen={setMobilePromoOpen}
         setShowPromoBox={setShowPromoBox}
+        setLastPromoX={setLastPromoX}
         vw={vw}
       />
 
-      {ready && showPromoBox && (hoverItem?.id === "finalActions" || hoverItem === null) && vw >= 768 && (
-        <PromoBox hoverItem={hoverItem} mouseX={mouseX} vw={vw} setShowPromoBox={setShowPromoBox} />
+      {ready && showPromoBox && hoverItem?.id === "finalActions" && vw >= 768 && (
+        <PromoBox x={lastPromoX ?? mouseX} />
       )}
+
 
       {vw < 768 && <MobilePromo mobileSheetRef={mobileSheetRef} mobilePromoOpen={mobilePromoOpen} setMobilePromoOpen={setMobilePromoOpen} />}
 
@@ -198,20 +206,17 @@ export default function SignUpPage() {
 
 /* ───────────────────────────────────────────────────────────── */
 /* PROMO BOX COMPONENT */
-function PromoBox({ hoverItem, mouseX, vw, setShowPromoBox }: any) {
+function PromoBox({ x }: { x: number }) {
   return (
     <div
-      className="fixed bg-[#001f40] text-white rounded-xl shadow-xl p-5 z-30"
+      className="fixed bg-[#001f40] text-white rounded-xl shadow-xl p-5 z-30 text-center"
       style={{
         bottom: "80px",
-        left: hoverItem?.id === "finalActions"
-          ? `${Math.min(Math.max(mouseX, 200), vw - 200)}px`
-          : `${vw - 200}px`,
+        left: `${x}px`,
         transform: "translateX(-50%)",
-        width: "260px",
+        width: "300px",
       }}
     >
-      <button onClick={() => setShowPromoBox(false)} className="absolute top-1 right-2 text-white text-lg">✕</button>
       <PromoText />
       <Arrow />
     </div>
@@ -237,25 +242,41 @@ function MobilePromo({ mobileSheetRef, mobilePromoOpen, setMobilePromoOpen }: an
   );
 }
 
-/* PROMO TEXT */
 function PromoText() {
   return (
-    <>
-      <h3 className="font-bold text-lg">PAY $59.95</h3>
-      <p className="text-sm opacity-90 mb-3">After taking the course.</p>
-      <hr className="border-white/30 my-2" />
-      <h3 className="font-bold text-lg">FINAL EXAM</h3>
-      <p className="text-sm opacity-90 mb-3">
-        Pass final 40 question exam & WE WILL automatically send your results to the DMV!
+    <div className="flex flex-col text-center text-white">
+      
+      {/* STEP 1 */}
+      <p className="text-[11px] italic">(No cost)</p>
+      <p className="text-[14px]">6 hour course</p>
+      <div className="border-b border-white/40 my-2" />
+
+      {/* STEP 2 */}
+      <p className="text-[11px] italic">(No cost)</p>
+      <p className="text-[14px]">Pass 40 question final</p>
+      <div className="border-b border-white/40 my-2" />
+
+      {/* STEP 3 */}
+      <p className="text-[11px]">Pay $59.95</p>
+      <p className="text-[11px]">
+        Electronically submit your test<br /> results to the DMV
       </p>
-      <hr className="border-white/30 my-2" />
-      <h3 className="font-bold text-lg">SCHEDULE DMV APPT</h3>
-      <p className="text-sm opacity-90">Link here. Bring your birth certificate. Etc.</p>
-    </>
+      <div className="border-b border-white/40 my-2" />
+
+      {/* STEP 4 */}
+      <p className="text-[11px]">
+        Set DMV appointment! Bring: 2 forms of proof of Residency. Social
+        security card, Birth certificate. & a smile for the camera! $48
+        payable to the FL DMV
+      </p>
+
+    </div>
   );
 }
 
-/* ARROW POPUP POINTER */
+
+
+
 function Arrow() {
   return (
     <div
@@ -264,14 +285,26 @@ function Arrow() {
         borderLeftColor: "transparent",
         borderRightColor: "transparent",
         borderTopColor: "#001f40",
-        bottom: "-7px",
+        bottom: "-7px"
       }}
     />
   );
 }
 
+
 /* FOOTER TIMELINE */
-function FooterTimeline({ TIMELINE, widthPercent, defaultProgress, setHoverItem, setMouseX, handleHoverTimeline, setMobilePromoOpen, setShowPromoBox, vw }: any) {
+function FooterTimeline({
+  TIMELINE,
+  widthPercent,
+  defaultProgress,
+  setHoverItem,
+  setMouseX,
+  handleHoverTimeline,
+  setMobilePromoOpen,
+  setShowPromoBox,
+  setLastPromoX,
+  vw
+}: any) {
   return (
     <footer className="bg-white fixed left-0 right-0" style={{ bottom: "1px" }}>
       <div className="w-full px-4 md:px-0">
@@ -307,10 +340,12 @@ function FooterTimeline({ TIMELINE, widthPercent, defaultProgress, setHoverItem,
                   onMouseEnter={(e) => {
                     setHoverItem(item);
                     setMouseX(e.clientX);
-                    handleHoverTimeline(item);
+                    handleHoverTimeline(item, e.clientX); // send live x
                   }}
-                  onMouseMove={(e) => setMouseX(e.clientX)}
-                  onMouseLeave={() => setHoverItem(null)}
+                  onMouseMove={(e) => {
+                    setMouseX(e.clientX);
+                    if (item.id === "finalActions") setLastPromoX(e.clientX);
+                  }}                  onMouseLeave={() => setHoverItem(null)}
                   onClick={() => {
                     if (vw < 768 && item.id === "finalActions") {
                       setMobilePromoOpen(true);
@@ -319,14 +354,18 @@ function FooterTimeline({ TIMELINE, widthPercent, defaultProgress, setHoverItem,
                 >
                   <div
                     className={`flex-1 h-2 ${
-                      i === 0 ? "bg-[#ca5608] rounded-l-full" : i === TIMELINE.length - 1 ? "bg-[#001f40] rounded-r-full" : "bg-[#001f40]"
+                      i === 0
+                        ? "bg-[#ca5608] rounded-l-full"
+                        : i === TIMELINE.length - 1
+                        ? "bg-[#001f40] rounded-r-full"
+                        : "bg-[#001f40]"
                     }`}
                   />
-
                   {i < TIMELINE.length - 1 && <div className="w-[3px] h-full bg-white" />}
                 </div>
               ))}
             </div>
+
           </div>
 
         </div>
