@@ -1,26 +1,19 @@
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "./supabaseServer";
+import { getServerSupabase } from "./supabaseServer";
 
 export async function requireAdmin() {
-  const supabase = await createSupabaseServerClient(); // MUST await
+  const supabase = await getServerSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  const user = session?.user;
-  if (!user) redirect("/");
+  if (!user) redirect("/auth/sign-in");
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_admin")
+    .select("is_admin, email")
     .eq("id", user.id)
     .single();
 
-
-    console.log("SERVER SESSION:", session?.user?.email);
-
   if (!profile?.is_admin) redirect("/admin/not-authorized");
 
-  return { id: user.id, email: user.email! };
+  return profile;
 }
