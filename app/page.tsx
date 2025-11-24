@@ -22,6 +22,7 @@ export default function SignUpPage() {
 
   const mobileSheetRef = useRef<HTMLDivElement>(null);
   const [lastPromoX, setLastPromoX] = useState<number | null>(null);
+  const finalSegmentRef = useRef<HTMLDivElement>(null);
 
 
   /* ───────── CHECK IF LOGGED IN ───────── 
@@ -41,6 +42,16 @@ export default function SignUpPage() {
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
+
+  /* STEP 2: On initial load, anchor promo popup above FINAL segment */
+  useEffect(() => {
+    if (!finalSegmentRef.current) return;
+    if (!showPromoBox || vw < 768) return;
+
+    const rect = finalSegmentRef.current.getBoundingClientRect();
+    setLastPromoX(rect.left + rect.width / 2);
+  }, [ready, vw, showPromoBox]);
+
 
   /* ───────── TIMELINE DATA ───────── */
   const TIMELINE = [
@@ -92,30 +103,37 @@ export default function SignUpPage() {
     }
   };
 
-  /* ───────── TIMELINE HOVER → TOP BAR PROGRESS ───────── */
-  const defaultProgress = 15;
-const handleHoverTimeline = (item: any, x?: number) => {
-  if (!item || item.id === "start") {
-    if (vw >= 768) setShowPromoBox(false);
-    setProgress(defaultProgress);
-    return;
-  }
+/* ───────── TIMELINE HOVER → TOP BAR PROGRESS ───────── */
+    const defaultProgress = 15;
 
-  if (item.id === "finalActions") {
-    setHoverItem(item);
-    if (vw >= 768) setShowPromoBox(true);
-    setProgress(99);
+    const handleHoverTimeline = (item: any, x?: number) => {
+      // If user hovers nothing or the start block, reset progress only
+      if (!item || item.id === "start") {
+        setProgress(defaultProgress);
+        return; // **Do NOT hide promo box here**
+      }
 
-    if (x) setLastPromoX(x); // store live
-    return;
-  }
+      // If user hovers FINAL ACTIONS segment
+      if (item.id === "finalActions") {
+        setHoverItem(item);
+        setProgress(99);
 
-  if (vw >= 768) setShowPromoBox(false);
+        // Always show the promo box for final item (desktop only)
+        if (vw >= 768) setShowPromoBox(true);
 
-  const idx = TIMELINE.indexOf(item);
-  const pct = Math.round((idx / (TIMELINE.length - 1)) * 100);
-  setProgress(Math.max(defaultProgress, pct));
-};
+        // Track x-position live for correct popup alignment
+        if (x) setLastPromoX(x);
+        return;
+      }
+
+      // All other segments: hide promo box on desktop
+      if (vw >= 768) setShowPromoBox(false);
+
+      // Update progress based on position
+      const idx = TIMELINE.indexOf(item);
+      const pct = Math.round((idx / (TIMELINE.length - 1)) * 100);
+      setProgress(Math.max(defaultProgress, pct));
+    };
 
 
   /* ───────── MOBILE PROMO CLOSE ON OUTSIDE TAP ───────── */
@@ -196,11 +214,14 @@ useEffect(() => {
         setShowPromoBox={setShowPromoBox}
         setLastPromoX={setLastPromoX}
         vw={vw}
+        finalSegmentRef={finalSegmentRef}
+
       />
 
-      {ready && showPromoBox && hoverItem?.id === "finalActions" && vw >= 768 && (
-        <PromoBox x={lastPromoX ?? mouseX} />
-      )}
+    {ready && showPromoBox && vw >= 768 && (
+      <PromoBox x={lastPromoX ?? mouseX} setShowPromoBox={setShowPromoBox} />
+    )}
+
 
 
       {vw < 768 && <MobilePromo mobileSheetRef={mobileSheetRef} mobilePromoOpen={mobilePromoOpen} setMobilePromoOpen={setMobilePromoOpen} />}
@@ -213,7 +234,12 @@ useEffect(() => {
 
 /* ───────────────────────────────────────────────────────────── */
 /* PROMO BOX COMPONENT */
-function PromoBox({ x }: { x: number }) {
+type PromoBoxProps = {
+  x: number;
+  setShowPromoBox: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
+function PromoBox({ x, setShowPromoBox }: PromoBoxProps) {
   return (
     <div
       className="fixed bg-[#001f40] text-white rounded-xl shadow-xl p-5 z-30 text-center"
@@ -224,6 +250,14 @@ function PromoBox({ x }: { x: number }) {
         width: "300px",
       }}
     >
+      {/* Close Button */}
+      <button
+        onClick={() => setShowPromoBox(false)}
+        className="absolute top-1 right-2 text-white text-lg"
+      >
+        ✕
+      </button>
+
       <PromoText />
       <Arrow />
     </div>
@@ -310,7 +344,9 @@ function FooterTimeline({
   setMobilePromoOpen,
   setShowPromoBox,
   setLastPromoX,
-  vw
+  vw,
+  finalSegmentRef,
+  
 }: any) {
   return (
     <footer className="bg-white fixed left-0 right-0" style={{ bottom: "1px" }}>
@@ -318,9 +354,22 @@ function FooterTimeline({
         <div className="md:max-w-6xl md:mx-auto p-4">
 
           {/* ARROWS */}
-          <div className="flex justify-between items-center select-none" style={{ paddingLeft: "8px", paddingRight: "8px", paddingBottom: "40px" }}>
-            <img src="/back-arrow.png" alt="Previous" className="w-14 sm:w-20 object-contain pointer-events-none" style={{ filter: "grayscale(1) brightness(1.64)" }} />
-            <img src="/forward-arrow.png" alt="Next" className="w-14 sm:w-20 object-contain pointer-events-none" style={{ filter: "grayscale(1) brightness(1.64)" }} />
+          <div
+            className="flex justify-between items-center select-none"
+            style={{ paddingLeft: "8px", paddingRight: "8px", paddingBottom: "40px" }}
+          >
+            <img
+              src="/back-arrow.png"
+              alt="Previous"
+              className="w-14 sm:w-20 object-contain pointer-events-none"
+              style={{ filter: "grayscale(1) brightness(1.64)" }}
+            />
+            <img
+              src="/forward-arrow.png"
+              alt="Next"
+              className="w-14 sm:w-20 object-contain pointer-events-none"
+              style={{ filter: "grayscale(1) brightness(1.64)" }}
+            />
           </div>
 
           {/* TIMELINE RAIL */}
@@ -333,44 +382,76 @@ function FooterTimeline({
               style={{
                 left: "-2px",
                 backgroundColor: "#ca5608",
-                boxShadow: `0 0 10px 6px #ca560855`,
+                boxShadow: `0 0 10px 6px #ca560855`
               }}
             />
 
             {/* MODULE SEGMENTS */}
             <div className="relative w-full h-6 flex items-center">
-              {TIMELINE.map((item: any, i: number) => (
-                <div
-                  key={item.id}
-                  style={{ width: `${widthPercent(item)}%` }}
-                  className="relative h-full flex items-center justify-center transition-all cursor-pointer"
-                  onMouseEnter={(e) => {
-                    setHoverItem(item);
-                    setMouseX(e.clientX);
-                    handleHoverTimeline(item, e.clientX); // send live x
-                  }}
-                  onMouseMove={(e) => {
-                    setMouseX(e.clientX);
-                    if (item.id === "finalActions") setLastPromoX(e.clientX);
-                  }}                  onMouseLeave={() => setHoverItem(null)}
-                  onClick={() => {
-                    if (vw < 768 && item.id === "finalActions") {
-                      setMobilePromoOpen(true);
-                    }
-                  }}
-                >
+              {TIMELINE.map((item: any, i: number) => {
+                const isLast = i === TIMELINE.length - 1;
+
+                /* 🎯 FINAL SEGMENT */
+                if (isLast) {
+                  return (
+                    <div
+                      key={item.id}
+                      ref={finalSegmentRef}  /* STEP 3: attach ref */
+                      className="relative h-full flex items-center justify-center cursor-pointer"
+                      style={{ width: "4%" }}
+                      data-final-segment
+                      onMouseEnter={(e) => {
+                        setHoverItem(item);
+                        setMouseX(e.clientX);
+                        handleHoverTimeline(item, e.clientX);
+                      }}
+                      onMouseMove={(e) => {
+                        setMouseX(e.clientX);
+                        setLastPromoX(e.clientX); /* always track live when hovered */
+                      }}
+                      onMouseLeave={() => setHoverItem(null)}
+                      onClick={() => {
+                        if (vw < 768 && item.id === "finalActions") {
+                          setMobilePromoOpen(true);
+                        }
+                      }}
+                    >
+                      <div className="flex-1 h-2 bg-[#001f40] rounded-r-full"></div>
+                    </div>
+                  );
+                }
+
+
+                /* 🔵 NON-FINAL SEGMENTS */
+                return (
                   <div
-                    className={`flex-1 h-2 ${
-                      i === 0
-                        ? "bg-[#ca5608] rounded-l-full"
-                        : i === TIMELINE.length - 1
-                        ? "bg-[#001f40] rounded-r-full"
-                        : "bg-[#001f40]"
-                    }`}
-                  />
-                  {i < TIMELINE.length - 1 && <div className="w-[3px] h-full bg-white" />}
-                </div>
-              ))}
+                    key={item.id}
+                    style={{ width: `${widthPercent(item)}%` }}
+                    className="relative h-full flex items-center justify-center transition-all cursor-pointer"
+                    onMouseEnter={(e) => {
+                      setHoverItem(item);
+                      setMouseX(e.clientX);
+                      handleHoverTimeline(item, e.clientX);
+                    }}
+                    onMouseMove={(e) => setMouseX(e.clientX)}
+                    onMouseLeave={() => setHoverItem(null)}
+                    onClick={() => {
+                      if (vw < 768 && item.id === "finalActions") {
+                        setMobilePromoOpen(true);
+                      }
+                    }}
+                  >
+                    <div
+                      className={`flex-1 h-2 ${
+                        i === 0
+                          ? "bg-[#ca5608] rounded-l-full"
+                          : "bg-[#001f40]"
+                      }`}
+                    />
+                    <div className="w-[3px] h-full bg-white" />
+                  </div>
+                );
+              })}
             </div>
 
           </div>
@@ -380,6 +461,7 @@ function FooterTimeline({
     </footer>
   );
 }
+
 
 /* TOOLTIP */
 function Tooltip({ hoverItem, vw, mouseX }: any) {
