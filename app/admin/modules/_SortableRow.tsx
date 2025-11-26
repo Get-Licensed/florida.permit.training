@@ -2,13 +2,14 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Pencil } from "lucide-react";
 
 export default function SortableRow({
   module,
   onEdit,
 }: {
   module: { id: string; title: string };
-  onEdit: (id: string) => void;
+  onEdit?: (module: any) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: module.id });
@@ -38,13 +39,15 @@ export default function SortableRow({
         {module.title}
       </span>
 
-      {/* Edit Button */}
-      <button
-        onClick={() => onEdit(module.id)}
-        className="text-sm px-2 py-1 rounded bg-[#ca5608] text-white hover:bg-[#a54406]"
-      >
-        Edit
-      </button>
+      {/* Edit Pencil */}
+      <Pencil
+        size={16}
+        className="text-gray-500 hover:text-[#001f40] cursor-pointer ml-3"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit?.(module);
+        }}
+      />
     </div>
   );
 }

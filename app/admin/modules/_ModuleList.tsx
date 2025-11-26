@@ -17,28 +17,42 @@ import { useState } from "react";
 
 type Module = { id: string; title: string; sort_order?: number };
 
-export default function ModuleList({ initialModules }: { initialModules: Module[] }) {
+export default function ModuleList({
+  initialModules,
+  onEdit,
+  onUpdated,
+}: {
+  initialModules: Module[];
+  onEdit?: (module: Module) => void;
+  onUpdated?: () => void;
+}) {
   const [modules, setModules] = useState(initialModules);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
 
-  // POST reorder
-  async function saveOrder(newList: Module[]) {
-    setModules(newList);
+async function saveOrder(newList: Module[]) {
+  // Update local UI immediately (good UX)
+  setModules(newList);
 
-    await fetch("/admin/modules/reorder", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        newList.map((m, i) => ({
-          id: m.id,
-          sort_order: i + 1,
-        }))
-      ),
-    });
+  // Send update request and WAIT for DB
+  const res = await fetch("/admin/modules/reorder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(
+      newList.map((m, i) => ({
+        id: m.id,
+        sort_order: i + 1,
+      }))
+    ),
+  });
+
+  // If endpoint succeeds → call parent refresh
+  if (res.ok && onUpdated) {
+    onUpdated();
   }
+}
 
   function handleDragEnd(event: any) {
     const { active, over } = event;
@@ -46,14 +60,9 @@ export default function ModuleList({ initialModules }: { initialModules: Module[
 
     const oldIndex = modules.findIndex((m) => m.id === active.id);
     const newIndex = modules.findIndex((m) => m.id === over.id);
+
     const newOrder = arrayMove(modules, oldIndex, newIndex);
-
     saveOrder(newOrder);
-  }
-
-  function handleEdit(id: string) {
-    // Navigate to module edit page
-    window.location.href = `/admin/modules/${id}`;
   }
 
   return (
@@ -61,11 +70,7 @@ export default function ModuleList({ initialModules }: { initialModules: Module[
       <SortableContext items={modules.map((m) => m.id)} strategy={verticalListSortingStrategy}>
         <div className="border rounded bg-white divide-y">
           {modules.map((m) => (
-            <SortableRow
-              key={m.id}
-              module={{ id: m.id, title: m.title }}
-              onEdit={() => handleEdit(m.id)}
-            />
+            <SortableRow key={m.id} module={m} onEdit={onEdit} />
           ))}
         </div>
       </SortableContext>
