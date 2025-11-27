@@ -27,11 +27,16 @@ export default function LessonsReorder({
   }, []);
 
   async function load() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("lessons")
       .select("id, title, sort_order")
       .eq("module_id", moduleId)
       .order("sort_order", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
 
     setItems((data as LessonItem[]) ?? []);
   }
@@ -39,11 +44,11 @@ export default function LessonsReorder({
   async function saveOrder() {
     setSaving(true);
 
-    const orderedIds = items.map((l) => Number(l.id)); // force integer[]
+    const orderedIds = items.map((l) => Number(l.id));
 
     const { error } = await supabase.rpc("reorder_lessons", {
-      _module: moduleId,     // uuid
-      _ids: orderedIds,      // integer[]
+      _module: moduleId,
+      _ids: orderedIds,
     });
 
     setSaving(false);
@@ -52,40 +57,33 @@ export default function LessonsReorder({
       console.error(error);
       alert("Failed to reorder lessons.");
     } else {
-      onSaved();   // reload list in parent
-      onClose();   // close modal
+      onSaved();  // reload lesson list in parent
+      onClose();  // close modal
     }
   }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1500]">
-      <div
-        className="bg-white rounded-lg p-6 w-[420px] shadow-lg"
-        tabIndex={0}
-        autoFocus
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            saveOrder();
-          }
-          if (e.key === "Escape") {
-            e.preventDefault();
-            onClose();
-          }
-        }}
-      >
+      <div className="bg-white rounded-lg p-6 w-[420px] shadow-lg">
         <h3 className="text-lg font-bold text-[#001f40] mb-4">
           Reorder Lessons
         </h3>
 
         <div className="border rounded-md max-h-[350px] overflow-y-auto">
-          <ReactSortable list={items} setList={setItems} animation={200}>
+          <ReactSortable
+            list={items}
+            setList={setItems}
+            animation={200}
+            ghostClass="bg-yellow-100"
+            chosenClass="bg-gray-200"
+            dragClass="opacity-50"
+          >
             {items.map((l) => (
               <div
                 key={l.id}
                 className="p-2 border-b last:border-none bg-white cursor-move hover:bg-gray-100 text-sm"
               >
-                {`${l.sort_order}. ${l.title}`}
+                {l.title}
               </div>
             ))}
           </ReactSortable>

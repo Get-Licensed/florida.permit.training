@@ -38,6 +38,7 @@ export default function ContentPage() {
   const [showModalDeleteSlide, setShowModalDeleteSlide] = useState(false);
 
   const [showReorderModal, setShowReorderModal] = useState(false);
+  const [reorderTarget, setReorderTarget] = useState<"modules" | "lessons" | null>(null);
 
   /* ───────── FORM DATA ───────── */
   const [newModuleTitle, setNewModuleTitle] = useState("");
@@ -271,12 +272,7 @@ export default function ContentPage() {
   /* ──────────────────── UI ──────────────────── */
   return (
     <div className="p-6">
-      {modalMessage && (
-        <div className="mb-3 text-sm bg-green-100 border border-green-300 text-green-700 px-3 py-1 rounded">
-          {modalMessage}
-        </div>
-      )}
-
+     
      {/* MODULE HEADER */}
       <div className="flex justify-between items-center mb-2">
         <div className="flex items-center gap-3">
@@ -306,35 +302,32 @@ export default function ContentPage() {
         }}
       />
 
-      {/* LESSON HEADER */}
-      <div className="flex justify-between items-center mt-6 mb-2">
-        <h2 className="font-bold text-[#001f40] text-xl">
-          Lessons {moduleName && `| ${moduleName}`}
-        </h2>
+{/* LESSON HEADER */}
+<div className="flex justify-between items-center mt-6 mb-2">
+  <div className="flex items-center gap-3">
+    <h2 className="font-bold text-[#001f40] text-xl">
+      Lessons {moduleName && `| ${moduleName}`}
+    </h2>
 
-        {selectedModule && (
-          <div className="flex gap-2">
-           <button
-              onClick={() => {
-                setNewLessonTitle("");
-                setShowModalNewLesson(true);
-              }}
-              className="px-3 py-1.5 bg-[#001f40] text-white text-sm rounded hover:bg-[#003266]"
-            >
-              + Add Lesson
-            </button>
+    {selectedModule && (
+      <button
+        onClick={() => setShowReorderModal(true)}
+        className="text-[12px] text-[#ca5608] underline hover:text-[#a14505]"
+      >
+        Reorder Lessons
+      </button>
+    )}
+  </div>
 
-
-
-            <button
-              onClick={() => setShowReorderModal(true)}
-              className="px-3 py-1.5 bg-[#ca5608] text-white text-sm rounded hover:bg-[#b24b06]"
-            >
-              Reorder Lessons
-            </button>
-          </div>
-        )}
-      </div>
+  {selectedModule && (
+    <button
+      onClick={() => setShowModalNewLesson(true)}
+      className="px-3 py-1.5 bg-[#001f40] text-white text-sm rounded hover:bg-[#003266]"
+    >
+      + Add Lesson
+    </button>
+  )}
+</div>
 
       {/* LESSON LIST (NOT DRAGGABLE) */}
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
@@ -454,7 +447,7 @@ export default function ContentPage() {
           refreshTabs();
           if (selectedModule) loadModuleTitle(selectedModule);
         }}
-/>
+      />
 
 
       <ConfirmModuleDeleteModal
@@ -497,7 +490,7 @@ export default function ContentPage() {
         onConfirm={deleteLesson}
       />
 
-      {selectedLesson && (
+     {selectedLesson && (
         <SlideModal
           show={showModalNewSlide}
           lessonId={selectedLesson}
@@ -506,12 +499,13 @@ export default function ContentPage() {
           seconds={seconds}
           setSeconds={setSeconds}
           onClose={() => setShowModalNewSlide(false)}
-          onSave={saveSlide}
+          onSave={saveSlide}               // ← must be saveSlide here
           onFileChange={handleFileChange}
           previewUrl={previewUrl}
           error={slideError}
         />
       )}
+
 
       {selectedLesson && (
         <ConfirmSlideDeleteModal
@@ -612,6 +606,17 @@ function NewModuleModal({ show, value, setValue, onClose, onSave }: any) {
           className="w-full border p-2 rounded"
           value={value}
           onChange={e => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onSave();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+            }
+          }}
+          autoFocus
         />
 
         <div className="flex justify-end gap-2 mt-4">
@@ -629,6 +634,9 @@ function NewModuleModal({ show, value, setValue, onClose, onSave }: any) {
     </div>
   );
 }
+
+
+
 /* ───────────────────────── EDIT MODULE MODAL ───────────────────────── */
 function EditModuleModal({ show, module, onClose, onSave }: any) {
   const [title, setTitle] = useState(module?.title || "");
@@ -641,9 +649,23 @@ function EditModuleModal({ show, module, onClose, onSave }: any) {
 
   async function handleSave() {
     if (!title.trim()) return;
-    await supabase.from("modules").update({ title: title.trim() }).eq("id", module.id);
+    await supabase
+      .from("modules")
+      .update({ title: title.trim() })
+      .eq("id", module.id);
     onSave();
     onClose();
+  }
+
+  function handleKeyDown(e: any) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSave();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+    }
   }
 
   return (
@@ -655,22 +677,16 @@ function EditModuleModal({ show, module, onClose, onSave }: any) {
           type="text"
           className="w-full border p-2 rounded"
           value={title}
-          onChange={e => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              handleSave();
-            }
-            if (e.key === "Escape") {
-              e.preventDefault();
-              onClose();
-            }
-          }}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={handleKeyDown}  // ← ENTER / ESC here
           autoFocus
         />
 
         <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-3 py-1 border rounded text-sm cursor-pointer">
+          <button
+            onClick={onClose}
+            className="px-3 py-1 border rounded text-sm cursor-pointer"
+          >
             Cancel
           </button>
           <button
@@ -684,6 +700,7 @@ function EditModuleModal({ show, module, onClose, onSave }: any) {
     </div>
   );
 }
+
 
 /* ───────────────────────── CONFIRM DELETE MODULE ───────────────────────── */
 function ConfirmModuleDeleteModal({ show, lessons, onClose, onConfirm }: any) {
@@ -779,8 +796,31 @@ function ConfirmSlideDeleteModal({ show, onClose, onConfirm }: any) {
 }
 
 /* ───────────────────────── SLIDE UPLOAD MODAL ───────────────────────── */
-function SlideModal({ show, lessonId, caption, setCaption, seconds, setSeconds, onClose, onSave, onFileChange, previewUrl, error }: any) {
+function SlideModal({
+  show,
+  lessonId,
+  caption,
+  setCaption,
+  seconds,
+  setSeconds,
+  onClose,
+  onSave,
+  onFileChange,
+  previewUrl,
+  error,
+}: any) {
   if (!show) return null;
+
+  function handleKeyDown(e: any) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onSave();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1200]">
@@ -811,31 +851,43 @@ function SlideModal({ show, lessonId, caption, setCaption, seconds, setSeconds, 
         />
 
         <div className="mt-3">
-          <label className="block text-sm font-medium mb-1 text-[#001f40]">Caption Text</label>
+          <label className="block text-sm font-medium mb-1 text-[#001f40]">
+            Caption Text
+          </label>
           <textarea
             className="border p-2 w-full rounded"
             rows={3}
             placeholder="Enter caption..."
             value={caption}
-            onChange={e => setCaption(e.target.value)}
+            onChange={(e) => setCaption(e.target.value)}
+            onKeyDown={handleKeyDown}   // ← ENTER / ESC works here
+            autoFocus
           />
         </div>
 
         <div className="mt-3">
-          <label className="block text-sm font-medium mb-1 text-[#001f40]">Display Duration (seconds)</label>
+          <label className="block text-sm font-medium mb-1 text-[#001f40]">
+            Display Duration (seconds)
+          </label>
           <input
             type="number"
             min={1}
             value={seconds}
-            onChange={e => setSeconds(parseInt(e.target.value))}
+            onChange={(e) => setSeconds(parseInt(e.target.value))}
             className="border p-2 rounded w-24"
+            onKeyDown={handleKeyDown}   // ← ENTER / ESC also works here
           />
         </div>
 
         {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
 
         <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-3 py-1 border rounded text-sm cursor-pointer">Cancel</button>
+          <button
+            onClick={onClose}
+            className="px-3 py-1 border rounded text-sm cursor-pointer"
+          >
+            Cancel
+          </button>
           <button
             onClick={onSave}
             className="px-6 py-1.5 rounded text-white text-sm font-semibold bg-[#001f40] hover:bg-[#003266]"

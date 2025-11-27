@@ -15,7 +15,7 @@ export default async function AdminLayout({
           <h1 className="text-lg font-bold tracking-tight">Admin Portal</h1>
 
           <nav className="flex items-center space-x-6 text-sm font-medium">
-            <AdminNavItem href="/admin//admin/content/reorder-modules" label="Modules" />
+            <AdminNavItem href="/admin/content/reorder-modules" label="Modules" />
             <AdminNavItem href="/admin/users" label="Users" />
             <AdminNavItem href="/admin/settings" label="Settings" />
           </nav>
