@@ -1,131 +1,81 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Reorder } from "framer-motion";
-import { GripVertical } from "lucide-react";
+import { ReactSortable } from "react-sortablejs";
 
-type ModuleRow = {
-  id: string;
-  title: string;
-  sort_order: number;
-};
+type Module = { id: string; title: string; sort_order: number };
 
 export default function ModuleTabsSortable({
-  onChange
+  onSaved,
+  onClose,
 }: {
-  onChange?: (id: string) => void;
+  onSaved: () => void;
+  onClose: () => void;
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const selectedModule = searchParams.get("module") || null;
+  const [items, setItems] = useState<Module[]>([]);
+  const [saving, setSaving] = useState(false);
 
-  const [modules, setModules] = useState<ModuleRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    load();
+  }, []);
 
-  /* ───────── LOAD MODULES ───────── */
-  async function loadModules() {
+  async function load() {
     const { data } = await supabase
       .from("modules")
       .select("id, title, sort_order")
       .order("sort_order", { ascending: true });
 
-    if (data) setModules(data);
-    setLoading(false);
+    setItems(data ?? []);
   }
 
-  useEffect(() => {
-    loadModules();
-  }, []);
+  async function saveOrder() {
+    setSaving(true);
 
-  /* 🔄 LISTEN for GLOBAL refresh (when module titles change elsewhere) */
-  useEffect(() => {
-    function refresh() {
-      loadModules();
-    }
-    window.addEventListener("refresh-modules", refresh);
-    return () => window.removeEventListener("refresh-modules", refresh);
-  }, []);
+    const ids = items.map((m) => m.id);
 
-  /* ───────── SELECT MODULE ───────── */
-  function handleSelect(id: string) {
-    if (onChange) onChange(id);
-
-    const params = new URLSearchParams(window.location.search);
-    params.set("module", id);
-    router.replace(`?${params.toString()}`);
-  }
-
-  /* ───────── SAVE ORDER ───────── */
-  async function saveOrder(newList: ModuleRow[]) {
-    setModules(newList);
-
-    const payload = newList.map((m, i) => ({
-      id: m.id,
-      sort_order: i + 1,
-    }));
-
-    await fetch("/admin/modules/reorder", {
-      method: "POST",
-      body: JSON.stringify(payload),
+    const { error } = await supabase.rpc("reorder_modules", {
+      _ids: ids,
     });
 
-    // Notify global listeners
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("refresh-modules"));
+    setSaving(false);
+
+    if (error) {
+      console.error(error);
+      return alert("❌ Failed to save order");
     }
+
+    onSaved();
+    onClose();
   }
 
-  /* ───────── UI ───────── */
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-2 mb-4">
-      {loading && <p className="text-sm text-gray-500">Loading modules...</p>}
-      {!loading && modules.length === 0 && (
-        <p className="text-sm text-gray-500">No modules created yet.</p>
-      )}
+    <div>
+      <div className="border rounded-md max-h-[350px] overflow-y-auto">
+        <ReactSortable list={items} setList={setItems} animation={200}>
+          {items.map((m) => (
+            <div
+              key={m.id}
+              className="p-2 border-b bg-white text-sm cursor-move hover:bg-gray-100"
+            >
+              {`${m.sort_order}. ${m.title}`}
+            </div>
+          ))}
+        </ReactSortable>
+      </div>
 
-      {!loading && (
-        <Reorder.Group
-          axis="x"
-          values={modules}
-          onReorder={saveOrder}
-          className="flex flex-wrap gap-2 select-none"
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className="px-3 py-1 border rounded text-sm">
+          Cancel
+        </button>
+        <button
+          onClick={saveOrder}
+          disabled={saving}
+          className="px-4 py-1.5 bg-[#ca5608] text-white rounded text-sm disabled:opacity-50"
         >
-          {modules.map((m: ModuleRow, index: number) => {
-            const isActive = m.id === selectedModule;
-            return (
-              <Reorder.Item
-                key={m.id}
-                value={m}
-                drag
-                dragElastic={0.12}
-                dragMomentum={false}
-                className={`
-                  relative flex items-center gap-2 px-4 py-1.5 text-sm font-medium 
-                  rounded-full transition border cursor-pointer select-none
-                  ${
-                    isActive
-                      ? "bg-[#001f40] border-[#001f40] text-white"
-                      : "bg-white text-[#001f40] border-[#001f40] hover:bg-[#001f40] hover:text-white"
-                  }
-                `}
-                onClick={() => handleSelect(m.id)}
-              >
-                {/* Orange Sort Badge */}
-                <span className="absolute -top-1.5 -right-1.5 bg-[#ca5608] text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold border border-white">
-                  {index + 1}
-                </span>
-
-                {/* Drag Handle */}
-                <GripVertical size={14} className="text-gray-400" />
-
-                {m.title}
-              </Reorder.Item>
-            );
-          })}
-        </Reorder.Group>
-      )}
+          {saving ? "Saving..." : "Save Order"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,85 +1,79 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import { Pencil } from "lucide-react";
 
-type ModuleRow = {
+type Module = {
   id: string;
   title: string;
-  sort_order: number | null;
+  sort_order: number;
 };
 
 export default function ModuleTabs({
   onChange,
-  refreshTrigger,
+  onEdit,
 }: {
   onChange?: (id: string) => void;
-  refreshTrigger?: number;
+  onEdit?: (m: Module) => void;
 }) {
+  const [modules, setModules] = useState<Module[]>([]);
+  const [active, setActive] = useState<string | null>(null);
 
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const selectedModule = searchParams.get("module") || null;
-
-  const [modules, setModules] = useState<ModuleRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Fetch modules on load
   useEffect(() => {
-    async function loadModules() {
-      const { data, error } = await supabase
-        .from("modules")
-        .select("id, title, sort_order")
-        .order("sort_order", { ascending: true });
+    load();
+    window.addEventListener("refresh-modules", load);
+    return () => window.removeEventListener("refresh-modules", load);
+  }, []);
 
-      if (!error && data) {
-        setModules(data);
-        setLoading(false);
-      }
-    }
-    loadModules();
-  }, [refreshTrigger]); // triggers data reload AFTER reorder
+  async function load() {
+    const { data } = await supabase
+      .from("modules")
+      .select("id, title, sort_order")
+      .order("sort_order", { ascending: true });
 
+    setModules(data ?? []);
+  }
 
-  // Click handler
-  function handleSelect(id: string) {
-    // Notify parent page
-    if (onChange) onChange(id);
-
-    const params = new URLSearchParams(window.location.search);
-    params.set("module", id);
-    router.replace(`?${params.toString()}`);
+  function select(m: Module) {
+    setActive(m.id);
+    onChange && onChange(m.id);
   }
 
   return (
-  <div className="mb-4">
-
-    <div className="flex flex-wrap gap-2 p-2 bg-white border border-gray-200 rounded-lg min-h-[52px]">
-      {loading && <p className="text-sm text-gray-500">Loading modules...</p>}
-
-      {!loading && modules.length === 0 && (
-        <p className="text-sm text-gray-500">No modules created yet.</p>
-      )}
-
+    <div className="flex gap-2 flex-wrap">
       {modules.map((m) => {
-        const isActive = m.id === selectedModule;
+        const isActive = active === m.id;
+
         return (
-          <button
+          <div
             key={m.id}
-            onClick={() => handleSelect(m.id)}
-            className={`px-4 py-1.5 text-sm font-medium rounded-full transition border border-[#001f40] ${
-              isActive
-                ? "bg-[#001f40] text-white"
-                : "bg-white text-[#001f40] hover:bg-[#001f40] hover:text-white"
-            }`}
-            style={{ cursor: "pointer" }}
+            className={`px-3 py-1 rounded cursor-pointer text-sm border flex items-center gap-2
+            ${isActive ? "bg-[#001f40] text-white" : "bg-white text-[#001f40] hover:bg-gray-100"}`}
+            onClick={() => select(m)}
           >
-            {m.title}
-          </button>
+            <span>{m.title}</span>
+
+            {/* Sort Badge */}
+            <span
+              className={`text-[10px] px-2 py-[1px] rounded-full font-semibold
+              ${isActive ? "bg-white text-[#ca5608]" : "bg-[#ca5608] text-white"}`}
+            >
+              {m.sort_order}
+            </span>
+
+            <Pencil
+              size={13}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit && onEdit(m);
+              }}
+              className={`opacity-80 hover:opacity-100
+                ${isActive ? "text-white" : "text-[#001f40]"}`}
+            />
+          </div>
         );
       })}
     </div>
-  </div>
-);
+  );
 }
