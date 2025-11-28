@@ -7,6 +7,8 @@ import ModuleTabs from "./_ModuleTabs";
 import { Pencil, Trash2 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import LessonsReorder from "@/app/(dashboard)/_components/LessonsReorder";
+import type { Caption } from "./slide-manager/components/types";
+
 
 /* ───────────────────────── PAGE ───────────────────────── */
 export default function ContentPage() {
@@ -99,15 +101,35 @@ export default function ContentPage() {
   }, [selectedLesson]);
 
   async function loadSlides(lessonId: number) {
-    setLoadingSlides(true);
-    const { data } = await supabase
-      .from("lesson_slides")
-      .select("*")
-      .eq("lesson_id", lessonId)
-      .order("order_index", { ascending: true });
-    if (data) setSlides(data);
-    setLoadingSlides(false);
-  }
+  setLoadingSlides(true);
+
+  // 1. Load raw slides
+  const { data: sl } = await supabase
+    .from("lesson_slides")
+    .select("*")
+    .eq("lesson_id", lessonId)
+    .order("order_index", { ascending: true });
+
+  const slideIds = sl?.map(s => s.id) ?? [];
+
+  // 2. Load captions for these slides
+  const { data: caps } = await supabase
+    .from("slide_captions")
+    .select("*")
+    .in("slide_id", slideIds)
+    .order("line_index");
+
+  // 3. Combine slides with captions
+  const slidesWithCaptions = (sl || []).map(slide => ({
+    ...slide,
+    captions: caps?.filter(c => c.slide_id === slide.id) ?? []
+  }));
+
+  // 4. Push into state
+  setSlides(slidesWithCaptions);
+  setLoadingSlides(false);
+}
+
 
   async function loadLessonTitle(lessonId: number) {
     const { data } = await supabase
@@ -215,46 +237,66 @@ export default function ContentPage() {
     if (file) setPreviewUrl(URL.createObjectURL(file));
   }
 
-  async function saveSlide() {
-    try {
-      if (!selectedLesson) return setSlideError("Missing lesson ID.");
-      if (!imageFile || !caption) return setSlideError("Image and caption required.");
+async function saveSlide() {
+  try {
+    if (!selectedLesson) return setSlideError("Missing lesson ID.");
+    if (!imageFile || !caption) return setSlideError("Image and caption required.");
 
-      const filename = `${uuidv4()}-${imageFile.name}`;
+    const filename = `${uuidv4()}-${imageFile.name}`;
 
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from("uploads")
-        .upload(`slides/${filename}`, imageFile);
+    // 1. Upload image to bucket
+    const { data: uploadData, error: uploadErr } = await supabase.storage
+      .from("uploads")
+      .upload(`slides/${filename}`, imageFile);
 
-      if (uploadErr) throw uploadErr;
-      const imageUrl = uploadData?.path;
+    if (uploadErr) throw uploadErr;
 
-      const { data: existingSlides } = await supabase
-        .from("lesson_slides")
-        .select("order_index")
-        .eq("lesson_id", selectedLesson)
-        .order("order_index", { ascending: false })
-        .limit(1);
+    const imagePath = uploadData.path;
 
-      const nextOrder = existingSlides?.[0]?.order_index + 1 || 1;
+    // 2. Determine next slide order index
+    const { data: existingSlides } = await supabase
+      .from("lesson_slides")
+      .select("order_index")
+      .eq("lesson_id", selectedLesson)
+      .order("order_index", { ascending: false })
+      .limit(1);
 
-      await supabase.from("lesson_slides").insert([
-        {
-          lesson_id: Number(selectedLesson),
-          image_path: imageUrl,
-          caption,
-          display_seconds: seconds,
-          group_key: uuidv4(),
-          order_index: nextOrder,
-        },
-      ]);
+    const nextOrder = existingSlides?.[0]?.order_index + 1 || 1;
 
-      setShowModalNewSlide(false);
-      loadSlides(selectedLesson);
-    } catch (err: any) {
-      setSlideError(err?.message || "Unknown error saving slide.");
-    }
+    // 3. Create slide entry
+    const { data: slideRows, error: slideErr } = await supabase
+      .from("lesson_slides")
+      .insert({
+        lesson_id: selectedLesson,
+        image_path: imagePath,
+        order_index: nextOrder,
+      })
+      .select()
+      .single();
+
+    if (slideErr) throw slideErr;
+    const slide = slideRows;
+
+    // 4. Create caption entry
+    const { error: capErr } = await supabase
+      .from("slide_captions")
+      .insert({
+        slide_id: slide.id,
+        caption: caption,
+        seconds: seconds,
+        line_index: 0,
+      });
+
+    if (capErr) throw capErr;
+
+    // 5. Close modal + reload slides
+    setShowModalNewSlide(false);
+    loadSlides(selectedLesson);
+  } catch (err: any) {
+    setSlideError(err.message || "Unknown error saving slide.");
   }
+}
+
 
   async function deleteSlide() {
     if (!selectedSlideToDelete) return;
@@ -380,20 +422,29 @@ export default function ContentPage() {
       </div>
 
       {/* SLIDES HEADER */}
-      {selectedLesson && (
-        <div className="flex justify-between items-center mt-6 mb-2">
+        {selectedLesson && (
+      <div className="flex justify-between items-center mt-6 mb-2">
+        <div className="flex items-center gap-3">
           <h2 className="font-bold text-[#001f40] text-xl">
             Slides | {lessonName}
           </h2>
 
-          <button
-            onClick={() => setShowModalNewSlide(true)}
-            className="px-3 py-1.5 bg-[#001f40] text-white text-sm rounded hover:bg-[#003266]"
+          <a
+            href={`/admin/content/slide-manager?lesson=${selectedLesson}`}
+            className="text-[12px] text-[#ca5608] underline hover:text-[#a14505]"
           >
-            + Add Slide
-          </button>
+            Slide Manager
+          </a>
         </div>
-      )}
+
+        <button
+          onClick={() => setShowModalNewSlide(true)}
+          className="px-3 py-1.5 bg-[#001f40] text-white text-sm rounded hover:bg-[#003266]"
+        >
+          + Add Slide
+        </button>
+      </div>
+    )}
 
       {/* SLIDES LIST */}
       {selectedLesson && (
@@ -403,30 +454,44 @@ export default function ContentPage() {
             <p className="text-gray-500 text-sm">No slides yet.</p>
           )}
 
-          {!loadingSlides && slides.length > 0 && (
-            <div className="space-y-2">
-              {slides.map(s => (
-                <div
-                  key={s.id}
-                  className="border p-2 rounded flex justify-between items-center text-sm"
-                >
-                  <span>{s.caption}</span>
-                  <div className="flex gap-3 items-center">
-                    <span className="text-gray-400 text-xs">{s.display_seconds}s</span>
+      {!loadingSlides && slides.length > 0 && (
+        <div className="space-y-2">
+          {slides.map(s => (
+            <div
+              key={s.id}
+              className="border p-2 rounded flex justify-between items-center text-sm"
+            >
+             <div className="flex flex-col">
+                {s.captions?.length ? (
+                  s.captions.map((c: Caption) => (
+                    <p key={c.id} className="text-xs">
+                      {c.caption}
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-gray-400 text-xs">(no captions)</p>
+                )}
+              </div>
 
-                    <Trash2
-                      size={15}
-                      className="text-red-500 hover:text-red-700 cursor-pointer"
-                      onClick={() => {
-                        setSelectedSlideToDelete(s.id);
-                        setShowModalDeleteSlide(true);
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
+              <div className="flex gap-3 items-center">
+                <span className="text-gray-400 text-xs">
+                  {s.display_seconds}s
+                </span>
+
+                <Trash2
+                  size={15}
+                  className="text-red-500 hover:text-red-700 cursor-pointer"
+                  onClick={() => {
+                    setSelectedSlideToDelete(s.id);
+                    setShowModalDeleteSlide(true);
+                  }}
+                />
+              </div>
             </div>
-          )}
+          ))}
+        </div>
+      )}
+
         </div>
       )}
 
