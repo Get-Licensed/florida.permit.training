@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { ReactSortable } from "react-sortablejs";
-import { Trash2 } from "lucide-react";
+import { Trash2, ChevronUp, ChevronDown } from "lucide-react";
 
 type Module = {
   id: string;
@@ -16,11 +16,10 @@ export default function ReorderModulesPage() {
   const [showWarning, setShowWarning] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // delete modal
   const [deleteModuleId, setDeleteModuleId] = useState<string | null>(null);
-  const [deleteModuleTitle, setDeleteModuleTitle] = useState<string>("");
+  const [deleteModuleTitle, setDeleteModuleTitle] = useState("");
 
-  /* ───────────────────── LOAD MODULES ───────────────────── */
+  /* LOAD */
   useEffect(() => {
     load();
   }, []);
@@ -34,48 +33,47 @@ export default function ReorderModulesPage() {
     setModules(data ?? []);
   }
 
-  /* ───────────────────── UPDATE ORDER (NUMBER INPUT) ───────────────────── */
-  function updateOrder(id: string, value: number | string) {
-    const num = parseInt(value as string, 10);
-    if (isNaN(num)) return;
+  /* DRAG REORDER */
+  function handleDrag(newList: Module[]) {
+    setModules(
+      newList.map((m, idx) => ({
+        ...m,
+        sort_order: idx + 1,
+      }))
+    );
+  }
 
+  /* MOVE UP */
+  function moveUp(id: string) {
     setModules((prev) => {
-      const count = prev.length;
-      const targetPos = Math.min(Math.max(num, 1), count);
-      const currentIndex = prev.findIndex((m) => m.id === id);
-      if (currentIndex === -1) return prev;
+      const index = prev.findIndex((m) => m.id === id);
+      if (index <= 0) return prev;
 
       const arr = [...prev];
-      const [moved] = arr.splice(currentIndex, 1);
-      arr.splice(targetPos - 1, 0, moved);
+      [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
 
       return arr.map((m, idx) => ({ ...m, sort_order: idx + 1 }));
     });
   }
 
-  /* ───────────────────── DRAG UPDATE ───────────────────── */
-  function onDrag(newList: Module[]) {
-    setModules(newList.map((m, idx) => ({ ...m, sort_order: idx + 1 })));
-  }
-
-  /* ───────────────────── SAFETY ON BLUR ───────────────────── */
-  function fixOnBlur(id: string) {
+  /* MOVE DOWN */
+  function moveDown(id: string) {
     setModules((prev) => {
-      const count = prev.length;
-      return prev.map((m) => {
-        if (m.id !== id) return m;
-        if (m.sort_order < 1) return { ...m, sort_order: 1 };
-        if (m.sort_order > count) return { ...m, sort_order: count };
-        return m;
-      });
+      const index = prev.findIndex((m) => m.id === id);
+      if (index === -1 || index === prev.length - 1) return prev;
+
+      const arr = [...prev];
+      [arr[index + 1], arr[index]] = [arr[index], arr[index + 1]];
+
+      return arr.map((m, idx) => ({ ...m, sort_order: idx + 1 }));
     });
   }
 
-  /* ───────────────────── SAVE ORDER TO DB ───────────────────── */
+  /* SAVE ORDER */
   async function saveFinal() {
     setSaving(true);
 
-    const normalized = modules.map((m, idx) => ({
+    const payload = modules.map((m, idx) => ({
       id: m.id,
       sort_order: idx + 1,
       title: m.title,
@@ -83,47 +81,47 @@ export default function ReorderModulesPage() {
 
     const { error } = await supabase
       .from("modules")
-      .upsert(normalized, { onConflict: "id" });
+      .upsert(payload, { onConflict: "id" });
 
     setSaving(false);
     setShowWarning(false);
 
     if (error) {
       console.error(error);
-      return alert("❌ Failed to update order");
+      alert("❌ Failed to update order");
+      return;
     }
+
     load();
   }
 
-  /* ───────────────────── DELETE MODULE ───────────────────── */
+  /* DELETE MODULE */
   async function deleteModule() {
     if (!deleteModuleId) return;
 
     try {
-      // Delete slides → lessons → module (cascade chain)
-      const { data: lessonRows } = await supabase
+      const { data: lessons } = await supabase
         .from("lessons")
         .select("id")
         .eq("module_id", deleteModuleId);
 
-      if (lessonRows?.length) {
-        const lessonIds = lessonRows.map((l: any) => l.id);
-
-        await supabase.from("lesson_slides").delete().in("lesson_id", lessonIds);
-        await supabase.from("lessons").delete().in("id", lessonIds);
+      if (lessons?.length) {
+        const ids = lessons.map((l) => l.id);
+        await supabase.from("lesson_slides").delete().in("lesson_id", ids);
+        await supabase.from("lessons").delete().in("id", ids);
       }
 
       await supabase.from("modules").delete().eq("id", deleteModuleId);
 
       setDeleteModuleId(null);
       load();
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       alert("❌ Failed to delete module");
     }
   }
 
-  /* ───────────────────── UI ───────────────────── */
+  /* UI */
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <h1 className="text-xl font-bold text-[#001f40] mb-4">
@@ -131,65 +129,87 @@ export default function ReorderModulesPage() {
       </h1>
 
       <table className="w-full border text-sm rounded overflow-hidden">
-        <thead className="bg-gray-100 text-left">
+        <thead className="bg-gray-100">
           <tr>
-            <th className="p-2 w-20">Order</th>
-            <th className="p-2">Title</th>
-            <th className="p-2 w-10"></th>
+            <th className="p-2 w-24 text-center">Module</th>
+            <th className="p-2">Name</th>
+            <th className="p-2 w-24 text-center"></th>
           </tr>
         </thead>
 
-      <ReactSortable
-        tag="tbody"
-        list={modules}
-        setList={onDrag}
-        animation={200}
-      >
-        {modules.map((m) => (
-          <tr
-            key={m.id}
-            className="border-t cursor-grab hover:bg-gray-100 active:cursor-grabbing"
-          >
-            <td className="p-2">
-              <input
-                type="number"
-                className="w-16 border px-1 rounded"
-                value={m.sort_order}
-                onChange={(e) => updateOrder(m.id, e.target.value)}
-                onBlur={() => fixOnBlur(m.id)}
-              />
-            </td>
+        <ReactSortable
+          tag="tbody"
+          list={modules}
+          setList={handleDrag}
+          animation={200}
+        >
+          {modules.map((m, idx) => (
+            <tr
+              key={m.id}
+              className="border-t hover:bg-gray-50 cursor-grab active:cursor-grabbing"
+            >
+              {/* MODULE BADGE */}
+              <td className="p-2 text-center">
+                <span className="text-[10px] px-2 py-[1px] rounded-full font-semibold bg-[#ca5608] text-white">
+                  {m.sort_order}
+                </span>
+              </td>
 
-            <td className="p-2 flex items-center gap-2">
-              {/* Drag icon — now cosmetic only */}
-              <span className="text-gray-400 hover:text-gray-600">
-                ⋮⋮
-              </span>
+              {/* TITLE + drag icon */}
+              <td className="p-2 flex items-center gap-2">
+                <span className="text-gray-400">⋮⋮</span>
+                {m.title}
+              </td>
 
-              {m.title}
-            </td>
+              {/* MOVE + DELETE */}
+              <td className="p-2 text-right w-24">
+                <div className="inline-flex items-center gap-2">
 
-            <td className="p-2 text-right">
-              <Trash2
-                size={16}
-                className="text-red-500 hover:text-red-700 cursor-pointer"
-                onClick={() => {
-                  setDeleteModuleId(m.id);
-                  setDeleteModuleTitle(m.title);
-                }}
-              />
-            </td>
-          </tr>
-        ))}
-      </ReactSortable>
+                  <ChevronUp
+                    size={16}
+                    className={`cursor-pointer ${
+                      idx === 0
+                        ? "text-gray-300"
+                        : "text-[#001f40] hover:text-[#003266]"
+                    }`}
+                    onClick={() => idx > 0 && moveUp(m.id)}
+                  />
+
+                  <ChevronDown
+                    size={16}
+                    className={`cursor-pointer ${
+                      idx === modules.length - 1
+                        ? "text-gray-300"
+                        : "text-[#001f40] hover:text-[#003266]"
+                    }`}
+                    onClick={() => idx < modules.length - 1 && moveDown(m.id)}
+                  />
+
+                  <Trash2
+                    size={16}
+                    className="text-red-500 hover:text-red-700 cursor-pointer"
+                    onClick={() => {
+                      setDeleteModuleId(m.id);
+                      setDeleteModuleTitle(m.title);
+                    }}
+                  />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </ReactSortable>
       </table>
 
+      {/* FOOTER BUTTONS */}
       <div className="flex justify-end gap-3 mt-5">
-        <button className="px-3 py-1 border rounded" onClick={() => history.back()}>
+        <button
+          className="px-3 py-1 border rounded cursor-pointer"
+          onClick={() => history.back()}
+        >
           Cancel
         </button>
         <button
-          className="px-4 py-1.5 bg-[#ca5608] text-white rounded"
+          className="px-4 py-1.5 bg-[#ca5608] text-white rounded cursor-pointer"
           onClick={() => setShowWarning(true)}
         >
           Save Order
@@ -217,7 +237,7 @@ export default function ReorderModulesPage() {
   );
 }
 
-/* ───────────────────── DELETE MODAL ───────────────────── */
+/* DELETE MODAL */
 function DeleteModuleModal({
   title,
   onClose,
@@ -228,8 +248,8 @@ function DeleteModuleModal({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1600]">
-      <div className="bg-white p-6 rounded-lg w-[380px] shadow-lg">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1600] cursor-pointer">
+      <div className="bg-white p-6 rounded-lg w-[380px] shadow-lg cursor-default">
         <h3 className="text-lg font-bold text-red-700 mb-3">Delete Module?</h3>
 
         <p className="text-sm text-gray-800 mb-3">
@@ -246,12 +266,15 @@ function DeleteModuleModal({
         </p>
 
         <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-3 py-1 border rounded text-sm">
+          <button
+            onClick={onClose}
+            className="px-3 py-1 border rounded text-sm cursor-pointer"
+          >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-800"
+            className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-800 cursor-pointer"
           >
             Delete
           </button>
@@ -261,7 +284,7 @@ function DeleteModuleModal({
   );
 }
 
-/* ───────────────────── SAVE WARNING MODAL ───────────────────── */
+/* SAVE WARNING MODAL */
 function WarningModal({
   saving,
   onClose,
@@ -272,23 +295,27 @@ function WarningModal({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1500]">
-      <div className="bg-white p-6 rounded-lg w-[350px] shadow-lg">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1500] cursor-pointer">
+      <div className="bg-white p-6 rounded-lg w-[350px] shadow-lg cursor-default">
         <h3 className="text-lg font-semibold text-red-600 mb-2">Warning!</h3>
+
         <p className="text-sm text-gray-700 mb-4">
           Changing module order affects course flow. Proceed with caution.
         </p>
 
         <div className="flex justify-end gap-2">
-          <button className="px-3 py-1 border rounded text-sm" onClick={onClose}>
+          <button
+            className="px-3 py-1 border rounded text-sm cursor-pointer"
+            onClick={onClose}
+          >
             Cancel
           </button>
           <button
-            className="px-3 py-1 bg-[#ca5608] text-white rounded text-sm"
+            className="px-3 py-1 bg-[#ca5608] text-white rounded text-sm cursor-pointer"
             disabled={saving}
             onClick={onConfirm}
           >
-            {saving ? "Saving..." : "Yes, Update Order"}
+            {saving ? "Saving…" : "Yes, Update Order"}
           </button>
         </div>
       </div>

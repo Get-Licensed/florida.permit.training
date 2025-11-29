@@ -33,12 +33,13 @@ export default function CaptionEditorRow({
           onClick={handleSave}
           disabled={saving}
           className={`px-3 py-1 rounded text-white ${
-            saving ? "bg-gray-400" : "bg-[#ca5608]"
+            saving ? "bg-gray-400 cursor-not-allowed" : "bg-[#ca5608] cursor-pointer"
           }`}
         >
           {saving ? "Saving…" : "Save"}
         </button>
       </div>
+
     </div>
   );
 }

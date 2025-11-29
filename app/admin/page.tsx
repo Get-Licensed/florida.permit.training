@@ -81,7 +81,7 @@ export default function AdminPortalPage() {
           icon={<ImageIcon size={32} className="text-[#001f40]" />}
           title="Slide Manager"
           description="Manage slide assets, durations, and images."
-          href="/admin/slides"
+          href="/admin/content/slide-manager"
           buttonText="Open Slide Manager"
         />
 

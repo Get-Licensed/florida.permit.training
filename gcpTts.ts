@@ -1,7 +1,7 @@
 import { GoogleAuth } from "google-auth-library";
 import axios from "axios";
 
-export async function synthesizeSpeech(text: string) {
+export async function synthesizeSpeech(text: string, voiceName: string) {
   const auth = new GoogleAuth({
     scopes: ["https://www.googleapis.com/auth/cloud-platform"],
   });
@@ -9,15 +9,20 @@ export async function synthesizeSpeech(text: string) {
   const client = await auth.getClient();
   const accessToken = await client.getAccessToken();
 
+  // auto language detection
+  const languageCode = voiceName.startsWith("es-") ? "es-US" : "en-US";
+
   const response = await axios.post(
     "https://texttospeech.googleapis.com/v1/text:synthesize",
     {
       input: { text },
       voice: {
-        languageCode: "en-US",
-        name: "en-US-Neural2-C"
+        languageCode,
+        name: voiceName,
       },
-      audioConfig: { audioEncoding: "MP3" }
+      audioConfig: {
+        audioEncoding: "MP3",
+      },
     },
     {
       headers: {

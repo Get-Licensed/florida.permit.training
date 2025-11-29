@@ -1,15 +1,33 @@
 "use client";
 
-import { useSortable } from "@dnd-kit/sortable";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Pencil } from "lucide-react";
+import { GripVertical } from "lucide-react";
+import { useState } from "react";
 
-export default function SortableRow({
+type Module = { id: string; title: string; sort_order?: number };
+
+// -------------------------------------------------------
+// SORTABLE ROW — drag handle only (no arrows)
+// -------------------------------------------------------
+function SortableRow({
   module,
   onEdit,
 }: {
-  module: { id: string; title: string };
-  onEdit?: (module: any) => void;
+  module: Module;
+  onEdit?: (module: Module) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: module.id });
@@ -17,37 +35,99 @@ export default function SortableRow({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    background: "white",
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center justify-between bg-white p-3 border-b cursor-default"
-      {...attributes}
+      className="flex items-center justify-between p-3"
     >
-      {/* Drag handle */}
-      <div
-        className="cursor-grab pr-3 text-gray-400 hover:text-gray-600"
-        {...listeners}
-      >
-        ⋮⋮
+      {/* Drag + title */}
+      <div className="flex items-center gap-3">
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+        >
+          <GripVertical size={18} />
+        </button>
+
+        <span
+          onClick={() => onEdit && onEdit(module)}
+          className="cursor-pointer text-[#001f40] font-medium hover:underline"
+        >
+          {module.title}
+        </span>
       </div>
-
-      {/* Title */}
-      <span className="font-medium text-[#001f40] flex-1">
-        {module.title}
-      </span>
-
-      {/* Edit Pencil */}
-      <Pencil
-        size={16}
-        className="text-gray-500 hover:text-[#001f40] cursor-pointer ml-3"
-        onClick={(e) => {
-          e.stopPropagation();
-          onEdit?.(module);
-        }}
-      />
     </div>
+  );
+}
+
+// -------------------------------------------------------
+// MODULE LIST — only drag-and-drop supported
+// -------------------------------------------------------
+export default function ModuleList({
+  initialModules,
+  onEdit,
+  onUpdated,
+}: {
+  initialModules: Module[];
+  onEdit?: (module: Module) => void;
+  onUpdated?: () => void;
+}) {
+  const [modules, setModules] = useState(initialModules);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+
+  async function saveOrder(newList: Module[]) {
+    setModules(newList);
+
+    const res = await fetch("/admin/modules/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        newList.map((m, index) => ({
+          id: m.id,
+          sort_order: index + 1,
+        }))
+      ),
+    });
+
+    if (res.ok && onUpdated) onUpdated();
+  }
+
+  function handleDragEnd(event: any) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = modules.findIndex((m) => m.id === active.id);
+    const newIndex = modules.findIndex((m) => m.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newList = arrayMove(modules, oldIndex, newIndex);
+    saveOrder(newList);
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext
+        items={modules.map((m) => m.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="border rounded bg-white divide-y">
+          {modules.map((m) => (
+            <SortableRow key={m.id} module={m} onEdit={onEdit} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }

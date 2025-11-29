@@ -1,213 +1,359 @@
 "use client";
-export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useRef } from "react";
-import Image from "next/image";
+import { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
-import { requireAuth } from "@/utils/requireAuth";
-import TopProgressBar from "@/components/TopProgressBar";
 
-/* ===============================================================
-   TYPES
-================================================================*/
-type ModuleRow = { id: string; title: string; sort_order: number | null };
-type LessonRow = { id: string; title: string; module_id: string; sort_order: number | null };
+/* -------------------------------------------------------
+   Types
+------------------------------------------------------- */
 type SlideRow = {
   id: string;
-  lesson_id: string;
-  image_path: string;
-  caption: string;
-  display_seconds: number | null;
-  order_index: number | null;
+  lesson_id: number;
+  image_path: string | null;
+  order_index: number;
+  caption_ids: string[];
 };
 
-/* ===============================================================
-   PAGE COMPONENT
-================================================================*/
-export default function CoursePage() {
+type CaptionRow = {
+  id: string;
+  slide_id: string;
+  caption: string;
+  seconds: number;
+  line_index: number;
+};
+
+type LessonRow = {
+  id: number;
+  module_id: string;
+  title: string;
+  sort_order: number;
+  duration: number;
+  thumbnail: string | null;
+};
+
+/* -------------------------------------------------------
+   Resolve storage URL
+------------------------------------------------------- */
+function resolveImage(path: string | null) {
+  if (!path) return null;
+  return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
+}
+
+/* -------------------------------------------------------
+   MAIN COMPONENT
+------------------------------------------------------- */
+export default function CoursePlayer() {
+  const searchParams = useSearchParams();
+  const moduleId = searchParams.get("module_id");
+
   const [loading, setLoading] = useState(true);
-
-  const [modules, setModules] = useState<ModuleRow[]>([]);
-  const [lessons, setLessons] = useState<LessonRow[]>([]);
+  const [lesson, setLesson] = useState<LessonRow | null>(null);
   const [slides, setSlides] = useState<SlideRow[]>([]);
+  const [captions, setCaptions] = useState<Record<string, CaptionRow[]>>({});
+  const [idx, setIdx] = useState(0);
 
-  // Tracking locations inside course
-  const [modIdx, setModIdx] = useState(0);
-  const [lessonIdx, setLessonIdx] = useState(0);
-  const [slideIdx, setSlideIdx] = useState(0);
+  /* Narration mock states */
+  const [volume, setVolume] = useState(0.8);
+  const [voice, setVoice] = useState("Jose");
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
-  // Timing + autoplay
-  const [isPaused, setIsPaused] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(0);
-  const slideTimerRef = useRef<number | null>(null);
+  /* -------------------------------------------------------
+     LOAD FIRST LESSON BASED ON MODULE_ID
+  ------------------------------------------------------- */
+  async function loadLessonForModule() {
+    if (!moduleId) {
+      console.error("❌ No module_id provided");
+      return;
+    }
 
-  /* ===============================================================
-     AUTH + DATA LOAD
-  ===============================================================*/
-  useEffect(() => {
-    (async () => {
-      await requireAuth(null);
+    setLoading(true);
 
-      const { data: m } = await supabase.from("modules").select("*").order("sort_order");
-      const { data: l } = await supabase.from("lessons").select("*").order("id", { ascending: true });
-      const { data: s } = await supabase
-        .from("lesson_slides")
-        .select("id, lesson_id, image_path, caption, display_seconds, order_index")
-        .order("order_index", { ascending: true });
+    const { data: lessonRows } = await supabase
+      .from("lessons")
+      .select("*")
+      .eq("module_id", moduleId)
+      .order("sort_order", { ascending: true });
 
-      setModules(m ?? []);
-      setLessons(l ?? []);
-      setSlides(s ?? []);
+    if (!lessonRows || lessonRows.length === 0) {
       setLoading(false);
-    })();
-  }, []);
-
-  /* ===============================================================
-     DERIVED COURSE STRUCTURE
-  ===============================================================*/
-  const lessonsInModule = (m: ModuleRow) =>
-    lessons.filter(l => l.module_id === m.id).sort((a, b) => (a.id > b.id ? 1 : -1));
-
-  const slidesInLesson = (lesson: LessonRow) =>
-    slides
-      .filter(s => s.lesson_id === lesson.id)
-      .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
-
-  const module = modules[modIdx];
-  const lessonList = module ? lessonsInModule(module) : [];
-  const lesson = lessonList[lessonIdx];
-  const slideList = lesson ? slidesInLesson(lesson) : [];
-  const slide = slideList[slideIdx];
-
-  /* ===============================================================
-     AUTOPLAY TIMER
-  ===============================================================*/
-  useEffect(() => {
-    if (!slide) return;
-
-    const seconds = slide.display_seconds ?? 5;
-    setTimeLeft(seconds);
-    setIsPaused(false);
-
-    if (slideTimerRef.current) window.clearTimeout(slideTimerRef.current);
-    slideTimerRef.current = window.setTimeout(() => {
-      if (!isPaused) next();
-    }, seconds * 1000);
-
-    return () => {
-      if (slideTimerRef.current) window.clearTimeout(slideTimerRef.current);
-    };
-  }, [slideIdx, lessonIdx, modIdx, isPaused]);
-
-  /* ===============================================================
-     NAVIGATION: NEXT
-  ===============================================================*/
-  const next = () => {
-    if (!lesson || !slide) return;
-
-    setIsPaused(false);
-
-    // 1) Next slide in same lesson
-    if (slideIdx < slideList.length - 1) {
-      setSlideIdx(slideIdx + 1);
       return;
     }
 
-    // 2) Next lesson in same module
-    if (lessonIdx < lessonList.length - 1) {
-      setLessonIdx(lessonIdx + 1);
-      setSlideIdx(0);
-      return;
-    }
+    const firstLesson = lessonRows[0] as LessonRow;
+    setLesson(firstLesson);
 
-    // 3) End of module (stay here for now)
-    console.log("Module complete.");
-  };
+    const { data: slideRows } = await supabase
+      .from("lesson_slides")
+      .select("*")
+      .eq("lesson_id", firstLesson.id)
+      .order("order_index", { ascending: true });
 
-  /* ===============================================================
-     NAVIGATION: PREV
-  ===============================================================*/
-  const prev = () => {
-    if (!lesson || !slide) return;
-    if (slideIdx > 0) {
-      setSlideIdx(slideIdx - 1);
-      return;
-    }
-  };
+    setSlides(slideRows || []);
 
-  const togglePause = () => setIsPaused(!isPaused);
+    await loadCaptionGroups(slideRows || []);
 
-  /* ===============================================================
-     RENDER GUARD (NO BLANK SCREEN)
-  ===============================================================*/
-  if (loading || !module || !lesson || !slide) {
-    return (
-      <div className="flex items-center justify-center h-screen text-xl">
-        Loading course...
-      </div>
-    );
+    setIdx(0);
+    setLoading(false);
   }
 
-  /* ===============================================================
-     UI RENDER
-  ===============================================================*/
-  return (
-    <div className="relative min-h-screen bg-white">
+  /* -------------------------------------------------------
+     LOAD CAPTIONS
+  ------------------------------------------------------- */
+  async function loadCaptionGroups(slideRows: SlideRow[]) {
+    if (!slideRows.length) {
+      setCaptions({});
+      return;
+    }
 
-      {/* PROGRESS BAR */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-gray-200 h-2">
-        <TopProgressBar percent={50} />
+    const slideIds = slideRows.map((s) => s.id);
+
+    const { data: capRows } = await supabase
+      .from("slide_captions")
+      .select("*")
+      .in("slide_id", slideIds)
+      .order("line_index", { ascending: true });
+
+    const group: Record<string, CaptionRow[]> = {};
+    slideRows.forEach((slide) => {
+      group[slide.id] = capRows?.filter((c) => c.slide_id === slide.id) || [];
+    });
+
+    setCaptions(group);
+  }
+
+  useEffect(() => {
+    loadLessonForModule();
+  }, [moduleId]);
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        Loading…
+      </div>
+    );
+
+  if (!lesson)
+    return (
+      <div className="flex items-center justify-center min-h-screen text-red-600">
+        No lesson found.
+      </div>
+    );
+
+  if (slides.length === 0)
+    return (
+      <div className="flex items-center justify-center min-h-screen text-red-600">
+        No slides found.
+      </div>
+    );
+
+  const current = slides[idx];
+  const img = resolveImage(current.image_path);
+  const capGroup = captions[current.id] || [];
+
+  /* -------------------------------------------------------
+     Timeline width
+  ------------------------------------------------------- */
+  const totalSlides = slides.length;
+
+  /* -------------------------------------------------------
+     Navigation
+  ------------------------------------------------------- */
+  const onPrev = () => setIdx((i) => Math.max(0, i - 1));
+  const onNext = () => setIdx((i) => Math.min(totalSlides - 1, i + 1));
+
+  /* -------------------------------------------------------
+     UI
+  ------------------------------------------------------- */
+  return (
+    <div className="relative min-h-screen bg-white flex flex-col">
+
+      {/* Top Progress Bar */}
+      <div className="fixed top-0 left-0 right-0 z-40 h-2 bg-gray-200">
+        <div
+          className="h-full bg-[#ca5608] transition-all"
+          style={{ width: `${((idx + 1) / totalSlides) * 100}%` }}
+        />
       </div>
 
-      {/* MAIN CONTENT */}
-      <main
-        className="flex flex-col bg-white relative overflow-hidden"
-        style={{ height: "calc(100vh - (64px + 120px))" }}
-      >
-        <section className="flex flex-col px-8 py-6 overflow-auto flex-1">
-          <h2 className="text-xl font-bold text-[#001f40] mb-4">{lesson.title}</h2>
+   {/* Floating Narration UI (top-right over image) */}
+<div
+  className="absolute top-4 right-4 z-50 rounded-xl p-3 border border-[#001f40]/40 shadow-xl backdrop-blur-md"
+  style={{
+    backgroundColor: "rgba(0, 31, 64, 0.59)", // brand blue, 89% opacity
+  }}
+>
 
-          {/* SLIDE IMAGE + CAPTION */}
-          <div className="relative w-full max-w-4xl mx-auto h-[60vh] bg-black rounded-lg overflow-hidden">
-            <Image
-              src={supabase.storage.from("uploads").getPublicUrl(slide.image_path).data.publicUrl}
-              alt=""
-              fill
-              className="object-contain"
+  {/* Volume Slider */}
+  <div className="flex items-center gap-3 mb-2">
+    <span className="text-[11px] font-semibold text-white/90">VOL</span>
+
+    <input
+      type="range"
+      min={0}
+      max={1}
+      step={0.05}
+      value={volume}
+      onChange={(e) => setVolume(parseFloat(e.target.value))}
+      className="
+        accent-[#ca5608]
+        w-24
+        h-1
+        rounded
+        cursor-pointer
+      "
+    />
+  </div>
+
+  {/* Voice Selector Toggle */}
+  <button
+    onClick={() => setVoiceOpen((v) => v ? false : true)}
+    className="
+      w-full 
+      bg-[#ca5608] 
+      text-white 
+      text-[11px] 
+      font-semibold
+      py-1.5 
+      rounded-lg 
+      hover:bg-[#b24b06] 
+      transition
+    "
+  >
+    Voice: {voice}
+  </button>
+
+  {/* DROPDOWN */}
+  {voiceOpen && (
+    <div
+      className="
+        mt-2 
+        bg-[#001f40] 
+        border border-[#ca5608]/40
+        rounded-lg 
+        shadow-lg
+        overflow-hidden
+      "
+    >
+      {["John", "Paul", "Ringo", "George"].map((v) => (
+        <div
+          key={v}
+          onClick={() => {
+            setVoice(v);
+            setVoiceOpen(false);
+          }}
+          className="
+            px-3 
+            py-2 
+            text-white 
+            text-sm 
+            hover:bg-[#ca5608] 
+            hover:text-white
+            cursor-pointer 
+            transition
+          "
+        >
+          {v}
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col items-center justify-center pb-[140px] w-full">
+
+        {/* FULL-WIDTH IMAGE */}
+        {img ? (
+          <div className="flex-1 w-full flex items-center justify-center">
+            <img
+              src={img}
+              className="
+                w-[100vw]
+                h-auto
+                object-contain
+                select-none
+              "
+              draggable={false}
             />
-
-            <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-center text-lg font-medium px-4 py-3">
-              {slide.caption}
-            </div>
           </div>
-        </section>
+        ) : (
+          <div className="text-gray-400 italic">No image</div>
+        )}
 
-        {/* FOOTER CONTROLS */}
-        <footer className="fixed left-0 right-0 border-t shadow-inner bg-white z-40" style={{ bottom: "1px" }}>
-          <div className="p-4">
-            <div className="max-w-6xl mx-auto px-4">
-              <div className="flex justify-between items-center select-none">
+      </div>
 
-                <button onClick={prev} className="opacity-90">
-                  <img src="/back-arrow.png" className="w-16 sm:w-20" />
-                </button>
+      {/* FOOTER: arrows + captions */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg h-[120px] flex items-center justify-between px-8">
 
-                <button
-                  onClick={togglePause}
-                  className="w-full sm:w-[160px] px-5 py-2 rounded font-semibold text-white bg-[#ca5608] hover:bg-[#b24b06]"
+        <button
+          onClick={onPrev}
+          disabled={idx === 0}
+          className={`p-3 ${idx === 0 ? "opacity-30" : "hover:opacity-80"}`}
+        >
+          <img src="/back-arrow.png" className="w-16" />
+        </button>
+
+        {/* Captions */}
+        <div className="text-center px-4 max-w-2xl text-lg text-[#001f40] whitespace-pre-wrap">
+          {capGroup.map((c) => c.caption).join("\n")}
+        </div>
+
+        <button
+          onClick={onNext}
+          disabled={idx === totalSlides - 1}
+          className={`p-3 ${
+            idx === totalSlides - 1 ? "opacity-30" : "hover:opacity-80"
+          }`}
+        >
+          <img src="/forward-arrow.png" className="w-16" />
+        </button>
+      </div>
+
+      {/* TIMELINE */}
+      <div className="fixed bottom-[120px] left-0 right-0 px-6 py-4 bg-white">
+        <div className="relative w-full h-4 flex items-center">
+
+          {/* Base rail */}
+          <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full opacity-40" />
+
+          {/* Segments */}
+          <div className="relative w-full h-4 flex items-center">
+            {slides.map((s, i) => {
+              const done = i < idx;
+              const active = i === idx;
+
+              return (
+                <div
+                  key={s.id}
+                  style={{ width: `${100 / totalSlides}%` }}
+                  className="relative h-full flex items-center"
                 >
-                  {isPaused ? "▶️ Resume" : "⏸️ Pause"}
-                </button>
+                  <div
+                    className={`
+                      h-2 flex-1 transition-all
+                      ${
+                        done
+                          ? "bg-[#001f40]"
+                          : active
+                          ? "bg-[#ca5608] shadow-[0_0_6px_#ca5608]"
+                          : "bg-[#ca5608]/70"
+                      }
+                      ${i === 0 ? "rounded-l-full" : ""}
+                      ${i === totalSlides - 1 ? "rounded-r-full" : ""}
+                    `}
+                  ></div>
 
-                <button onClick={next} className="cursor-pointer">
-                  <img src="/forward-arrow.png" className="w-16 sm:w-20" />
-                </button>
-              </div>
-            </div>
+                  {i < totalSlides - 1 && (
+                    <div className="w-[2px] h-full bg-white"></div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </footer>
-
-      </main>
+        </div>
+      </div>
     </div>
   );
 }

@@ -45,7 +45,7 @@ export default function LessonExplorer({
 
   return (
     <div className="space-y-3 text-sm">
-      <h3 className="text-[#001f40] font-bold text-md">Lessons</h3>
+      <h2 className="text-[#001f40] font-bold text-lg">Modules & Lessons</h2>
 
       {modules.map((m) => {
         const isOpen = openModules[m.id] || false;

@@ -27,12 +27,11 @@ export default async function AdminLayout({
 
           {/* NAVIGATION */}
           <nav className="flex items-center space-x-6 text-sm font-medium">
-            <AdminNavItem
-              href="/admin/content/reorder-modules"
-              label="Modules"
-            />
-            <AdminNavItem href="/admin/users" label="Users" />
+            <AdminNavItem href="/admin/content/slide-manager" label="Slides" />
+            <AdminNavItem href="/admin/content/reorder-modules" label="Modules"/>
             <AdminNavItem href="/admin/content" label="Editor" />
+            <AdminNavItem href="/admin/media" label="Media" />
+
           </nav>
         </div>
       </header>

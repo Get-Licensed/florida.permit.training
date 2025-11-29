@@ -1,242 +1,259 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/utils/supabaseClient";
+
 import LessonExplorerLayout from "./LessonExplorerLayout";
 import LessonExplorer from "./LessonExplorer";
 
-/* ----------------------------- TYPES ----------------------------- */
-type ModuleRow = {
-  id: string;
-  title: string;
-  sort_order: number;
-};
+// ---------------------------------------------------------
+// CONSTANTS
+// ---------------------------------------------------------
+const PLACEHOLDER =
+  "https://yslhlomlsomknyxwtbtb.supabase.co/storage/v1/object/public/uploads/slides/Placeholder.png";
 
-type LessonRow = {
-  id: string;
-  title: string;
-  module_id: string;
-  order_index: number;
-};
-
-type SlideRow = {
-  id: string;
-  lesson_id: number;
-  image_path: string | null;
-  order_index: number;
-  caption_ids: string[];
-};
-
-type CaptionRow = {
-  id: string;
-  slide_id: string;
-  caption: string;
-  seconds: number;
-  line_index: number;
-};
-
-/* ============================
-   PREVIEW COURSE TAB
-   ============================ */
+// ---------------------------------------------------------
+// BuildSlidesTab Component
+// ---------------------------------------------------------
 export default function BuildSlidesTab() {
-  const [modules, setModules] = useState<ModuleRow[]>([]);
-  const [lessons, setLessons] = useState<LessonRow[]>([]);
-  const [slides, setSlides] = useState<SlideRow[]>([]);
-  const [captions, setCaptions] = useState<CaptionRow[]>([]);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const [slides, setSlides] = useState<any[]>([]);
+  const [captions, setCaptions] = useState<any[]>([]);
+  const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
 
-  /* ---------------- LOAD MODULES + LESSONS ---------------- */
-  useEffect(() => {
-    async function load() {
-      const { data: m } = await supabase
-        .from("modules")
-        .select("*")
-        .order("sort_order");
+  // Bulk import text
+  const [bulkText, setBulkText] = useState("");
 
-      const { data: l } = await supabase
-        .from("lessons")
-        .select("*")
-        .order("order_index");
+  // ---------------------------------------------------------
+  // Toast State (MATCHING CaptionsEditor)
+  // ---------------------------------------------------------
+  const [toast, setToast] = useState<string | null>(null);
+  const [animateToast, setAnimateToast] = useState(false);
 
-      setModules(m || []);
-      setLessons(l || []);
-    }
-    load();
-  }, []);
+  function showToast(msg: string) {
+    setToast(msg);
+    setAnimateToast(true);
 
-  /* ---------------- LOAD SLIDES FOR LESSON ---------------- */
-  async function loadLesson(lessonId: string) {
-    const { data: sl } = await supabase
+    setTimeout(() => setAnimateToast(false), 1500);
+    setTimeout(() => setToast(null), 2000);
+  }
+
+  const currentSlide = slides[selectedSlideIndex] || null;
+
+  // ---------------------------------------------------------
+  // LOAD SLIDES
+  // ---------------------------------------------------------
+  async function loadSlides() {
+    if (!selectedLessonId) return;
+    setLoading(true);
+
+    const { data: slideRows } = await supabase
       .from("lesson_slides")
       .select("*")
-      .eq("lesson_id", lessonId)
-      .order("order_index");
+      .eq("lesson_id", selectedLessonId)
+      .order("order_index", { ascending: true });
 
-    setSlides(sl || []);
+    setSlides(slideRows || []);
+    setSelectedSlideIndex(0);
 
-    const ids = sl?.map((x) => x.id) ?? [];
+    await loadCaptions(slideRows || []);
+    setLoading(false);
+  }
 
-    if (ids.length > 0) {
-      const { data: caps } = await supabase
-        .from("slide_captions")
-        .select("*")
-        .in("slide_id", ids)
-        .order("line_index");
+  // ---------------------------------------------------------
+  // LOAD CAPTIONS
+  // ---------------------------------------------------------
+  async function loadCaptions(slideRows: any[]) {
+    const slideIds = slideRows.map((s) => s.id);
 
-      setCaptions(caps || []);
-    } else {
+    if (slideIds.length === 0) {
       setCaptions([]);
+      return;
     }
 
-    setCurrentSlideIndex(0);
+    const { data: capRows } = await supabase
+      .from("slide_captions")
+      .select("*")
+      .in("slide_id", slideIds)
+      .order("line_index", { ascending: true });
+
+    setCaptions(capRows || []);
   }
 
-  /* ---------------- ACTIVE SLIDE & CAPTION ---------------- */
-  const activeSlide = useMemo(() => {
-    if (slides.length === 0) return null;
-    return slides[currentSlideIndex] || null;
-  }, [slides, currentSlideIndex]);
+  useEffect(() => {
+    if (selectedLessonId) loadSlides();
+  }, [selectedLessonId]);
 
-  const activeCaption = useMemo(() => {
-    if (!activeSlide) return null;
-    const list = captions.filter((c) => c.slide_id === activeSlide.id);
-    return list[0] || null;
-  }, [captions, activeSlide]);
+  // ---------------------------------------------------------
+  // Resolve Supabase Storage URL
+  // ---------------------------------------------------------
+  function resolveImage(path: string | null) {
+    if (!path) return null;
 
-  /* ---------------- NAVIGATION: NEXT ---------------- */
-  function goNext() {
+    const { data } = supabase.storage.from("uploads").getPublicUrl(path);
+    return data?.publicUrl ?? null;
+  }
+
+  // ---------------------------------------------------------
+  // BULK IMPORT (APPEND)
+  // ---------------------------------------------------------
+  async function handleBulkImport(text: string) {
     if (!selectedLessonId) return;
 
-    if (currentSlideIndex < slides.length - 1) {
-      setCurrentSlideIndex((i) => i + 1);
+    const lines = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    if (!lines.length) {
+      showToast("Nothing to import");
       return;
     }
 
-    const lessonIndex = lessons.findIndex(
-      (l) => String(l.id) === String(selectedLessonId)
-    );
+    const { data: existingSlides } = await supabase
+      .from("lesson_slides")
+      .select("order_index")
+      .eq("lesson_id", selectedLessonId)
+      .order("order_index", { ascending: true });
 
-    const nextLesson = lessons[lessonIndex + 1];
-    if (nextLesson) {
-      setSelectedLessonId(String(nextLesson.id));
-      loadLesson(String(nextLesson.id));
-      return;
+    let lastIndex =
+      existingSlides?.length ? existingSlides[existingSlides.length - 1].order_index : 0;
+
+    let counter = lastIndex;
+
+    for (const line of lines) {
+      counter++;
+
+      const { data: slideRow } = await supabase
+        .from("lesson_slides")
+        .insert({
+          lesson_id: selectedLessonId,
+          image_path: null,
+          order_index: counter,
+        })
+        .select()
+        .single();
+
+      if (!slideRow) continue;
+
+      await supabase.from("slide_captions").insert({
+        slide_id: slideRow.id,
+        caption: line,
+        seconds: 5,
+        line_index: 0,
+      });
     }
 
-    const activeLesson = lessons.find((l) => String(l.id) === selectedLessonId);
-    if (!activeLesson) return;
-
-    const moduleIndex = modules.findIndex((m) => m.id === activeLesson.module_id);
-    const nextModule = modules[moduleIndex + 1];
-
-    if (nextModule) {
-      const firstLesson = lessons.find((l) => l.module_id === nextModule.id);
-      if (firstLesson) {
-        setSelectedLessonId(String(firstLesson.id));
-        loadLesson(String(firstLesson.id));
-      }
-      return;
-    }
-
-    alert("End of all lessons and modules!");
+    showToast("Slides added");
+    setBulkText("");
+    loadSlides();
   }
 
-  /* ---------------- NAVIGATION: PREV ---------------- */
-  function goPrev() {
-    if (!selectedLessonId) return;
-
-    if (currentSlideIndex > 0) {
-      setCurrentSlideIndex((i) => i - 1);
-      return;
-    }
-
-    const lessonIndex = lessons.findIndex(
-      (l) => String(l.id) === String(selectedLessonId)
-    );
-    const prevLesson = lessons[lessonIndex - 1];
-
-    if (prevLesson) {
-      setSelectedLessonId(String(prevLesson.id));
-      loadLesson(String(prevLesson.id));
-
-      setTimeout(() => {
-        setCurrentSlideIndex(slides.length > 0 ? slides.length - 1 : 0);
-      }, 200);
-
-      return;
-    }
-
-    const activeLesson = lessons.find((l) => String(l.id) === selectedLessonId);
-    if (!activeLesson) return;
-
-    const moduleIndex = modules.findIndex(
-      (m) => m.id === activeLesson.module_id
-    );
-
-    const prevModule = modules[moduleIndex - 1];
-    if (prevModule) {
-      const moduleLessons = lessons.filter(
-        (l) => l.module_id === prevModule.id
-      );
-
-      if (moduleLessons.length > 0) {
-        const last = moduleLessons[moduleLessons.length - 1];
-        setSelectedLessonId(String(last.id));
-        loadLesson(String(last.id));
+  // ---------------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------------
+  return (
+    <LessonExplorerLayout
+      sidebar={
+        <LessonExplorer
+          selectedLessonId={selectedLessonId}
+          onSelect={(id: string) => setSelectedLessonId(id)}
+        />
       }
-    }
-  }
-
-  /* ---------------- RENDER ---------------- */
-return (
-  <LessonExplorerLayout
-    sidebar={
-      <LessonExplorer
-        selectedLessonId={selectedLessonId}
-        onSelect={(id: string) => {
-          setSelectedLessonId(id);
-          loadLesson(id);
-        }}
-      />
-    }
-  >
-    <div className="w-full flex flex-col items-center">
-      {!activeSlide ? (
-        <p className="text-gray-500">Select a lesson to begin preview.</p>
-      ) : (
-        <div className="w-full flex flex-col items-center">
-          <img
-            src={
-              activeSlide.image_path
-                ? supabase.storage
-                    .from("uploads")
-                    .getPublicUrl(activeSlide.image_path).data.publicUrl
-                : "/placeholder.png"
-            }
-            alt="Slide"
-            className="rounded shadow mb-6 max-w-3xl"
-          />
-
-          <p className="text-lg text-center text-[#001f40] mb-6">
-            {activeCaption?.caption || "(no caption)"}
-          </p>
-
-          <div className="flex gap-4">
-            <button className="px-4 py-2 bg-gray-200 rounded" onClick={goPrev}>
-              Prev
-            </button>
-
-            <button
-              className="px-4 py-2 bg-[#ca5608] text-white rounded"
-              onClick={goNext}
-            >
-              Next
-            </button>
-          </div>
+    >
+      {/* Toast Notification (MATCHING CaptionsEditor) */}
+      {toast && (
+        <div
+          className={`
+            fixed bottom-6 right-6 
+            z-[99999] 
+            bg-green-600 text-white 
+            px-4 py-2 rounded shadow 
+            transition-all duration-300 
+            ${animateToast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}
+          `}
+        >
+          {toast}
         </div>
       )}
-    </div>
-  </LessonExplorerLayout>
-);
+
+      <div className="p-6 w-full">
+        {currentSlide && (
+          <div className="w-full flex flex-col items-center">
+
+            {/* IMAGE PREVIEW */}
+            {(() => {
+              const resolved =
+                resolveImage(currentSlide.image_path) ||
+                supabase.storage
+                  .from("uploads")
+                  .getPublicUrl("slides/Placeholder.png").data.publicUrl;
+
+              return (
+                <img
+                  src={resolved}
+                  alt="Slide"
+                  className="w-[80%] max-w-4xl h-auto object-contain rounded mb-6 shadow"
+                />
+              );
+            })()}
+
+            {/* CAPTION PREVIEW */}
+            <p className="text-xl text-[#001f40] mb-6 whitespace-pre-wrap text-center leading-relaxed px-6">
+              {captions.find((c) => c.slide_id === currentSlide.id)?.caption || ""}
+            </p>
+
+            {/* NAVIGATION BUTTONS */}
+            <div className="flex gap-6 mt-4">
+              <button
+                onClick={() =>
+                  setSelectedSlideIndex(Math.max(selectedSlideIndex - 1, 0))
+                }
+                className="px-6 py-2 rounded bg-gray-200 hover:bg-gray-300 text-lg cursor-pointer"
+              >
+                Prev
+              </button>
+
+              <button
+                onClick={() =>
+                  setSelectedSlideIndex(
+                    Math.min(selectedSlideIndex + 1, slides.length - 1)
+                  )
+                }
+                className="px-6 py-2 rounded bg-[#ca5608] text-white text-lg cursor-pointer hover:bg-[#a14505]"
+              >
+                Next
+              </button>
+            </div>
+
+            {/* BULK CAPTION IMPORT */}
+            <div className="mt-10 w-full max-w-2xl bg-white border rounded p-4 shadow-sm">
+              <h3 className="text-lg font-semibold text-[#001f40] mb-3">
+                Bulk Caption Import
+              </h3>
+
+              <textarea
+                rows={10}
+                placeholder={`Line 1\nLine 2\nLine 3`}
+                className="w-full border p-3 rounded"
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+              />
+
+              <div className="flex justify-end mt-4">
+                <button
+                  onClick={() => handleBulkImport(bulkText)}
+                  className="relative z-10 px-4 py-2 bg-[#ca5608] text-white rounded cursor-pointer hover:bg-[#a14505] transition active:scale-[0.97]"
+                >
+                  Import Captions
+                </button>
+              </div>
+            </div>
+
+          </div>
+        )}
+      </div>
+    </LessonExplorerLayout>
+  );
 }

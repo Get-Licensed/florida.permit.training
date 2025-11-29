@@ -12,16 +12,7 @@ export default function AdminNavItem({
 }) {
   const pathname = usePathname();
 
-  // Exact match
-  const isExactMatch = pathname === href;
-
-  // “Editor” gets nested matching except for reorder-modules
-  const isEditor =
-    href === "/admin/content" &&
-    pathname.startsWith("/admin/content") &&
-    pathname !== "/admin/content/reorder-modules";
-
-  const active = isExactMatch || isEditor;
+  const active = pathname === href;
 
   return (
     <Link

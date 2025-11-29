@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 
-import CaptionsEditor from "./components/CaptionsEditor";   // NEW
+import CaptionsEditor from "./components/CaptionsEditor";
 import BuildSlidesTab from "./components/BuildSlidesTab";
-import CaptionImageMapper from "./components/CaptionImageMapper";
 
 export default function SlideManagerPage() {
-  const [tab, setTab] = useState<"captions" | "slides" | "mapper">("slides");
+  const [tab, setTab] = useState<"slides" | "captions" | "mapper">("slides");
+
+  // NEW: bulk modal state
+  const [showBulkModal, setShowBulkModal] = useState(false);
 
   const tabClasses = (t: string) =>
     `px-4 py-2 border-b-2 cursor-pointer ${
@@ -22,27 +24,23 @@ export default function SlideManagerPage() {
         Slide Manager
       </h1>
 
-      {/* Tabs */}
+      {/* TOP TABS */}
       <div className="flex gap-6 border-b mb-6">
+
         <button className={tabClasses("slides")} onClick={() => setTab("slides")}>
           Preview Course
         </button>
 
         <button className={tabClasses("captions")} onClick={() => setTab("captions")}>
-          Captions Editor
-        </button>
-
-        <button className={tabClasses("mapper")} onClick={() => setTab("mapper")}>
-          Image + Caption Mapper
+          Captions
         </button>
       </div>
 
-      {/* Tab Content */}
+      {/* TAB CONTENT */}
       <div>
         {tab === "slides" && <BuildSlidesTab />}
-        {tab === "captions" && <CaptionsEditor />}    {/* FIXED */}
-        {tab === "mapper" && <CaptionImageMapper />}
+        {tab === "captions" && <CaptionsEditor />}
       </div>
-    </div>
+</div>
   );
 }
