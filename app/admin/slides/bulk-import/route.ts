@@ -1,27 +1,24 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/utils/supabaseAdmin";
+import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
 export async function POST(req: Request) {
+  const supabase = getSupabaseAdmin();
+
   const { lessonId, slides } = await req.json();
 
-  if (!lessonId || !slides?.length) {
-    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
-  }
-
-  const insertRows = slides.map((content: string, i: number) => ({
-    lesson_id: lessonId,
-    content,
-    sort_order: i,
-  }));
-
-  const { error } = await supabaseAdmin
-    .from("slides")
-    .insert(insertRows);
+  const { error } = await supabase.from("lesson_slides").insert(
+    slides.map((s: any, i: number) => ({
+      lesson_id: lessonId,
+      image_path: s.image_path,
+      order_index: i,
+      caption_ids: [],
+    }))
+  );
 
   if (error) {
-    console.log("Bulk import error:", error);
-    return NextResponse.json({ success: false }, { status: 500 });
+    console.error(error);
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }

@@ -1,19 +1,18 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/utils/supabaseAdmin";
+import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
 export async function POST(req: Request) {
+  const supabase = getSupabaseAdmin();
+
   const { lessonId, orderedIds } = await req.json();
 
-  if (!lessonId || !orderedIds) {
-    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  for (let i = 0; i < orderedIds.length; i++) {
+    await supabase
+      .from("lesson_slides")
+      .update({ order_index: i })
+      .eq("id", orderedIds[i])
+      .eq("lesson_id", lessonId);
   }
 
-  // Update sort_order for each slide
-  const updates = orderedIds.map((id: string, idx: number) =>
-    supabaseAdmin.from("slides").update({ sort_order: idx }).eq("id", id)
-  );
-
-  await Promise.all(updates);
-
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }

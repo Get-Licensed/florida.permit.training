@@ -1,22 +1,26 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/utils/supabaseAdmin";
+import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
 export async function GET(req: Request) {
+  const supabase = getSupabaseAdmin();
+
   const { searchParams } = new URL(req.url);
   const lessonId = searchParams.get("lessonId");
 
-  if (!lessonId) return NextResponse.json([]);
+  if (!lessonId) {
+    return NextResponse.json({ error: "Missing lessonId" }, { status: 400 });
+  }
 
-  const { data, error } = await supabaseAdmin
-    .from("lesson_slides") // ← FIXED
+  const { data, error } = await supabase
+    .from("lesson_slides")
     .select("*")
     .eq("lesson_id", lessonId)
     .order("order_index", { ascending: true });
 
   if (error) {
-    console.error("ERROR in GET /admin/slides/list:", error);
-    return NextResponse.json([]);
+    console.error(error);
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json(data || []);
+  return NextResponse.json({ data });
 }
