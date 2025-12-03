@@ -1,21 +1,48 @@
+import process from "node:process";
 import { NextResponse } from "next/server";
-import { synthesizeSpeech } from "@/supabase/functions/generate-tts/gcpTts";
+
+const SUPABASE_TTS_URL =
+  "https://yslhlomlsomknyxwtbtb.supabase.co/functions/v1/generate-tts";
 
 export async function POST(req: Request) {
   try {
-    const { text, voiceName } = await req.json();
+    const body = await req.json();
 
-    if (!text || !voiceName) {
-      return NextResponse.json({ error: "Missing params" }, { status: 400 });
+    const res = await fetch(SUPABASE_TTS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        text: body.text,
+        voice: body.voice,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("TTS Error:", errText);
+
+      const r = new NextResponse(JSON.stringify({ error: errText }));
+      r.headers.set("Content-Type", "application/json");
+      r.headers.set("x-status", "500");
+      return r;
     }
 
-    const audioBase64 = await synthesizeSpeech(text, voiceName);
+    const audioBuffer = await res.arrayBuffer();
 
-    return NextResponse.json({
-      audioContent: audioBase64,
+    return new Response(audioBuffer, {
+      headers: {
+        "Content-Type": "audio/mpeg",
+      },
     });
-  } catch (err: any) {
-    console.error("TTS ERROR:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (e) {
+    console.error("API Error:", e);
+
+    const r = new NextResponse(JSON.stringify({ error: `${e}` }));
+    r.headers.set("Content-Type", "application/json");
+    r.headers.set("x-status", "500");
+    return r;
   }
 }
