@@ -30,8 +30,12 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": [
-    "node_modules",
-    "supabase"       // <-- THIS FIXES THE BUILD ERROR
-  ]
+  
+ "exclude": [
+  "node_modules",
+  "supabase",
+  "supabase/**/*",
+  "./supabase/**/*"
+]
+
 }
