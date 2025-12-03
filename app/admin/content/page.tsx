@@ -8,6 +8,8 @@ import { Pencil, Trash2 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import LessonsReorder from "@/app/(dashboard)/_components/LessonsReorder";
 import type { Caption } from "./slide-manager/components/types";
+import MediaLibraryModal from "./slide-manager/components/MediaLibraryModal";
+
 
 
 /* ───────────────────────── PAGE ───────────────────────── */
@@ -41,6 +43,8 @@ export default function ContentPage() {
 
   const [showReorderModal, setShowReorderModal] = useState(false);
   const [reorderTarget, setReorderTarget] = useState<"modules" | "lessons" | null>(null);
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false);
+
 
   /* ───────── FORM DATA ───────── */
   const [newModuleTitle, setNewModuleTitle] = useState("");
@@ -52,6 +56,7 @@ export default function ContentPage() {
   const [seconds, setSeconds] = useState(5);
   const [caption, setCaption] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedImagePath, setSelectedImagePath] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [slideError, setSlideError] = useState("");
 
@@ -240,19 +245,34 @@ export default function ContentPage() {
 async function saveSlide() {
   try {
     if (!selectedLesson) return setSlideError("Missing lesson ID.");
-    if (!imageFile || !caption) return setSlideError("Image and caption required.");
 
-    const filename = `${uuidv4()}-${imageFile.name}`;
+    // Require either an uploaded file or a selected media library image
+    if (!imageFile && !selectedImagePath)
+      return setSlideError("Image and caption required.");
 
-    // 1. Upload image to bucket
-    const { data: uploadData, error: uploadErr } = await supabase.storage
-      .from("uploads")
-      .upload(`slides/${filename}`, imageFile);
+    if (!caption.trim())
+      return setSlideError("Image and caption required.");
 
-    if (uploadErr) throw uploadErr;
+    let finalImagePath = null;
 
-    const imagePath = uploadData.path;
+    // If using media library image (NO upload needed)
+    if (selectedImagePath) {
+      finalImagePath = selectedImagePath;
+    } 
+    
+    // If uploading new file
+    else if (imageFile) {
+      const filename = `${uuidv4()}-${imageFile.name}`;
 
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from("uploads")
+        .upload(`slides/${filename}`, imageFile);
+
+      if (uploadErr) throw uploadErr;
+
+      finalImagePath = uploadData.path;
+    }
+    
     // 2. Determine next slide order index
     const { data: existingSlides } = await supabase
       .from("lesson_slides")
@@ -261,71 +281,69 @@ async function saveSlide() {
       .order("order_index", { ascending: false })
       .limit(1);
 
-    const nextOrder = existingSlides?.[0]?.order_index + 1 || 1;
+    const existing = existingSlides ?? [];
 
-    // 3. Create slide entry
+    const nextOrder =
+      existing.length > 0
+        ? existing[0].order_index + 1
+        : 1;
+
+
+    // 3. Insert slide
     const { data: slideRows, error: slideErr } = await supabase
       .from("lesson_slides")
       .insert({
         lesson_id: selectedLesson,
-        image_path: imagePath,
+        image_path: finalImagePath,
         order_index: nextOrder,
       })
       .select()
       .single();
 
     if (slideErr) throw slideErr;
-    const slide = slideRows;
 
-    // 4. Create caption entry
-    const { error: capErr } = await supabase
-      .from("slide_captions")
-      .insert({
-        slide_id: slide.id,
-        caption: caption,
-        seconds: seconds,
-        line_index: 0,
-      });
+    // 4. Insert caption
+    const { error: capErr } = await supabase.from("slide_captions").insert({
+      slide_id: slideRows.id,
+      caption: caption.trim(),
+      seconds,
+      line_index: 0,
+    });
 
     if (capErr) throw capErr;
 
-    // 5. Close modal + reload slides
+    // 5. Close modal & reload
     setShowModalNewSlide(false);
+    setSelectedImagePath(null);
+    setImageFile(null);
+    setPreviewUrl(null);
+
     loadSlides(selectedLesson);
   } catch (err: any) {
     setSlideError(err.message || "Unknown error saving slide.");
   }
 }
+async function deleteSlide() {
+  if (!selectedSlideToDelete) return;
+  await supabase.from("lesson_slides").delete().eq("id", selectedSlideToDelete);
+  setSelectedSlideToDelete(null);
+  setShowModalDeleteSlide(false);
+  loadSlides(selectedLesson!);
+}
 
+/* ──────────────────── HELPERS ──────────────────── */
+function refreshTabs() {
+  window.dispatchEvent(new Event("refresh-modules"));
+}
 
-  async function deleteSlide() {
-    if (!selectedSlideToDelete) return;
-    await supabase.from("lesson_slides").delete().eq("id", selectedSlideToDelete);
-    setSelectedSlideToDelete(null);
-    setShowModalDeleteSlide(false);
-    loadSlides(selectedLesson!);
-  }
+/* ──────────────────── UI ──────────────────── */
+return (
+  <div className="p-6">
 
-  /* ──────────────────── HELPERS ──────────────────── */
-  function refreshTabs() {
-    window.dispatchEvent(new Event("refresh-modules"));
-  }
-
-  /* ──────────────────── UI ──────────────────── */
-  return (
-    <div className="p-6">
-     
-     {/* MODULE HEADER */}
-      <div className="flex justify-between items-center mb-2">
-        <div className="flex items-center gap-3">
-          <h2 className="font-bold text-[#001f40] text-xl">Modules</h2>
-          <a
-            href="/admin/content/reorder-modules"
-            className="text-[12px] text-[#ca5608] underline hover:text-[#a14505]"
-          >
-            Reorder Modules
-          </a>
-        </div>
+    {/* MODULE HEADER */}
+    <div className="mb-3">
+      <div className="flex justify-between items-center">
+        <h2 className="font-bold text-[#001f40] text-xl">Modules</h2>
 
         <button
           onClick={() => setShowModalNewModule(true)}
@@ -335,136 +353,185 @@ async function saveSlide() {
         </button>
       </div>
 
+      {/* Reorder Modules link — now on its own line */}
+      <a
+        href="/admin/content/reorder-modules"
+        className="text-[12px] text-[#ca5608] underline hover:text-[#a14505] mt-1 inline-block"
+      >
+        Reorder Modules
+      </a>
+    </div>
 
-      <ModuleTabs
-        onChange={(id: string) => setSelectedModule(id)}
-        onEdit={(m) => {
-          setSelectedModuleEdit(m);
-          setShowEditModuleModal(true);
-        }}
-      />
+    {/* REMOVE DUPLICATE BUTTON + BAD EXTRA DIV — FIXED */}
+    {/* Removed:
+        <button>...duplicate...</button>
+        </div>
+    */}
 
-{/* LESSON HEADER */}
-<div className="flex justify-between items-center mt-6 mb-2">
-  <div className="flex items-center gap-3">
-    <h2 className="font-bold text-[#001f40] text-xl">
-      Lessons {moduleName && `| ${moduleName}`}
-    </h2>
+    <ModuleTabs
+      onChange={(id: string) => setSelectedModule(id)}
+      onEdit={(m) => {
+        setSelectedModuleEdit(m);
+        setShowEditModuleModal(true);
+      }}
+    />
 
+
+      {/* TWO COLUMN: LESSONS + SLIDES */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
+
+  {/* ───────── LEFT COLUMN: LESSONS ───────── */}
+  <div>
+    {/* Lessons header + button */}
+    <div className="flex justify-between items-center mb-1">
+      <h2 className="font-bold text-[#001f40] text-xl">
+        Lessons {moduleName && `| ${moduleName}`}
+      </h2>
+
+      {selectedModule && (
+        <button
+          onClick={() => setShowModalNewLesson(true)}
+          className="px-3 py-1.5 bg-[#001f40] text-white text-sm rounded hover:bg-[#003266]"
+        >
+          + Add Lesson
+        </button>
+      )}
+    </div>
+
+    {/* Reorder Lessons link */}
     {selectedModule && (
       <button
         onClick={() => setShowReorderModal(true)}
-        className="text-[12px] text-[#ca5608] underline hover:text-[#a14505]"
+        className="text-[12px] text-[#ca5608] underline hover:text-[#a14505] mb-3"
       >
         Reorder Lessons
       </button>
     )}
+
+    {/* Lesson list card */}
+      <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 mt-1">
+      {!selectedModule && (
+        <p className="text-gray-500 text-sm">Select a module above.</p>
+      )}
+
+      {selectedModule && lessons.length === 0 && (
+        <p className="text-gray-500 text-sm">No lessons yet.</p>
+      )}
+
+      {selectedModule && lessons.length > 0 && (
+        <div className="divide-y">
+          {lessons.map((lesson) => (
+            <div
+              key={lesson.id}
+              className={`
+                flex justify-between items-center py-2 px-3 rounded cursor-pointer 
+                text-sm transition border
+                ${
+                  selectedLesson === lesson.id
+                    ? "bg-[#001f40] text-white border-[#001f40]"
+                    : "bg-white text-gray-800 hover:bg-gray-100 border-gray-200"
+                }
+              `}
+              onClick={() => setSelectedLesson(lesson.id)}
+            >
+              <span>{lesson.title}</span>
+
+              <div className="flex items-center gap-3">
+
+                {/* Pencil */}
+                <Pencil
+                  size={15}
+                  className={
+                    selectedLesson === lesson.id
+                      ? "text-white opacity-80 hover:opacity-100"
+                      : "text-gray-500 hover:text-[#001f40]"
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedLesson(lesson.id);
+                    setEditLessonTitle(lesson.title);
+                    setShowModalEditLesson(true);
+                  }}
+                />
+
+                {/* Trash – always RED */}
+                <Trash2
+                  size={15}
+                  className={
+                    selectedLesson === lesson.id
+                      ? "text-white opacity-80 hover:opacity-100"
+                      : "text-red-500 hover:text-red-700"
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedLesson(lesson.id);
+                    setLessonName(lesson.title);
+                    setShowModalDeleteLesson(true);
+                  }}
+                />
+
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   </div>
 
-  {selectedModule && (
-    <button
-      onClick={() => setShowModalNewLesson(true)}
-      className="px-3 py-1.5 bg-[#001f40] text-white text-sm rounded hover:bg-[#003266]"
-    >
-      + Add Lesson
-    </button>
-  )}
-</div>
+  {/* ───────── RIGHT COLUMN: SLIDES ───────── */}
+  <div>
+    {/* Slides header + button */}
+    <div className="flex justify-between items-center mb-1">
+      <h2 className="font-bold text-[#001f40] text-xl">
+        Slides {selectedLesson && `| ${lessonName}`}
+      </h2>
 
-      {/* LESSON LIST (NOT DRAGGABLE) */}
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-        {!selectedModule && (
-          <p className="text-gray-500 text-sm">Select a module above.</p>
-        )}
-
-        {selectedModule && lessons.length === 0 && (
-          <p className="text-gray-500 text-sm">No lessons yet.</p>
-        )}
-
-        {selectedModule && lessons.length > 0 && (
-          <>
-            {lessons.map((lesson) => (
-              <div
-                key={lesson.id}
-                className={`border-b flex justify-between items-center py-2 text-sm 
-                        ${selectedLesson === lesson.id ? "bg-gray-100" : ""}`}
-                onClick={() => setSelectedLesson(lesson.id)}
-              >
-                <span className="cursor-pointer">{lesson.title}</span>
-
-                <div className="flex items-center gap-3">
-                  <Pencil
-                    size={15}
-                    className="text-gray-500 hover:text-[#001f40]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedLesson(lesson.id);
-                      setEditLessonTitle(lesson.title);
-                      setShowModalEditLesson(true);
-                    }}
-                  />
-
-                  <Trash2
-                    size={15}
-                    className="text-red-500 hover:text-red-700"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedLesson(lesson.id);
-                      setLessonName(lesson.title);
-                      setShowModalDeleteLesson(true);
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-
-      {/* SLIDES HEADER */}
-        {selectedLesson && (
-      <div className="flex justify-between items-center mt-6 mb-2">
-        <div className="flex items-center gap-3">
-          <h2 className="font-bold text-[#001f40] text-xl">
-            Slides | {lessonName}
-          </h2>
-
-          <a
-            href={`/admin/content/slide-manager?lesson=${selectedLesson}`}
-            className="text-[12px] text-[#ca5608] underline hover:text-[#a14505]"
-          >
-            Slide Manager
-          </a>
-        </div>
-
+      {selectedLesson && (
         <button
           onClick={() => setShowModalNewSlide(true)}
           className="px-3 py-1.5 bg-[#001f40] text-white text-sm rounded hover:bg-[#003266]"
         >
           + Add Slide
         </button>
-      </div>
+      )}
+    </div>
+
+    {/* Manage Slides Link */}
+    {selectedLesson && (
+      <a
+        href={`/admin/content/slide-manager?lesson=${selectedLesson}`}
+        className="text-[12px] text-[#ca5608] underline hover:text-[#a14505] mb-3 inline-block"
+      >
+        Manage Slides
+      </a>
     )}
 
-      {/* SLIDES LIST */}
-      {selectedLesson && (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-          {loadingSlides && <p>Loading slides...</p>}
-          {!loadingSlides && slides.length === 0 && (
-            <p className="text-gray-500 text-sm">No slides yet.</p>
-          )}
+    {/* Slides card */}
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 mt-1">
+      {!selectedLesson && (
+        <p className="text-gray-500 text-sm">Select a lesson to view slides.</p>
+      )}
 
-      {!loadingSlides && slides.length > 0 && (
-        <div className="space-y-2">
-          {slides.map(s => (
+      {selectedLesson && loadingSlides && <p className="text-gray-500 text-sm">Loading slides...</p>}
+
+      {selectedLesson && !loadingSlides && slides.length === 0 && (
+        <p className="text-gray-500 text-sm">No slides yet.</p>
+      )}
+
+      {selectedLesson && !loadingSlides && slides.length > 0 && (
+        <div className="divide-y">
+          {slides.map((s) => (
             <div
               key={s.id}
-              className="border p-2 rounded flex justify-between items-center text-sm"
+              className="
+                flex justify-between items-center py-2 px-3 rounded cursor-pointer
+                text-sm transition bg-white hover:bg-gray-50
+              "
             >
-             <div className="flex flex-col">
+              <div className="flex flex-col">
                 {s.captions?.length ? (
                   s.captions.map((c: Caption) => (
-                    <p key={c.id} className="text-xs">
+                    <p key={c.id} className="text-sm">
                       {c.caption}
                     </p>
                   ))
@@ -478,6 +545,7 @@ async function saveSlide() {
                   {s.display_seconds}s
                 </span>
 
+                {/* Trash always red */}
                 <Trash2
                   size={15}
                   className="text-red-500 hover:text-red-700 cursor-pointer"
@@ -491,9 +559,12 @@ async function saveSlide() {
           ))}
         </div>
       )}
+    </div>
+  </div>
 
-        </div>
-      )}
+</div>
+
+
 
       {/* ───────── ALL MODALS BELOW ───────── */}
       <NewModuleModal
@@ -555,21 +626,41 @@ async function saveSlide() {
         onConfirm={deleteLesson}
       />
 
+
      {selectedLesson && (
         <SlideModal
-          show={showModalNewSlide}
-          lessonId={selectedLesson}
-          caption={caption}
-          setCaption={setCaption}
-          seconds={seconds}
-          setSeconds={setSeconds}
-          onClose={() => setShowModalNewSlide(false)}
-          onSave={saveSlide}               // ← must be saveSlide here
-          onFileChange={handleFileChange}
-          previewUrl={previewUrl}
-          error={slideError}
-        />
+      show={showModalNewSlide}
+      lessonId={selectedLesson}
+      caption={caption}
+      setCaption={setCaption}
+      seconds={seconds}
+      setSeconds={setSeconds}
+      onClose={() => setShowModalNewSlide(false)}
+      onSave={saveSlide}
+      onFileChange={handleFileChange}
+      previewUrl={previewUrl}
+      error={slideError}
+      openMediaLibrary={() => setShowMediaLibrary(true)}   // ← NEW
+    />
+
       )}
+
+
+      {/* MEDIA LIBRARY MODAL */}
+      <MediaLibraryModal
+        open={showMediaLibrary}
+        onClose={() => setShowMediaLibrary(false)}
+      onSelect={(path: string) => {
+        const publicUrl = supabase.storage
+          .from("uploads")
+          .getPublicUrl(path).data.publicUrl;
+
+        setSelectedImagePath(path);
+        setPreviewUrl(publicUrl);
+        setShowMediaLibrary(false);
+      }}
+
+      />
 
 
       {selectedLesson && (
@@ -860,10 +951,10 @@ function ConfirmSlideDeleteModal({ show, onClose, onConfirm }: any) {
   );
 }
 
+
 /* ───────────────────────── SLIDE UPLOAD MODAL ───────────────────────── */
 function SlideModal({
   show,
-  lessonId,
   caption,
   setCaption,
   seconds,
@@ -873,6 +964,7 @@ function SlideModal({
   onFileChange,
   previewUrl,
   error,
+  openMediaLibrary, // NEW — trigger media library
 }: any) {
   if (!show) return null;
 
@@ -889,16 +981,45 @@ function SlideModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1200]">
-      <div className="bg-white rounded-lg p-6 w-[380px] shadow-lg">
-        <h3 className="text-lg font-semibold text-[#001f40] mb-3">Add Slide</h3>
+      <div className="bg-white rounded-lg p-6 w-[380px] shadow-lg relative">
 
+        {/* ───────── TOP-RIGHT MEDIA LIBRARY BUTTON ─────────*/}
+        <button
+          onClick={openMediaLibrary}
+          className="
+            absolute
+            top-4
+            right-4
+            bg-[#ca5608]
+            text-white
+            text-sm
+            px-6
+            py-1.5
+            rounded
+            hover:bg-[#a14505]
+            shadow-sm
+          "
+        >
+          + Media Library
+        </button>
+
+        <h3 className="text-lg font-semibold text-[#001f40] mb-3">
+          Add Slide
+        </h3>
+
+        {/* IMAGE FIELD */}
         <label className="block text-sm font-medium mb-1 text-[#001f40]">
           Slide Image (max 1MB)
         </label>
 
         <div
           onClick={() => document.getElementById("fileInputSlide")?.click()}
-          className="border border-dashed border-gray-400 rounded-md flex items-center justify-center h-40 bg-gray-50 cursor-pointer hover:bg-gray-100 transition"
+          className="
+            border border-dashed border-gray-400
+            rounded-md flex items-center justify-center
+            h-40 bg-gray-50 cursor-pointer
+            hover:bg-gray-100 transition
+          "
         >
           {previewUrl ? (
             <img src={previewUrl} className="object-cover max-h-full rounded-md" />
@@ -915,6 +1036,7 @@ function SlideModal({
           onChange={onFileChange}
         />
 
+        {/* CAPTION */}
         <div className="mt-3">
           <label className="block text-sm font-medium mb-1 text-[#001f40]">
             Caption Text
@@ -925,11 +1047,12 @@ function SlideModal({
             placeholder="Enter caption..."
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
-            onKeyDown={handleKeyDown}   // ← ENTER / ESC works here
+            onKeyDown={handleKeyDown}
             autoFocus
           />
         </div>
 
+        {/* DURATION */}
         <div className="mt-3">
           <label className="block text-sm font-medium mb-1 text-[#001f40]">
             Display Duration (seconds)
@@ -940,12 +1063,13 @@ function SlideModal({
             value={seconds}
             onChange={(e) => setSeconds(parseInt(e.target.value))}
             className="border p-2 rounded w-24"
-            onKeyDown={handleKeyDown}   // ← ENTER / ESC also works here
+            onKeyDown={handleKeyDown}
           />
         </div>
 
         {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
 
+        {/* BUTTONS */}
         <div className="flex justify-end gap-2 mt-4">
           <button
             onClick={onClose}
@@ -955,9 +1079,13 @@ function SlideModal({
           </button>
           <button
             onClick={onSave}
-            className="px-6 py-1.5 rounded text-white text-sm font-semibold bg-[#001f40] hover:bg-[#003266]"
+            className="
+              px-6 py-1.5
+              rounded text-white text-sm
+              bg-[#001f40] hover:bg-[#003266]
+            "
           >
-            Save Slide
+            Save New Slide
           </button>
         </div>
       </div>

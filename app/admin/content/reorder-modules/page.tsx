@@ -125,8 +125,18 @@ export default function ReorderModulesPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <h1 className="text-xl font-bold text-[#001f40] mb-4">
-        Reorder Modules (Admin Only)
+        Reorder Modules
       </h1>
+      <p className="text-sm text-gray-700 mb-4">
+  <span className="font-semibold text-red-700">Warning:</span> Changing the
+  order of modules will immediately adjust the sequence in which students
+  experience the course. This may affect pacing, lesson progression, and
+  overall course flow. Review your changes carefully before saving.
+  <br /><br />
+  <span className="font-semibold">Important:</span> Changes made here are not
+  applied until you click <em>Save Order</em> below. If you leave or close this
+  screen without saving, your new module order will be lost.
+</p>
 
       <table className="w-full border text-sm rounded overflow-hidden">
         <thead className="bg-gray-100">
@@ -150,8 +160,18 @@ export default function ReorderModulesPage() {
             >
               {/* MODULE BADGE */}
               <td className="p-2 text-center">
-                <span className="text-[10px] px-2 py-[1px] rounded-full font-semibold bg-[#ca5608] text-white">
-                  {m.sort_order}
+                <span
+                  className="
+                    text-[11px]
+                    px-3
+                    py-[2px]
+                    rounded-full
+                    font-semibold
+                    bg-[#ca5608]
+                    text-white
+                  "
+                >                  
+                {m.sort_order}
                 </span>
               </td>
 

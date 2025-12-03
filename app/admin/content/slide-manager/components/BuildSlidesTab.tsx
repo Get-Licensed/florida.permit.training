@@ -6,15 +6,15 @@ import { supabase } from "@/utils/supabaseClient";
 import LessonExplorerLayout from "./LessonExplorerLayout";
 import LessonExplorer from "./LessonExplorer";
 
-// ---------------------------------------------------------
-// CONSTANTS
-// ---------------------------------------------------------
+/* ---------------------------------------------------------
+   CONSTANTS
+--------------------------------------------------------- */
 const PLACEHOLDER =
-  "https://yslhlomlsomknyxwtbtb.supabase.co/storage/v1/object/public/uploads/slides/Placeholder.png";
+  "slides/Placeholder.png";
 
-// ---------------------------------------------------------
-// BuildSlidesTab Component
-// ---------------------------------------------------------
+/* ---------------------------------------------------------
+   BuildSlidesTab Component
+--------------------------------------------------------- */
 export default function BuildSlidesTab() {
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [slides, setSlides] = useState<any[]>([]);
@@ -22,12 +22,11 @@ export default function BuildSlidesTab() {
   const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // Bulk import text
   const [bulkText, setBulkText] = useState("");
 
-  // ---------------------------------------------------------
-  // Toast State (MATCHING CaptionsEditor)
-  // ---------------------------------------------------------
+  /* ---------------------------------------------------------
+     Toast (same as CaptionsEditor)
+  --------------------------------------------------------- */
   const [toast, setToast] = useState<string | null>(null);
   const [animateToast, setAnimateToast] = useState(false);
 
@@ -41,9 +40,9 @@ export default function BuildSlidesTab() {
 
   const currentSlide = slides[selectedSlideIndex] || null;
 
-  // ---------------------------------------------------------
-  // LOAD SLIDES
-  // ---------------------------------------------------------
+  /* ---------------------------------------------------------
+     Load Slides 
+  --------------------------------------------------------- */
   async function loadSlides() {
     if (!selectedLessonId) return;
     setLoading(true);
@@ -61,13 +60,12 @@ export default function BuildSlidesTab() {
     setLoading(false);
   }
 
-  // ---------------------------------------------------------
-  // LOAD CAPTIONS
-  // ---------------------------------------------------------
+  /* ---------------------------------------------------------
+     Load Captions
+  --------------------------------------------------------- */
   async function loadCaptions(slideRows: any[]) {
-    const slideIds = slideRows.map((s) => s.id);
-
-    if (slideIds.length === 0) {
+    const ids = slideRows.map((s) => s.id);
+    if (!ids.length) {
       setCaptions([]);
       return;
     }
@@ -75,7 +73,7 @@ export default function BuildSlidesTab() {
     const { data: capRows } = await supabase
       .from("slide_captions")
       .select("*")
-      .in("slide_id", slideIds)
+      .in("slide_id", ids)
       .order("line_index", { ascending: true });
 
     setCaptions(capRows || []);
@@ -85,19 +83,17 @@ export default function BuildSlidesTab() {
     if (selectedLessonId) loadSlides();
   }, [selectedLessonId]);
 
-  // ---------------------------------------------------------
-  // Resolve Supabase Storage URL
-  // ---------------------------------------------------------
+  /* ---------------------------------------------------------
+     Resolve Supabase File
+  --------------------------------------------------------- */
   function resolveImage(path: string | null) {
     if (!path) return null;
-
-    const { data } = supabase.storage.from("uploads").getPublicUrl(path);
-    return data?.publicUrl ?? null;
+    return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
   }
 
-  // ---------------------------------------------------------
-  // BULK IMPORT (APPEND)
-  // ---------------------------------------------------------
+  /* ---------------------------------------------------------
+     BULK IMPORT
+  --------------------------------------------------------- */
   async function handleBulkImport(text: string) {
     if (!selectedLessonId) return;
 
@@ -120,17 +116,17 @@ export default function BuildSlidesTab() {
     let lastIndex =
       existingSlides?.length ? existingSlides[existingSlides.length - 1].order_index : 0;
 
-    let counter = lastIndex;
+    let index = lastIndex;
 
     for (const line of lines) {
-      counter++;
+      index++;
 
       const { data: slideRow } = await supabase
         .from("lesson_slides")
         .insert({
           lesson_id: selectedLessonId,
           image_path: null,
-          order_index: counter,
+          order_index: index,
         })
         .select()
         .single();
@@ -150,9 +146,9 @@ export default function BuildSlidesTab() {
     loadSlides();
   }
 
-  // ---------------------------------------------------------
-  // RENDER
-  // ---------------------------------------------------------
+  /* ---------------------------------------------------------
+     RENDER
+  --------------------------------------------------------- */
   return (
     <LessonExplorerLayout
       sidebar={
@@ -162,15 +158,15 @@ export default function BuildSlidesTab() {
         />
       }
     >
-      {/* Toast Notification (MATCHING CaptionsEditor) */}
+      {/* Toast */}
       {toast && (
         <div
           className={`
-            fixed bottom-6 right-6 
-            z-[99999] 
-            bg-green-600 text-white 
-            px-4 py-2 rounded shadow 
-            transition-all duration-300 
+            fixed bottom-6 right-6
+            z-[99999]
+            bg-green-600 text-white
+            px-4 py-2 rounded shadow
+            transition-all duration-300
             ${animateToast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}
           `}
         >
@@ -179,38 +175,21 @@ export default function BuildSlidesTab() {
       )}
 
       <div className="p-6 w-full">
+
+        {!currentSlide && (
+          <p className="text-gray-500 text-sm">Select a lesson to begin.</p>
+        )}
+
         {currentSlide && (
           <div className="w-full flex flex-col items-center">
 
-            {/* IMAGE PREVIEW */}
-            {(() => {
-              const resolved =
-                resolveImage(currentSlide.image_path) ||
-                supabase.storage
-                  .from("uploads")
-                  .getPublicUrl("slides/Placeholder.png").data.publicUrl;
-
-              return (
-                <img
-                  src={resolved}
-                  alt="Slide"
-                  className="w-[80%] max-w-4xl h-auto object-contain rounded mb-6 shadow"
-                />
-              );
-            })()}
-
-            {/* CAPTION PREVIEW */}
-            <p className="text-xl text-[#001f40] mb-6 whitespace-pre-wrap text-center leading-relaxed px-6">
-              {captions.find((c) => c.slide_id === currentSlide.id)?.caption || ""}
-            </p>
-
-            {/* NAVIGATION BUTTONS */}
-            <div className="flex gap-6 mt-4">
+            {/* NAV BUTTONS */}
+            <div className="flex justify-center gap-6 mb-6 w-full">
               <button
                 onClick={() =>
                   setSelectedSlideIndex(Math.max(selectedSlideIndex - 1, 0))
                 }
-                className="px-6 py-2 rounded bg-gray-200 hover:bg-gray-300 text-lg cursor-pointer"
+                className="px-6 py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm font-semibold"
               >
                 Prev
               </button>
@@ -221,22 +200,46 @@ export default function BuildSlidesTab() {
                     Math.min(selectedSlideIndex + 1, slides.length - 1)
                   )
                 }
-                className="px-6 py-2 rounded bg-[#ca5608] text-white text-lg cursor-pointer hover:bg-[#a14505]"
+                className="px-6 py-2 rounded bg-[#ca5608] text-white text-sm font-semibold hover:bg-[#a14505]"
               >
                 Next
               </button>
             </div>
 
-            {/* BULK CAPTION IMPORT */}
-            <div className="mt-10 w-full max-w-2xl bg-white border rounded p-4 shadow-sm">
-              <h3 className="text-lg font-semibold text-[#001f40] mb-3">
+            {/* IMAGE PREVIEW */}
+            <div className="w-full flex justify-center mb-6">
+              <img
+                src={
+                  resolveImage(currentSlide.image_path) ||
+                  supabase.storage
+                    .from("uploads")
+                    .getPublicUrl(PLACEHOLDER).data.publicUrl
+                }
+                className="w-[80%] max-w-4xl h-auto object-contain rounded shadow"
+              />
+            </div>
+
+            {/* CAPTION */}
+            <p className="text-xl text-[#001f40] font-medium mb-8 text-center whitespace-pre-wrap leading-relaxed px-6">
+              {captions.find((c) => c.slide_id === currentSlide.id)?.caption || ""}
+            </p>
+
+            {/* BULK IMPORT CARD */}
+            <div className="w-full max-w-2xl bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
+              <h3 className="text-lg font-bold text-[#001f40] mb-2">
                 Bulk Caption Import
               </h3>
 
+              <p className="text-sm text-gray-600 mb-3">
+                Paste multiple lines to create slides automatically.
+                <br />
+                <span className="italic">Rule: Each line = one new slide</span>
+              </p>
+
               <textarea
                 rows={10}
+                className="w-full border p-3 rounded text-sm"
                 placeholder={`Line 1\nLine 2\nLine 3`}
-                className="w-full border p-3 rounded"
                 value={bulkText}
                 onChange={(e) => setBulkText(e.target.value)}
               />
@@ -244,13 +247,12 @@ export default function BuildSlidesTab() {
               <div className="flex justify-end mt-4">
                 <button
                   onClick={() => handleBulkImport(bulkText)}
-                  className="relative z-10 px-4 py-2 bg-[#ca5608] text-white rounded cursor-pointer hover:bg-[#a14505] transition active:scale-[0.97]"
+                  className="px-5 py-2 text-sm font-semibold bg-[#ca5608] text-white rounded hover:bg-[#a14505] transition"
                 >
                   Import Captions
                 </button>
               </div>
             </div>
-
           </div>
         )}
       </div>

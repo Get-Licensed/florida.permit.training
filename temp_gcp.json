@@ -1,0 +1,14 @@
+{
+  "type": "service_account",
+  "project_id": "florida-permit-training",
+  "private_key_id": "413d0f19032366bfe0b16de8db697c3ae4ced1b8",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCnM+pP9lltnU7O\nhGNHuw+m5vEdXvcU/N8TQoDw5ZZT80Of2d2Sb6GzEcUt3DxXhBmXgNaxTwjd2v4o\nkV04j7F8QZ2AJA1LAEzJ3DoftxEP+0uxyZU05jtzCkgfjVF+bQqRonTeYLjQnOlH\n4Jg+6MDBp+1AmDtq1/e5xmC4x9GZ0ccbuYheODyYHjUFKZ8wUpHqX3Spj35nJmiC\nJ+E8WdOfX+jASti+/R6bfphkhJcPzRW1tRdJGYN7YQk2/eaMcnmeHv4czllkQjs/\nAHpwlHbbBATY4O6PbtMKU5OQilLE/X+Y9ifWAxO2uoo143lrqf4dxU9SvKTV1pXO\nCjTaFjwBAgMBAAECggEAFso1+AezOURdgzsawCJwV/a26yKwSWFNM5YXNp6IfrFT\n6JQcxhKmpt53cpCH/gLArTyPptPHuNuaVGO54dV+ItpbsiVX1X75OHNmzb9ZWUUO\nlHFOP8tY042Vdo1/y9xneiG7Tbs/vZmBl302qy505YByz2Dgimfc+WqfcNg1isJL\neNf0FvmmFhLhMFJ3m/h/khviSbK2pyoD/0JM217BEC1KMdU1eFFZAAZnmw8/ahki\n0x2iDJ7ksIKKeXwNhMXAlMsOl11WSb8aD34eHfC6Q94/CqlAI/Jy2GekOBI6nIff\nYgoVsXgFPzDtvzty6blHT+hll9JtafM2+lGrHitJhQKBgQDTEEMmMaRXrgx3j1wm\nbEYmEHIt2hTvcPS/nefp9cUAH6I7xeDT0UU0/IF9RJSpqMcf8SuELcqJbYt94rHe\nJ4OHwG9maB12RvntV0/EGpxJzDrRtBEfCyN2qAefTLq2ljULPlVPtNns+2YF59D2\ntaCAhaHZqbX0KRrNN9nteE4qXQKBgQDKzRT9O8RgJ3p8osVI1gsEDdCFSn7ltvm4\ngK5xAzOrFc8Ej/5Ew8vOjoFtEzPigJQAWZAye/CS23PyqDc6AAh2WJzq7On8KrDO\nZKL5d4ajnZdi9psR9pUP+FT6YnLQxV66cOz0baiiAf1yVq24qcBaVOvEzxsLmP3B\n9y/B88Vl9QKBgCnU1koymozaLRRhMHVZDkorBkY6K94M+CUmKbnAASx2GJRaMqYo\nmtvWk999AS3jCpw1E1feL38vW+82R+Rs1m/IXwvf5L71cEFvBZsrXwBtXtcDJkWN\n0piI0wHqljLr8FVrJENo56xFY0IWYN8UvlvaoGpgbXSX1P0JbcLYDj3tAoGARNU+\n3oS+rnQ32r3UgFhF/OZDdDpIv+dO8xSaILmZe+Q3E7Fb+DMMpdswirkNzz8c/NFp\nY/k1OmNKA36c4A7K0IBbIlGvSWuj/ymhN1MeW8JNc8WH9JzhEz6SeTmZBss2z8ks\nY/okVniecYSCCj9zjjVsoKw63cDbwE4J46a9xVECgYAvUR4/bSOH+jc3V6scpg2Y\nmXGsBMZCMnuJhDVzm2JpCcM+E4eSRvahMIhlfospyuw48udCg98e2VLtjEgbP1Ji\nFrChK16u0ynN7zTYkpGmOTWcVMv7PpL95D9HR6AoEwl3Qlv/r7G3UTPLPObtQEqr\nxJ+IjtNn2x2JAxw6atVicQ==\n-----END PRIVATE KEY-----\n",
+  "client_email": "tts-service@florida-permit-training.iam.gserviceaccount.com",
+  "client_id": "104182653949270037750",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/tts-service%40florida-permit-training.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+

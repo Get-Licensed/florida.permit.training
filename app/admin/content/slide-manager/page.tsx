@@ -1,17 +1,14 @@
 "use client";
 
 import { useState } from "react";
-
 import CaptionsEditor from "./components/CaptionsEditor";
-import BuildSlidesTab from "./components/BuildSlidesTab";
+
+type TabOption = "preview" | "captions" | "bulk";
 
 export default function SlideManagerPage() {
-  const [tab, setTab] = useState<"slides" | "captions" | "mapper">("slides");
+  const [tab, setTab] = useState<TabOption>("preview");
 
-  // NEW: bulk modal state
-  const [showBulkModal, setShowBulkModal] = useState(false);
-
-  const tabClasses = (t: string) =>
+  const tabClasses = (t: TabOption) =>
     `px-4 py-2 border-b-2 cursor-pointer ${
       tab === t
         ? "border-[#ca5608] text-[#ca5608] font-semibold"
@@ -26,21 +23,32 @@ export default function SlideManagerPage() {
 
       {/* TOP TABS */}
       <div className="flex gap-6 border-b mb-6">
-
-        <button className={tabClasses("slides")} onClick={() => setTab("slides")}>
+        <button
+          className={tabClasses("preview")}
+          onClick={() => setTab("preview")}
+        >
           Preview Course
         </button>
 
-        <button className={tabClasses("captions")} onClick={() => setTab("captions")}>
-          Captions
+        <button
+          className={tabClasses("captions")}
+          onClick={() => setTab("captions")}
+        >
+          Captions Editor
+        </button>
+
+        <button
+          className={tabClasses("bulk")}
+          onClick={() => setTab("bulk")}
+        >
+          Bulk Import
         </button>
       </div>
 
-      {/* TAB CONTENT */}
+      {/* TAB CONTENT – always the same component, different mode */}
       <div>
-        {tab === "slides" && <BuildSlidesTab />}
-        {tab === "captions" && <CaptionsEditor />}
+        <CaptionsEditor activeTab={tab} />
       </div>
-</div>
+    </div>
   );
 }

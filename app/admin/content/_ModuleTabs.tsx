@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
 type Module = {
   id: string;
@@ -13,9 +13,11 @@ type Module = {
 export default function ModuleTabs({
   onChange,
   onEdit,
+  onDelete,
 }: {
   onChange?: (id: string) => void;
   onEdit?: (m: Module) => void;
+  onDelete?: (id: string) => void;
 }) {
   const [modules, setModules] = useState<Module[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -37,7 +39,7 @@ export default function ModuleTabs({
 
   function select(m: Module) {
     setActive(m.id);
-    onChange && onChange(m.id);
+    onChange?.(m.id);
   }
 
   return (
@@ -48,29 +50,53 @@ export default function ModuleTabs({
         return (
           <div
             key={m.id}
-            className={`px-3 py-1 rounded cursor-pointer text-sm border flex items-center gap-2
-            ${isActive ? "bg-[#001f40] text-white" : "bg-white text-[#001f40] hover:bg-gray-100"}`}
+            className={`
+              flex justify-between items-center py-2 px-3 rounded cursor-pointer 
+              text-sm transition border w-fit
+              ${
+                isActive
+                  ? "bg-[#001f40] text-white border-[#001f40]"
+                  : "bg-white text-gray-800 hover:bg-gray-100 border-gray-200"
+              }
+            `}
             onClick={() => select(m)}
           >
-            <span>{m.title}</span>
+            {/* LEFT: Title + Badge */}
+            <div className="flex items-center gap-2">
+              <span>{m.title}</span>
 
-            {/* Sort Badge */}
-            <span
-              className={`text-[10px] px-2 py-[1px] rounded-full font-semibold
-              ${isActive ? "bg-white text-[#ca5608]" : "bg-[#ca5608] text-white"}`}
-            >
-              {m.sort_order}
-            </span>
+              {/* Sort Badge */}
+              <span
+                className={`
+                  text-[10px] px-2 py-[1px] rounded-full font-semibold
+                  ${
+                    isActive
+                      ? "bg-white text-[#ca5608]"
+                      : "bg-[#ca5608] text-white"
+                  }
+                `}
+              >
+                {m.sort_order}
+              </span>
+            </div>
 
-            <Pencil
-              size={13}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit && onEdit(m);
-              }}
-              className={`opacity-80 hover:opacity-100
-                ${isActive ? "text-white" : "text-[#001f40]"}`}
-            />
+            {/* RIGHT: Icons */}
+            <div className="flex items-center gap-3 ml-4">
+              <Pencil
+                size={15}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit?.(m);
+                }}
+                className={`
+                  ${
+                    isActive
+                      ? "text-white opacity-80 hover:opacity-100"
+                      : "text-gray-500 hover:text-[#001f40]"
+                  }
+                `}
+              />
+            </div>
           </div>
         );
       })}

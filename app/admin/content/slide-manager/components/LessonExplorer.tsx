@@ -43,10 +43,61 @@ export default function LessonExplorer({
     }));
   };
 
+  const openAll = () => {
+    const obj: Record<string, boolean> = {};
+    modules.forEach((m) => (obj[m.id] = true));
+    setOpenModules(obj);
+  };
+
+  const closeAll = () => {
+    const obj: Record<string, boolean> = {};
+    modules.forEach((m) => (obj[m.id] = false));
+    setOpenModules(obj);
+  };
+
+  const allOpen = modules.every((m) => openModules[m.id]);
+
   return (
     <div className="space-y-3 text-sm">
+
+      {/* CONTROL BUTTONS */}
+      <div className="flex items-center justify-between mb-2">
+
+        {/* REFRESH */}
+        <button
+          onClick={loadData}
+          className="
+            px-3 py-1.5 
+            bg-[#ca5608] 
+            text-white 
+            text-xs 
+            rounded-md 
+            hover:bg-[#a44706]
+          "
+        >
+          Refresh
+        </button>
+
+        {/* OPEN ALL / CLOSE ALL */}
+        <button
+          onClick={allOpen ? closeAll : openAll}
+          className="
+            px-3 py-1.5 
+            text-xs 
+            rounded-md 
+            border border-[#001f40] 
+            text-[#001f40] 
+            hover:bg-[#001f40] hover:text-white
+          "
+        >
+          {allOpen ? "Close All" : "Open All"}
+        </button>
+      </div>
+
+      {/* TITLE */}
       <h2 className="text-[#001f40] font-bold text-lg">Modules & Lessons</h2>
 
+      {/* MODULE TREE */}
       {modules.map((m) => {
         const isOpen = openModules[m.id] || false;
         const moduleLessons = lessons.filter((l) => l.module_id === m.id);
@@ -75,12 +126,14 @@ export default function LessonExplorer({
                     <div
                       key={l.id}
                       onClick={() => onSelect(l.id.toString())}
-                      className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer
+                      className={`
+                        flex items-center gap-2 px-2 py-1 rounded cursor-pointer
                         ${
                           selected
                             ? "bg-[#ca5608]/10 text-[#ca5608] font-medium"
                             : "text-gray-700 hover:bg-gray-100"
-                        }`}
+                        }
+                      `}
                     >
                       <BookOpen size={14} />
                       {l.title}

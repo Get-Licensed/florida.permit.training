@@ -20,9 +20,24 @@ export default function CaptionEditorRow({
   }
 
   return (
-    <div className="border p-3 rounded bg-gray-50">
+    <div className="w-full
+        p-3
+        border border-gray-300
+        rounded-lg
+        bg-white
+        ">
       <textarea
-        className="w-full p-2 border rounded"
+        className="
+        w-full
+        p-3
+        border border-gray-300
+        rounded-lg
+        bg-white
+        shadow-sm
+        focus:outline-none
+        focus:ring-2
+        focus:ring-[#ca5608]
+        "
         value={value}
         onChange={(e) => setValue(e.target.value)}
         rows={3}

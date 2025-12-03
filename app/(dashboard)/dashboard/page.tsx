@@ -79,11 +79,12 @@ export default function DashboardPage() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data } = await supabase
-        .from("course_progress")
-        .select("lesson_id, module_index, completed, elapsed_seconds")
-        .eq("user_id", user.id)
-        .eq("completed", true);
+    const { data } = await supabase
+      .from("course_progress")
+      .select("lesson_id, slide_index, completed, elapsed_seconds")
+      .eq("user_id", user.id)
+      .eq("completed", true);
+
 
       if (!data || data.length === 0) {
         setProgress(0);

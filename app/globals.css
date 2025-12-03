@@ -6,6 +6,12 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* These replace your theme variables */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans, Arial, sans-serif);
+  --font-mono: var(--font-geist-mono, monospace);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -13,16 +19,6 @@
     --background: #0a0a0a;
     --foreground: #ededed;
   }
-}
-
-/* -------------------------------------------------
-   TAILWIND THEME EXTENSIONS
---------------------------------------------------- */
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 /* -------------------------------------------------
@@ -80,4 +76,15 @@ body {
 
 .steering-animation {
   animation: steer 2.5s ease-in-out infinite;
+}
+
+/* -------------------------------------------------
+   DRAG AND DROP EFFECTS
+--------------------------------------------------- */
+.sortable-ghost {
+  background-color: rgba(202, 86, 8, 0.15) !important; /* Light orange */
+}
+
+.sortable-chosen {
+  background-color: rgba(202, 86, 8, 0.12) !important; /* Slight orange */
 }

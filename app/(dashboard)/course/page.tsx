@@ -70,13 +70,13 @@ export default function CoursePage() {
       if (uid) {
         const { data } = await supabase
           .from("course_progress")
-          .select("lesson_id,module_index,completed")
+          .select("lesson_id, slide_index, completed")
           .eq("user_id", uid)
           .eq("completed", true);
 
         if (data) {
           const map: Record<string, boolean> = {};
-          data.forEach((r) => (map[`${r.lesson_id}-${r.module_index}`] = true));
+          data.forEach((r) => (map[`${r.lesson_id}-${r.slide_index}`] = true));
           setCompletedModules(map);
         }
       }
@@ -121,6 +121,8 @@ export default function CoursePage() {
   /* 5) ALWAYS-MOUNTED ACTIVE STATE */
   const [currentLesson, setCurrentLesson] = useState(0);
   const [currentModule, setCurrentModule] = useState(0);
+  const currentSlideIndex = currentModule;
+
 
   useEffect(() => {
     if (resumeLesson !== null) setCurrentLesson(resumeLesson);
@@ -213,17 +215,18 @@ export default function CoursePage() {
 
     const dur = lesson.moduleDurations?.[currentModule] ?? 30;
     await supabase.from("course_progress").upsert(
-      {
-        user_id: userId,
-        course_id: "FL_PERMIT_TRAINING",
-        lesson_id: lesson.id,
-        module_index: currentModule,
-        completed: true,
-        elapsed_seconds: dur,
-        completed_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,course_id,lesson_id,module_index" }
-    );
+  {
+    user_id: userId,
+    course_id: "FL_PERMIT_TRAINING",
+    lesson_id: lesson.id,
+    slide_index: currentSlideIndex,
+    completed: true,
+    elapsed_seconds: dur,
+    completed_at: new Date().toISOString(),
+  },
+  { onConflict: "user_id,course_id,lesson_id,slide_index" }
+);
+
 
     setCompletedModules((prev) => ({ ...prev, [key]: true }));
   };

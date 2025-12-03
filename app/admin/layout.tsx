@@ -15,7 +15,7 @@ export default async function AdminLayout({
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
 
           {/* LOGO */}
-          <Link href="/dashboard" className="flex items-center">
+          <Link href="/admin" className="flex items-center">
             <div className="h-10 w-10 rounded-full overflow-hidden flex items-center justify-center shadow-sm">
               <img
                 src="/logo.png"
@@ -27,9 +27,10 @@ export default async function AdminLayout({
 
           {/* NAVIGATION */}
           <nav className="flex items-center space-x-6 text-sm font-medium">
-            <AdminNavItem href="/admin/content/slide-manager" label="Slides" />
+            <AdminNavItem href="/admin/content/slide-manager" label="Slides & Captions" />
             <AdminNavItem href="/admin/content/reorder-modules" label="Modules"/>
-            <AdminNavItem href="/admin/content" label="Editor" />
+            <AdminNavItem href="/admin/content/quiz/new" label="Quizzes"/>
+            <AdminNavItem href="/admin/content" label="Outline" />
             <AdminNavItem href="/admin/media" label="Media" />
 
           </nav>

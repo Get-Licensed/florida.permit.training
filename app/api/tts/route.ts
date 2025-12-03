@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { synthesizeSpeech } from "@/gcpTts";
+import { synthesizeSpeech } from "@/supabase/functions/generate-tts/gcpTts";
 
 export async function POST(req: Request) {
   try {

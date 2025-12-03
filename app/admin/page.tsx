@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/utils/supabaseClient";
 import {
-  Layers,
   Settings,
   Image as ImageIcon,
   Users,
   TrendingUp,
+  HelpCircle,
 } from "lucide-react";
 
 export default function AdminPortalPage() {
@@ -19,22 +19,24 @@ export default function AdminPortalPage() {
   }, []);
 
   async function loadActiveUsers() {
-    const { data, error } = await supabase
+    const { count, error } = await supabase
       .from("profiles")
-      .select("id")
-      .eq("role", "user"); // non-admin users
+      .select("*", { count: "exact", head: true })
+      .eq("role", "student");
 
-    if (!error && data) setActiveUsers(data.length);
+    if (!error) setActiveUsers(count ?? 0);
   }
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+
       {/* PAGE HEADER */}
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold text-[#001f40]">Admin Portal</h1>
 
         {/* BADGES */}
         <div className="flex gap-4">
+
           {/* Active Users */}
           <div className="bg-white border border-gray-200 shadow-sm px-4 py-2 rounded-lg flex items-center gap-2">
             <Users size={18} className="text-[#001f40]" />
@@ -44,7 +46,7 @@ export default function AdminPortalPage() {
             </div>
           </div>
 
-          {/* Completion Rate */}
+          {/* Completion */}
           <div className="bg-white border border-gray-200 shadow-sm px-4 py-2 rounded-lg flex items-center gap-2">
             <TrendingUp size={18} className="text-[#ca5608]" />
             <div>
@@ -52,37 +54,38 @@ export default function AdminPortalPage() {
               <p className="text-sm font-semibold">76%</p>
             </div>
           </div>
+
         </div>
       </div>
 
       {/* GRID OF ADMIN TOOLS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-        {/* REORDER MODULES */}
-        <AdminCard
-          icon={<Layers size={32} className="text-[#001f40]" />}
-          title="Reorder Modules"
-          description="Drag, reorder, and manage module flow."
-          href="/admin/content/reorder-modules"
-          buttonText="Open Module Sorter"
-        />
-
-        {/* FULL EDITOR */}
-        <AdminCard
-          icon={<Settings size={32} className="text-[#001f40]" />}
-          title="Full Content Editor"
-          description="Edit modules, lessons, and slides."
-          href="/admin/content"
-          buttonText="Open Editor"
-        />
-
         {/* SLIDE MANAGER */}
         <AdminCard
           icon={<ImageIcon size={32} className="text-[#001f40]" />}
           title="Slide Manager"
-          description="Manage slide assets, durations, and images."
+          description="Edit slides, captions, durations, and preview the full course flow."
           href="/admin/content/slide-manager"
           buttonText="Open Slide Manager"
+        />
+
+        {/* FULL CONTENT EDITOR */}
+        <AdminCard
+          icon={<Settings size={32} className="text-[#001f40]" />}
+          title="Full Content Editor"
+          description="Manage modules, lessons, slides, and structured content."
+          href="/admin/content"
+          buttonText="Open Editor"
+        />
+
+        {/* QUIZZES (NEW BOX) */}
+        <AdminCard
+          icon={<HelpCircle size={32} className="text-[#001f40]" />}
+          title="Quizzes"
+          description="Create new quizzes and edit existing quizzes for each lesson."
+          href="/admin/content/quiz/new"
+          buttonText="Manage Quizzes"
         />
 
       </div>
@@ -90,9 +93,9 @@ export default function AdminPortalPage() {
   );
 }
 
-/* -------------------------------------- */
-/* REUSABLE ADMIN CARD COMPONENT */
-/* -------------------------------------- */
+/* ------------------------- */
+/* REUSABLE CARD COMPONENT   */
+/* ------------------------- */
 
 function AdminCard({
   icon,
@@ -111,7 +114,9 @@ function AdminCard({
     <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-6 flex flex-col justify-between hover:shadow-md transition">
       <div>
         <div className="mb-4">{icon}</div>
+
         <h2 className="font-bold text-lg text-[#001f40]">{title}</h2>
+
         <p className="text-sm text-gray-600 mt-1">{description}</p>
       </div>
 
