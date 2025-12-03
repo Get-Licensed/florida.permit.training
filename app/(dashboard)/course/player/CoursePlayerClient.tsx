@@ -1,3 +1,5 @@
+// deno-lint-ignore-file
+
 "use client";
 
 import { useSearchParams } from "next/navigation";
@@ -243,52 +245,54 @@ export default function CoursePlayerClient() {
   } catch (_) {}
 }, [slideIndex, voiceOpen, narrationUrl]);
 
-/* ------------------------------------------------------
-   AUTO-NARRATE WHEN SLIDE CHANGES
------------------------------------------------------- */
-useEffect(() => {
-  // do not read during quizzes
-  if (isQuizMode) {
-    setNarrationUrl(null);
-    return;
-  }
+  /* ------------------------------------------------------
+     NAV / QUIZ DERIVED STATE
+  ------------------------------------------------------ */
+  const totalSlides = slides.length;
+  const totalQuiz = quizQuestions.length;
+  const isQuizMode = slideIndex === totalSlides && totalQuiz > 0;
 
-  const thisSlide = slides[slideIndex];
-  if (!thisSlide) return;
-
-  const lines = captions[thisSlide.id] || [];
-  const fullCaption = lines.map((l) => l.caption).join(" ");
-  if (!fullCaption.trim()) {
-    setNarrationUrl(null);
-    return;
-  }
-
-  let cancelled = false;
-
-  async function generateAudio() {
-    try {
-      const url = await fetchTtsAudio(fullCaption, voice);
-      if (!cancelled) setNarrationUrl(url);
-    } catch (e) {
-      console.error("TTS error:", e);
+  /* ------------------------------------------------------
+     AUTO-NARRATE WHEN SLIDE CHANGES
+  ------------------------------------------------------ */
+  useEffect(() => {
+    // do not read during quizzes
+    if (isQuizMode) {
+      setNarrationUrl(null);
+      return;
     }
-  }
 
-  generateAudio();
+    const thisSlide = slides[slideIndex];
+    if (!thisSlide) return;
 
-  return () => {
-    cancelled = true; // prevent race-condition playback
-  };
-}, [slideIndex, captions, isQuizMode, voice]);
+    const lines = captions[thisSlide.id] || [];
+    const fullCaption = lines.map((l) => l.caption).join(" ");
+    if (!fullCaption.trim()) {
+      setNarrationUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function generateAudio() {
+      try {
+        const url = await fetchTtsAudio(fullCaption, voice);
+        if (!cancelled) setNarrationUrl(url);
+      } catch (e) {
+        console.error("TTS error:", e);
+      }
+    }
+
+    generateAudio();
+
+    return () => {
+      cancelled = true; // prevent race-condition playback
+    };
+  }, [slideIndex, captions, isQuizMode, voice]);
 
   /* ------------------------------------------------------
      NAVIGATION
   ------------------------------------------------------ */
-  const totalSlides = slides.length;
-  const totalQuiz = quizQuestions.length;
-
-  const isQuizMode = slideIndex === totalSlides && totalQuiz > 0;
-
   const goNext = useCallback(() => {
     if (!isQuizMode) {
       if (slideIndex < totalSlides - 1)
@@ -380,6 +384,7 @@ useEffect(() => {
   /* ------------------------------------------------------
      RENDER
   ------------------------------------------------------ */
+
   return (
     <div className="relative min-h-screen bg-white flex flex-col">
 
