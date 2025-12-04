@@ -37,7 +37,7 @@ type CaptionRow = {
   line_index: number;
   published_audio_url_d: string | null;
   published_audio_url_a: string | null;
-  published_audio_url_c: string | null;
+  published_audio_url_j: string | null;
 };
 
 type QuizOptionRow = {
@@ -126,7 +126,7 @@ function resolveImage(path: string | null) {
         case "en-US-Neural2-D":
           return first.published_audio_url_d;
         case "en-US-Neural2-A":
-          return first.published_audio_url_A;
+          return first.published_audio_url_a;
         case "en-US-Neural2-J":
           return first.published_audio_url_j;
         default:
@@ -217,7 +217,7 @@ function resolveImage(path: string | null) {
         line_index,
         published_audio_url_d,
         published_audio_url_a,
-        published_audio_url_c
+        published_audio_url_j
       `)
       .in("slide_id", slideIds)
       .order("line_index", { ascending: true });
