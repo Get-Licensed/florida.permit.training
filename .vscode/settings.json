@@ -1,6 +1,18 @@
 {
   "deno.enable": true,
-  "deno.importMap": "../../deno.json",
   "deno.lint": true,
-  "deno.path": "C:\\Users\\maitr\\.deno\\bin\\deno.exe"
+  "deno.path": "C:\\Users\\maitr\\.deno\\bin\\deno.exe",
+
+  "deno.importMap": "supabase/deno.json",
+
+  "deno.workspace": [
+    {
+      "folder": "supabase/functions",
+      "enable": true
+    },
+    {
+      "folder": ".",
+      "enable": false
+    }
+  ]
 }

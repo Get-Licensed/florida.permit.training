@@ -35,6 +35,9 @@ type CaptionRow = {
   caption: string;
   seconds: number;
   line_index: number;
+  published_audio_url_d: string | null;
+  published_audio_url_f: string | null;
+  published_audio_url_g: string | null;
 };
 
 type QuizOptionRow = {
@@ -63,37 +66,15 @@ function resolveImage(path: string | null) {
 
 
 /* ------------------------------------------------------
-   GOOGLE TTS FETCHER (REAL-TIME)
------------------------------------------------------- */
-async function fetchTtsAudio(caption: string, voice: string) {
-  if (!caption) return null;
-
-  const ssml = `
-    <speak>
-      <break time="150ms"/>
-      ${caption}
-    </speak>
-  `;
-
-  const res = await fetch(
-          "https://yslhlomlsomknyxwtbtb.functions.supabase.co/generate-tts",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: ssml, voice })
-    }
-  );
-
-  const buf = await res.arrayBuffer();
-  return URL.createObjectURL(new Blob([buf], { type: "audio/mpeg" }));
-}
-
-
-
-/* ------------------------------------------------------
    MAIN PLAYER
 ------------------------------------------------------ */
-export default function CoursePlayerClient() {
+  const VOICES = [
+    { code: "en-US-Neural2-D", label: "Male 1 (Neural2-D)" },
+    { code: "en-US-Neural2-F", label: "Male 2 (Neural2-F)" },
+    { code: "en-US-Neural2-G", label: "Male 3 (Neural2-G)" },
+  ];
+
+  export default function CoursePlayerClient() {
   const searchParams = useSearchParams();
   const initialModuleId = searchParams.get("module_id");
 
@@ -114,9 +95,43 @@ export default function CoursePlayerClient() {
   const [loading, setLoading] = useState(true);
 
   const [volume, setVolume] = useState(0.8);
-  const [voiceOpen, setVoiceOpen] = useState(false);
-  const [voice, setVoice] = useState("John");
+  const [voice, setVoice] = useState("en-US-Neural2-D"); 
+
+
+
+/* ------------------------------------------------------
+   VOICE URL RESOLVER
+------------------------------------------------------ */
+    function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
+      if (!first) return null;
+
+      switch (voice) {
+        case "en-US-Neural2-D":
+          return first.published_audio_url_d;
+        case "en-US-Neural2-F":
+          return first.published_audio_url_f;
+        case "en-US-Neural2-G":
+          return first.published_audio_url_g;
+        default:
+          return null;
+      }
+    }
+
+    // load saved voice on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("course_voice");
+    if (saved) setVoice(saved);
+  }, []);
+
+  // save voice whenever it changes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("course_voice", voice);
+  }, [voice]);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
 
 
@@ -176,13 +191,25 @@ export default function CoursePlayerClient() {
     const slideIds = slideRows?.map((s) => s.id) ?? [];
     const { data: captionRows } = await supabase
       .from("slide_captions")
-      .select("*")
+      .select(`
+        id,
+        slide_id,
+        caption,
+        seconds,
+        line_index,
+        published_audio_url_d,
+        published_audio_url_f,
+        published_audio_url_g
+      `)
       .in("slide_id", slideIds)
       .order("line_index", { ascending: true });
 
+
     const grouped: Record<string, CaptionRow[]> = {};
     slideRows?.forEach((s) => {
-      grouped[s.id] = captionRows?.filter((c) => c.slide_id === s.id) ?? [];
+    grouped[s.id] =
+      captionRows?.filter((c) => String(c.slide_id) === String(s.id)) ?? 
+      [];
     });
     setCaptions(grouped);
 
@@ -216,6 +243,13 @@ export default function CoursePlayerClient() {
   }
 
   /* ------------------------------------------------------
+     NAV / QUIZ DERIVED STATE
+  ------------------------------------------------------ */
+  const totalSlides = slides.length;
+  const totalQuiz = quizQuestions.length;
+  const isQuizMode = slideIndex === totalSlides && totalQuiz > 0;
+
+  /* ------------------------------------------------------
      LOAD SEQUENCE
   ------------------------------------------------------ */
   useEffect(() => {
@@ -231,66 +265,36 @@ export default function CoursePlayerClient() {
   }, [lessons, currentLessonIndex]);
 
   useEffect(() => {
-  if (!audioRef.current) return;
+    if (!audioRef.current) return;
 
-  try {
-    audioRef.current.volume = volume;
-    audioRef.current.currentTime = 0;
-
-    if (voiceOpen) {
-      audioRef.current.play().catch(() => {});
-    } else {
-      audioRef.current.pause();
-    }
-  } catch (_) {}
-}, [slideIndex, voiceOpen, narrationUrl]);
-
-  /* ------------------------------------------------------
-     NAV / QUIZ DERIVED STATE
-  ------------------------------------------------------ */
-  const totalSlides = slides.length;
-  const totalQuiz = quizQuestions.length;
-  const isQuizMode = slideIndex === totalSlides && totalQuiz > 0;
-
-  /* ------------------------------------------------------
-     AUTO-NARRATE WHEN SLIDE CHANGES
-  ------------------------------------------------------ */
-  useEffect(() => {
-    // do not read during quizzes
     if (isQuizMode) {
       setNarrationUrl(null);
       return;
     }
 
-    const thisSlide = slides[slideIndex];
-    if (!thisSlide) return;
+    const slide = slides[slideIndex];
+    if (!slide) return;
 
-    const lines = captions[thisSlide.id] || [];
-    const fullCaption = lines.map((l) => l.caption).join(" ");
-    if (!fullCaption.trim()) {
+    const caps = captions[slide.id] || [];
+    const first = caps[0];
+
+    const baseUrl = resolveVoiceUrl(first, voice);
+    if (!baseUrl) {
       setNarrationUrl(null);
       return;
     }
 
-    let cancelled = false;
+    // Replace ONLY the voice folder inside tts_final/
+    const voiceUrl = baseUrl.replace(
+      /tts_final\/[^/]+\//,
+      `tts_final/${voice}/`
+    );
 
-    async function generateAudio() {
-      try {
-        const url = await fetchTtsAudio(fullCaption, voice);
-        if (!cancelled) setNarrationUrl(url);
-      } catch (e) {
-        console.error("TTS error:", e);
-      }
-    }
-
-    generateAudio();
-
-    return () => {
-      cancelled = true; // prevent race-condition playback
-    };
+    setNarrationUrl(voiceUrl);
   }, [slideIndex, captions, isQuizMode, voice]);
 
-  /* ------------------------------------------------------
+
+/* ------------------------------------------------------
      NAVIGATION
   ------------------------------------------------------ */
   const goNext = useCallback(() => {
@@ -396,42 +400,25 @@ export default function CoursePlayerClient() {
         />
       </div>
 
-{/* AUDIO CONTROL BUTTON + POPUP (OVERLAY) */}
-<div className="absolute top-4 right-4 z-5 pointer-events-auto">
+  {/* AUDIO CONTROLS (VOICE + VOLUME) */}
+  <div className="absolute top-4 right-4 z-50 bg-black/60 text-white rounded-xl px-4 py-3 flex items-center gap-4 pointer-events-auto">
+    <div className="flex items-center gap-2">
+      <span className="text-xs uppercase tracking-wide opacity-80">Voice</span>
+      <select
+        value={voice}
+        onChange={(e) => setVoice(e.target.value)}
+        className="bg-white text-black text-xs px-2 py-1 rounded"
+      >
+        {VOICES.map((v) => (
+          <option key={v.code} value={v.code}>
+            {v.label}
+          </option>
+        ))}
+      </select>
+    </div>
 
-  {/* Round Trigger Button */}
-  <button
-    onClick={() => setVoiceOpen(!voiceOpen)}
-    className="
-      w-10 h-10 
-      rounded-full 
-      bg-black/50 
-      backdrop-blur 
-      flex items-center justify-center 
-      text-white text-lg font-bold
-      hover:bg-black/70
-    "
-  >
-    🔊
-  </button>
-
-  {/* Popup Module */}
-  {voiceOpen && (
-    <div
-      className="
-        absolute mt-3 right-0
-        bg-[#2c3e50] 
-        text-white 
-        rounded-xl 
-        shadow-xl 
-        p-4 
-        w-48 
-        z-50 
-        pointer-events-auto
-      "
-    >
-      <div className="text-xs mb-2 opacity-80">VOL</div>
-
+    <div className="flex items-center gap-2">
+      <span className="text-xs opacity-80">Vol</span>
       <input
         type="range"
         min="0"
@@ -443,29 +430,15 @@ export default function CoursePlayerClient() {
           setVolume(v);
           if (audioRef.current) audioRef.current.volume = v;
         }}
-        className="w-full accent-[#ca5608]"
+        className="w-24 accent-[#ca5608]"
       />
-
-      <button
-        className="
-          w-full 
-          mt-3 
-          py-1.5 
-          rounded-md 
-          bg-[#ca5608] 
-          hover:bg-[#b14b06]
-          text-white text-sm
-        "
-      >
-        Voice: {voice}
-      </button>
     </div>
-  )}
-</div>
+  </div>
+
 
 
       {/* MAIN */}
-      <div className="relative flex-1 w-screen h-screen overflow-hidden pt-0 md:pt-10 pb-[160px]">
+      <div className="relative flex-1 w-screen h-screen overflow-hidden pt-0 md:pt-10 pb-[160px] z-0">
         {!isQuizMode ? (
           <SlideView currentImage={currentImage} />
         ) : (
@@ -527,7 +500,7 @@ export default function CoursePlayerClient() {
 ------------------------------------------------------ */
 function SlideView({ currentImage }: { currentImage: string | null }) {
   return (
-    <div className="absolute inset-0 flex items-start md:items-center justify-center">
+  <div className="absolute inset-0 flex items-start md:items-center justify-center z-10">
       {currentImage ? (
         <img
           src={currentImage}
