@@ -82,10 +82,10 @@ function resolveImage(path: string | null) {
       hashKey: "caption_hash_a",
     },
     {
-      code: "en-US-Neural2-C",
-      label: "Male Voice C",
-      urlKey: "published_audio_url_c",
-      hashKey: "caption_hash_c",
+      code: "en-US-Neural2-J",
+      label: "Male Voice J",
+      urlKey: "published_audio_url_j",
+      hashKey: "caption_hash_j",
     },
   ];
 
@@ -120,19 +120,20 @@ function resolveImage(path: string | null) {
    VOICE URL RESOLVER
 ------------------------------------------------------ */
    function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
-    if (!first) return null;
+      if (!first) return null;
 
-    switch (voice) {
-      case "en-US-Neural2-D":
-        return first.published_audio_url_d;
-      case "en-US-Neural2-A":
-        return first.published_audio_url_a;
-      case "en-US-Neural2-C":
-        return first.published_audio_url_c;
-      default:
-        return null;
+      switch (voice) {
+        case "en-US-Neural2-D":
+          return first.published_audio_url_d;
+        case "en-US-Neural2-A":
+          return first.published_audio_url_A;
+        case "en-US-Neural2-J":
+          return first.published_audio_url_j;
+        default:
+          return null;
+      }
     }
-  }
+
 
     // load saved voice on mount
   useEffect(() => {
@@ -281,34 +282,33 @@ function resolveImage(path: string | null) {
     if (lessons.length) loadLessonContent(lessons[currentLessonIndex].id);
   }, [lessons, currentLessonIndex]);
 
-  useEffect(() => {
-    if (!audioRef.current) return;
+useEffect(() => {
+  if (!audioRef.current) return;
 
-    if (isQuizMode) {
-      setNarrationUrl(null);
-      return;
-    }
+  if (isQuizMode) {
+    setNarrationUrl(null);
+    return;
+  }
 
-    const slide = slides[slideIndex];
-    if (!slide) return;
+  const slide = slides[slideIndex];
+  if (!slide) return;
 
-    const caps = captions[slide.id] || [];
-    const first = caps[0];
+  const caps = captions[slide.id] || [];
+  const first = caps[0];
 
-    const baseUrl = resolveVoiceUrl(first, voice);
-    if (!baseUrl) {
-      setNarrationUrl(null);
-      return;
-    }
+  // ✔ Only declared once
+  const baseUrl = resolveVoiceUrl(first, voice);
 
-    // Replace ONLY the voice folder inside tts_final/
-    const voiceUrl = baseUrl.replace(
-      /tts_final\/[^/]+\//,
-      `tts_final/${voice}/`
-    );
+  if (!baseUrl) {
+    setNarrationUrl(null);
+    return;
+  }
 
-    setNarrationUrl(voiceUrl);
-  }, [slideIndex, captions, isQuizMode, voice]);
+  // ✔ Just use it
+  setNarrationUrl(baseUrl);
+
+}, [slideIndex, captions, isQuizMode, voice]);
+
 
 
 /* ------------------------------------------------------
@@ -469,7 +469,13 @@ function resolveImage(path: string | null) {
       </div>
 
       {/* NARRATION AUDIO ELEMENT */}
-      <audio ref={audioRef} src={narrationUrl || undefined} autoPlay />
+        <audio
+          ref={audioRef}
+          src={narrationUrl || undefined}
+          autoPlay
+          preload="auto"
+          controls={false}
+        />
 
 
       {/* CAPTIONS */}

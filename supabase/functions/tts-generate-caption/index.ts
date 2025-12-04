@@ -30,7 +30,7 @@ async function generateForVoice(
   updatedVoices: string[],
   skippedVoices: string[],
 ) {
-  const voiceConfig = VOICES.find(v => v.code === targetVoice);
+  const voiceConfig = VOICES.find((v) => v.code === targetVoice);
   if (!voiceConfig) return;
 
   const existingHash = row[voiceConfig.hashKey];
@@ -43,22 +43,23 @@ async function generateForVoice(
 
   const ssml = `
     <speak>
-      <break time="150ms"/>
       ${text}
     </speak>
   `;
 
-  // Get MP3 audio
+  // Get audio bytes from Google TTS
   const audioBytes: Uint8Array = await synthesizeSpeech(ssml, targetVoice);
 
-  // Create Blob safely (no SharedArrayBuffer issues)
-  const safeBuffer = new Uint8Array(audioBytes).buffer;  // guaranteed ArrayBuffer
-  const file = new Blob([safeBuffer], { type: "audio/mpeg" });
+  // Convert returned bytes into WAV file
+  const wavBuffer = new Uint8Array(audioBytes).buffer;
 
+  // Create WAV Blob
+  const file = new Blob([wavBuffer], { type: "audio/wav" });
 
-  // Storage path
-  const path = `${targetVoice}/${captionId}.mp3`;
+  // Storage path (WAV extension)
+  const path = `${targetVoice}/${captionId}.wav`;
 
+  // Upload to Supabase
   const { error: uploadError } = await supabase.storage
     .from("tts_final")
     .upload(path, file, { upsert: true } as any);

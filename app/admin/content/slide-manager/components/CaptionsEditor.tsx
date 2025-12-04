@@ -41,7 +41,14 @@
     const [deleteTarget, setDeleteTarget] = useState<Slide | null>(null);
     const [deleting, setDeleting] = useState(false);
 
+    const [showResetModal, setShowResetModal] = useState(false);
+    const [resetting, setResetting] = useState(false);
 
+    const [showGenerateAllModal, setShowGenerateAllModal] = useState(false);
+    const [showResetLessonModal, setShowResetLessonModal] = useState(false);
+    const [resetCaptionTarget, setResetCaptionTarget] = useState<Caption | null>(null);
+
+    
   /* Concurrency-Limited Parallel Generation Utility */
 function runWithConcurrencyLimit<T, R>(
   items: T[],
@@ -400,7 +407,92 @@ async function duplicateSlide(slide: Slide) {
     function resolveImage(path: string | null) {
       if (!path) return PLACEHOLDER;
       return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
+        }
+    /* -------------------------------------------------------------
+      RESET AUDIO FOR LESSON (DB ONLY)
+    ------------------------------------------------------------- */
+    async function resetAudioForLesson() {
+      if (!selectedLessonId) return;
+      setResetting(true);
+
+      // Clear URLs + Hashes for D/A/C voices
+      await supabase
+        .from("slide_captions")
+        .update({
+          published_audio_url_d: null,
+          published_audio_url_a: null,
+          published_audio_url_j: null,
+          caption_hash_d: null,
+          caption_hash_a: null,
+          caption_hash_j: null,
+        })
+        .in(
+          "slide_id",
+          slides.map((s) => s.id)
+        );
+
+      setResetting(false);
+      setShowResetModal(false);
+      showToast("Audio reset for this lesson");
+      loadLessonData(selectedLessonId);
     }
+
+    /* -------------------------------------------------------------
+      RESET AUDIO FOR CAPTION
+    ------------------------------------------------------------- */
+
+    async function resetCaptionAudio(cap: Caption) {
+      if (!cap) return;
+
+      await supabase
+        .from("slide_captions")
+        .update({
+          published_audio_url_d: null,
+          published_audio_url_a: null,
+          published_audio_url_j: null,
+          caption_hash_d: null,
+          caption_hash_a: null,
+          caption_hash_j: null,
+        })
+        .eq("id", cap.id);
+
+      showToast("Caption audio reset");
+
+      if (selectedLessonId) {
+        await loadLessonData(selectedLessonId);
+      }
+    }
+
+    async function resetLessonAudio() {
+      if (!selectedLessonId) return;
+
+      const confirmReset = globalThis.confirm(
+        "This will erase ALL generated audio for this lesson.\nThis action affects the live course.\n\nContinue?"
+      );
+
+      if (!confirmReset) return;
+
+      const slideIds = slides.map(s => s.id);
+
+      await supabase
+        .from("slide_captions")
+        .update({
+          published_audio_url_d: null,
+          published_audio_url_a: null,
+          published_audio_url_j: null,
+          caption_hash_d: null,
+          caption_hash_a: null,
+          caption_hash_j: null,
+        })
+        .in("slide_id", slideIds);
+
+      showToast("All lesson audio reset");
+
+      if (selectedLessonId) {
+        await loadLessonData(selectedLessonId);
+      }
+    }
+
 
     /* ---------------------------------------------------------
       RENDER
@@ -447,7 +539,7 @@ async function duplicateSlide(slide: Slide) {
             <div className="flex justify-center gap-6 mb-6 w-full">
               <button type="button"
                 onClick={() => setSelectedSlideIndex(Math.max(selectedSlideIndex - 1, 0))}
-                className="px-6 py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm font-semibold"
+                className="px-6 py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm font-semibold cursor-pointer"
               >
                 Prev
               </button>
@@ -458,7 +550,7 @@ async function duplicateSlide(slide: Slide) {
                     Math.min(selectedSlideIndex + 1, slides.length - 1)
                   )
                 }
-                className="px-6 py-2 rounded bg-[#ca5608] text-white text-sm font-semibold hover:bg-[#a14505]"
+                className="px-6 py-2 rounded bg-[#ca5608] text-white text-sm font-semibold hover:bg-[#a14505] cursor-pointer"
               >
                 Next
               </button>
@@ -522,15 +614,59 @@ async function duplicateSlide(slide: Slide) {
 
     {/* AUDIO GENERATION BAR */}
     {tab === "captions" && captions.length > 0 && (
-      <div className="mb-4 p-4 bg-[#001f40] text-white rounded-xl shadow-sm flex items-center justify-between">
-        <span className="text-sm font-medium">Audio Tools</span>
+      <div
+        className="
+          mb-4
+          p-4
+          bg-gray-50
+          border border-gray-300
+          rounded-xl
+          shadow-sm
+          flex items-center justify-between
+        "
+      >
+        {/* LEFT SIDE LABEL */}
+        <span className="text-sm text-[#001f40] font-bold">
+          Bulk Audio Editor
+        </span>
 
-        <button type="button"
-          onClick={generateAllAudio}
-          className="px-4 py-2 bg-[#ca5608] rounded text-sm font-semibold hover:bg-[#a14505]"
-        >
-          Generate All Audio for Lesson
-        </button>
+        {/* RIGHT SIDE BUTTONS */}
+        <div className="flex gap-3">
+
+          {/* GENERATE ALL AUDIO */}
+          <button
+            type="button"
+            onClick={() => setShowGenerateAllModal(true)}
+            className="
+              px-3 py-1.5
+              bg-[#ca5608]
+              text-white
+              text-xs
+              rounded
+              cursor-pointer
+              hover:bg-[#a14505]
+            "
+          >
+            Generate Audio for All Lesson Captions
+          </button>
+
+          {/* RESET LESSON AUDIO */}
+          <button
+            type="button"
+            onClick={() => setShowResetLessonModal(true)}
+            className="
+              px-3 py-1.5
+              bg-red-600
+              text-white
+              text-xs
+              rounded
+              cursor-pointer
+              hover:bg-red-700
+            "
+          >
+            Reset All Lesson Audio
+          </button>
+        </div>
       </div>
     )}
 
@@ -539,7 +675,7 @@ async function duplicateSlide(slide: Slide) {
   <div className="mb-4 p-4 bg-gray-50 border border-gray-300 rounded-xl shadow-sm flex items-center justify-between">
 
     {/* LEFT SIDE STATUS */}
-    <span className="text-sm text-[#001f40] font-medium">
+    <span className="text-sm text-[#001f40] font-bold">
       {selectedSlides.size > 0
         ? `${selectedSlides.size} selected`
         : "Bulk Image Selector"}
@@ -551,7 +687,7 @@ async function duplicateSlide(slide: Slide) {
       {/* Select All */}
       <button type="button"
         onClick={() => setSelectedSlides(new Set(slides.map((s) => String(s.id))))}
-        className="px-3 py-1.5 text-sm bg-gray-200 rounded hover:bg-gray-300"
+        className="px-3 py-1.5 text-xs bg-gray-200 rounded hover:bg-gray-300 cursor-pointer"
       >
         Select All
       </button>
@@ -559,7 +695,7 @@ async function duplicateSlide(slide: Slide) {
       {/* Clear Selection */}
       <button type="button"
         onClick={() => setSelectedSlides(new Set())}
-        className="px-3 py-1.5 text-sm bg-gray-200 rounded hover:bg-gray-300"
+        className="px-3 py-1.5 text-xs bg-gray-200 rounded hover:bg-gray-300 cursor-pointer"
       >
         Clear
       </button>
@@ -569,7 +705,7 @@ async function duplicateSlide(slide: Slide) {
         onClick={() => selectedSlides.size > 0 && setMediaModalOpen(true)}
         disabled={selectedSlides.size === 0}
         className={`
-          px-3 py-1.5 text-sm rounded
+          px-3 py-1.5 text-xs rounded
           ${selectedSlides.size > 0
             ? "bg-[#001f40] text-white hover:bg-[#003266]"
             : "bg-gray-300 text-gray-500 cursor-not-allowed"}
@@ -621,7 +757,7 @@ async function duplicateSlide(slide: Slide) {
                   setMediaTargetSlide(slide);
                   setMediaModalOpen(true);
                 }}
-                className="mt-3 text-sm bg-[#001f40] text-white px-3 py-1.5 rounded hover:bg-[#003266]"
+                className="mt-3 text-xs bg-[#001f40] text-white px-3 py-1.5 rounded hover:bg-[#003266] cursor-pointer"
               >
                 Choose Media
               </button>
@@ -673,34 +809,36 @@ async function duplicateSlide(slide: Slide) {
                     <CaptionEditorRow
                       cap={cap}
                       onSave={(txt) => saveCaption(cap.id, txt)}
+                      onGenerateAudio={() => generateAudio(cap)}
+                      onResetAudio={() => resetCaptionAudio(cap)}
                     />
 
-                    {/* AUDIO GENERATION ROW */}
-                    <div className="flex items-center gap-4 mt-2">
-                      <button type="button"
-                        onClick={() => generateAudio(cap)}
-                        className="px-3 py-1.5 bg-[#ca5608] text-white text-xs rounded hover:bg-[#a14505]"
-                      >
-                        Generate Audio
-                      </button>
+                    {/* AUDIO PLAYER (per-caption) */}
+                    {(() => {
+                      let url = null;
 
-                  {/* AUDIO PREVIEW */}
-                  {(() => {
-                    const url =
-                      selectedVoice === "en-US-Neural2-D"
-                        ? cap.published_audio_url_d
-                        : selectedVoice === "en-US-Neural2-A"
-                        ? cap.published_audio_url_a
-                        : selectedVoice === "en-US-Neural2-C"
-                        ? cap.published_audio_url_c
-                        : null;
+                      if (selectedVoice === "en-US-Neural2-D") {
+                        url = cap.published_audio_url_d;
+                      } else if (selectedVoice === "en-US-Neural2-A") {
+                        url = cap.published_audio_url_a;
+                      } else if (selectedVoice === "en-US-Neural2-J") {
+                        url = cap.published_audio_url_j;
+                      }
 
-                    return url ? (
-                      <audio controls src={url} className="w-full h-8" />
-                    ) : null;
-                  })()}
+                      return url ? (
+                        <audio
+                          controls
+                          src={url}
+                          className="w-full mt-3 h-10 bg-white rounded border-gray-300"
+                        />
+                      ) : (
+                        <p className="text-xs text-gray-400 mt-2 italic">
+                          No audio available for this caption.
+                        </p>
+                      );
+                    })()}
 
-                    </div>
+
 
                   </div>
                 )}
@@ -711,6 +849,170 @@ async function duplicateSlide(slide: Slide) {
           </div>
         );
       })}
+      
+{/* RESET CAPTION AUDIO MODAL */}
+{resetCaptionTarget && (
+  <div className="fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center">
+    <div className="bg-white rounded-xl p-6 shadow-lg w-[360px] animate-fadeIn">
+
+      <h3 className="text-lg font-semibold text-[#001f40] mb-3">
+        Reset Caption Audio?
+      </h3>
+
+      <p className="text-sm text-gray-700 mb-5">
+        This will delete the generated audio for this caption.
+        <br />
+        <strong>This action cannot be undone.</strong>
+      </p>
+
+      <div className="flex justify-end gap-3">
+        <button
+          type="button"
+          onClick={() => setResetCaptionTarget(null)}
+          className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm cursor-pointer"
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          onClick={async () => {
+            await resetCaptionAudio(resetCaptionTarget);
+            setResetCaptionTarget(null);
+          }}
+          className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 cursor-pointer"
+        >
+          Reset Audio
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
+
+
+      {/* RESET ALL LESSON AUDIO MODAL */}
+      {showResetLessonModal && (
+        <div className="fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center">
+          <div className="bg-white rounded-xl p-6 shadow-lg w-[360px] animate-fadeIn">
+
+            <h3 className="text-lg font-semibold text-[#001f40] mb-3">
+              Warning!
+            </h3>
+
+            <p className="text-sm text-gray-700 mb-5">
+              This will permanently delete the caption audio for 
+              <strong> ALL CAPTIONS in this lesson.</strong>
+              <br /><br />
+              This action <strong>cannot be undone</strong> and will affect the live course.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowResetLessonModal(false)}
+                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowResetLessonModal(false);
+                  await resetLessonAudio();
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 cursor-pointer"
+              >
+                Reset Audio
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* GENERATE ALL LESSON AUDIO MODAL */}
+      {showGenerateAllModal && (
+        <div className="fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center">
+          <div className="bg-white rounded-xl p-6 shadow-lg w-[360px] animate-fadeIn">
+
+            <h3 className="text-lg font-semibold text-[#001f40] mb-3">
+              Warning!
+            </h3>
+
+            <p className="text-sm text-gray-700 mb-5">
+              This will only update audio for the captions that currently 
+              <strong> do not have audio generated.</strong>
+              <br /><br />
+              To reset audio in bulk for <strong>all captions</strong> in this lesson,  
+              use the <strong>Reset All Lesson Audio</strong> button instead.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowGenerateAllModal(false)}
+                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowGenerateAllModal(false);
+                  await generateAllAudio();
+                }}
+                className="px-4 py-2 bg-[#ca5608] text-white rounded text-sm hover:bg-[#a14505] cursor-pointer"
+              >
+                Generate
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+
+    {/* RESET AUDIO MODAL */}
+    {showResetModal && (
+      <div className="fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center">
+        <div className="bg-white rounded-xl p-6 shadow-lg w-[360px] animate-fadeIn">
+          <h3 className="text-lg font-semibold text-[#001f40] mb-3">
+            Reset Lesson Audio?
+          </h3>
+
+          <p className="text-sm text-gray-700 mb-5">
+            This will remove <strong>all generated audio</strong> and hashes 
+            for every caption in this lesson.  
+            <br />
+            <span className="font-semibold">
+              This cannot be undone and will affect the live course.
+            </span>
+          </p>
+
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setShowResetModal(false)}
+              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={resetAudioForLesson}
+              disabled={resetting}
+              className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50 cursor-pointer"
+            >
+              {resetting ? "Resetting..." : "Reset Audio"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
 
   {/* DELETE CONFIRMATION MODAL */}
@@ -733,7 +1035,7 @@ async function duplicateSlide(slide: Slide) {
               setShowDeleteModal(false);
               setDeleteTarget(null);
             }}
-            className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+            className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm cursor-pointer"
           >
             Cancel
           </button>
@@ -753,7 +1055,7 @@ async function duplicateSlide(slide: Slide) {
               if (selectedLessonId) loadLessonData(selectedLessonId);
             }}
             disabled={deleting}
-            className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50"
+            className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50 cursor-pointer"
           >
             {deleting ? "Deleting..." : "Delete"}
           </button>
@@ -780,8 +1082,7 @@ async function duplicateSlide(slide: Slide) {
         </h3>
 
         <p className="text-sm text-gray-600 mb-3">
-          Paste multiple lines to create slides.<br />
-          Each line becomes a separate slide.<br />
+          Create slides with captions in bulk. Paste text where each line creates a separate slide with caption.<br />
           <i>Rule: Line break = new slide</i>
         </p>
 
@@ -798,7 +1099,6 @@ async function duplicateSlide(slide: Slide) {
             focus:ring-2
             focus:ring-[#ca5608]
           "
-        //  placeholder={"Line 1...\nLine 2...\nLine 3..."}
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
@@ -806,7 +1106,7 @@ async function duplicateSlide(slide: Slide) {
         <div className="flex justify-end mt-4">
           <button type="button"
             onClick={() => onImport(text)}
-            className="px-5 py-2 bg-[#ca5608] text-white rounded font-semibold text-sm hover:bg-[#a14505]"
+            className="px-5 py-2 bg-[#ca5608] text-white rounded font-semibold text-sm hover:bg-[#a14505] cursor-pointer"
           >
             Import Slides
           </button>

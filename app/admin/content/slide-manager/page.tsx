@@ -41,7 +41,7 @@ export default function SlideManagerPage() {
           className={tabClasses("bulk")}
           onClick={() => setTab("bulk")}
         >
-          Bulk Import
+          Bulk Caption Import
         </button>
       </div>
 

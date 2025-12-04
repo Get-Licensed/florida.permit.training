@@ -33,8 +33,8 @@ export interface Caption {
   published_audio_url_a: string | null;
   caption_hash_a: string | null;
 
-  published_audio_url_c: string | null;
-  caption_hash_c: string | null;
+  published_audio_url_j: string | null;
+  caption_hash_j: string | null;
 
   updated_at?: string | null;  // keep if exists in DB
 }
