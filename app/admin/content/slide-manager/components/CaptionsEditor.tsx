@@ -1,14 +1,16 @@
-  "use client";
+// deno-lint-ignore-file no-sloppy-imports
+
+"use client";
 
   import { useState } from "react";
-  import { supabase } from "@/utils/supabaseClient.ts";
+  import { supabase } from "@/utils/supabaseClient";
 
-  import LessonExplorerLayout from "./LessonExplorerLayout.tsx";
-  import LessonExplorer from "./LessonExplorer.tsx";
-  import CaptionEditorRow from "./CaptionEditorRow.tsx";
-  import MediaLibraryModal from "./MediaLibraryModal.tsx";
+  import LessonExplorerLayout from "./LessonExplorerLayout";
+  import LessonExplorer from "./LessonExplorer";
+  import CaptionEditorRow from "./CaptionEditorRow";
+  import MediaLibraryModal from "./MediaLibraryModal";
 
-  import { Caption, Slide } from "./types.ts";
+  import { Caption, Slide } from "./types";
   import { Trash2, Copy, Plus } from "lucide-react";
 
   const PLACEHOLDER =
@@ -78,8 +80,6 @@ function runWithConcurrencyLimit<T, R>(
     startNext();
   });
 }
-
-//* ------  HASH GENERATOR (used to detect unchanged captions)--- *//
 
 // -------------------------------------------------------------
 // HASH GENERATOR (used to detect unchanged captions)
