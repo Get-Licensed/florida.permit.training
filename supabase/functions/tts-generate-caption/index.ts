@@ -12,10 +12,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // Voices
 const VOICES = [
-  { code: "en-US-Neural2-D", urlKey: "published_audio_url_d", hashKey: "caption_hash_d" },
-  { code: "en-US-Neural2-F", urlKey: "published_audio_url_f", hashKey: "caption_hash_f" },
-  { code: "en-US-Neural2-G", urlKey: "published_audio_url_g", hashKey: "caption_hash_g" },
+  { code: "en-US-Neural2-D", urlKey: "published_audio_url_d", hashKey: "caption_hash_d" }, // Male
+  { code: "en-US-Neural2-A", urlKey: "published_audio_url_a", hashKey: "caption_hash_a" }, // Male
+  { code: "en-US-Neural2-C", urlKey: "published_audio_url_c", hashKey: "caption_hash_c" }, // Male
 ];
+
 
 // ----------------------------------------------------------------------
 // Helper: generate TTS → upload → update DB
@@ -56,7 +57,7 @@ async function generateForVoice(
 
 
   // Storage path
-  const path = `tts_final/${targetVoice}/${captionId}.mp3`;
+  const path = `${targetVoice}/${captionId}.mp3`;
 
   const { error: uploadError } = await supabase.storage
     .from("tts_final")

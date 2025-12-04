@@ -23,7 +23,7 @@
     const [slides, setSlides] = useState<Slide[]>([]);
     const [captions, setCaptions] = useState<Caption[]>([]);
     const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
-    const [selectedVoice, setSelectedVoice] = useState("en-US-Neural2-D");
+    const [selectedVoice, _setSelectedVoice] = useState("en-US-Neural2-D");
 
     const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
 
@@ -71,7 +71,7 @@ function runWithConcurrencyLimit<T, R>(
             active--;
             startNext();
           })
-          .catch((err: any) => reject(err));
+        .catch((err: unknown) => reject(err));
       }
     };
 
@@ -110,32 +110,23 @@ async function generateAudio(caption: Caption) {
       voice: selectedVoice,
     };
 
-    const res = await fetch(
-      "https://yslhlomlsomknyxwtbtb.supabase.co/functions/v1/tts-generate-caption",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
-        },
-        // IMPORTANT: send the full body, not { text, voice }
-        body: JSON.stringify(body),
-      }
+    const { data, error } = await supabase.functions.invoke(
+      "tts-generate-caption",
+      { body }
     );
 
-    const out = await res.json();
-    console.log("Generated audio:", out);
-
-    if (!res.ok) {
-      console.error("TTS error (single):", out);
+    if (error) {
+      console.error("TTS error (single):", error);
       showToast("Audio generation failed");
       return;
     }
 
+    console.log("Generated audio:", data);
+
     if (selectedLessonId) {
       await loadLessonData(selectedLessonId);
     }
+
     showToast("Audio generated");
   } catch (err) {
     console.error("TTS error:", err);
@@ -165,34 +156,23 @@ async function generateAllAudio() {
           voice: selectedVoice,
         };
 
-        const res = await fetch(
-          "https://yslhlomlsomknyxwtbtb.supabase.co/functions/v1/tts-generate-caption",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
-            },
-            body: JSON.stringify(body),
-          }
+        const { data, error } = await supabase.functions.invoke(
+          "tts-generate-caption",
+          { body }
         );
 
-        const out = await res.json();
-
-        if (!res.ok) {
-          console.error("TTS error for caption", cap.id, out);
+        if (error) {
+          console.error("TTS error for caption", cap.id, error);
           return null;
         }
 
-        console.log("Generated audio for caption", cap.id, out);
-        return out;
+        console.log("Generated audio for caption", cap.id, data);
+        return data;
       }
     );
 
-    if (selectedLessonId) {
-      await loadLessonData(selectedLessonId);
-    }
+    if (selectedLessonId) await loadLessonData(selectedLessonId);
+
     showToast("All audio generated");
   } catch (err) {
     console.error("Batch TTS error:", err);
@@ -709,10 +689,10 @@ async function duplicateSlide(slide: Slide) {
                     const url =
                       selectedVoice === "en-US-Neural2-D"
                         ? cap.published_audio_url_d
-                        : selectedVoice === "en-US-Neural2-F"
-                        ? cap.published_audio_url_f
-                        : selectedVoice === "en-US-Neural2-G"
-                        ? cap.published_audio_url_g
+                        : selectedVoice === "en-US-Neural2-A"
+                        ? cap.published_audio_url_a
+                        : selectedVoice === "en-US-Neural2-C"
+                        ? cap.published_audio_url_c
                         : null;
 
                     return url ? (

@@ -36,8 +36,8 @@ type CaptionRow = {
   seconds: number;
   line_index: number;
   published_audio_url_d: string | null;
-  published_audio_url_f: string | null;
-  published_audio_url_g: string | null;
+  published_audio_url_a: string | null;
+  published_audio_url_c: string | null;
 };
 
 type QuizOptionRow = {
@@ -69,10 +69,27 @@ function resolveImage(path: string | null) {
    MAIN PLAYER
 ------------------------------------------------------ */
   const VOICES = [
-    { code: "en-US-Neural2-D", label: "Male 1 (Neural2-D)" },
-    { code: "en-US-Neural2-F", label: "Male 2 (Neural2-F)" },
-    { code: "en-US-Neural2-G", label: "Male 3 (Neural2-G)" },
+    {
+      code: "en-US-Neural2-D",
+      label: "Male Voice D",
+      urlKey: "published_audio_url_d",
+      hashKey: "caption_hash_d",
+    },
+    {
+      code: "en-US-Neural2-A",
+      label: "Male Voice A",
+      urlKey: "published_audio_url_a",
+      hashKey: "caption_hash_a",
+    },
+    {
+      code: "en-US-Neural2-C",
+      label: "Male Voice C",
+      urlKey: "published_audio_url_c",
+      hashKey: "caption_hash_c",
+    },
   ];
+
+
 
   export default function CoursePlayerClient() {
   const searchParams = useSearchParams();
@@ -102,20 +119,20 @@ function resolveImage(path: string | null) {
 /* ------------------------------------------------------
    VOICE URL RESOLVER
 ------------------------------------------------------ */
-    function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
-      if (!first) return null;
+   function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
+    if (!first) return null;
 
-      switch (voice) {
-        case "en-US-Neural2-D":
-          return first.published_audio_url_d;
-        case "en-US-Neural2-F":
-          return first.published_audio_url_f;
-        case "en-US-Neural2-G":
-          return first.published_audio_url_g;
-        default:
-          return null;
-      }
+    switch (voice) {
+      case "en-US-Neural2-D":
+        return first.published_audio_url_d;
+      case "en-US-Neural2-A":
+        return first.published_audio_url_a;
+      case "en-US-Neural2-C":
+        return first.published_audio_url_c;
+      default:
+        return null;
     }
+  }
 
     // load saved voice on mount
   useEffect(() => {
@@ -198,8 +215,8 @@ function resolveImage(path: string | null) {
         seconds,
         line_index,
         published_audio_url_d,
-        published_audio_url_f,
-        published_audio_url_g
+        published_audio_url_a,
+        published_audio_url_c
       `)
       .in("slide_id", slideIds)
       .order("line_index", { ascending: true });

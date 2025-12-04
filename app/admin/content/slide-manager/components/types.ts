@@ -27,14 +27,14 @@ export interface Caption {
   seconds: number;
   line_index: number;
 
-  // NEW multi-voice fields (DB1)
-  published_audio_url_d?: string | null;
-  published_audio_url_f?: string | null;
-  published_audio_url_g?: string | null;
+  published_audio_url_d: string | null;
+  caption_hash_d: string | null;
 
-  caption_hash_d?: string | null;
-  caption_hash_f?: string | null;
-  caption_hash_g?: string | null;
+  published_audio_url_a: string | null;
+  caption_hash_a: string | null;
+
+  published_audio_url_c: string | null;
+  caption_hash_c: string | null;
 
   updated_at?: string | null;  // keep if exists in DB
 }
