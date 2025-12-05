@@ -35,9 +35,10 @@ type CaptionRow = {
   caption: string;
   seconds: number;
   line_index: number;
-  published_audio_url_d: string | null;
   published_audio_url_a: string | null;
+  published_audio_url_d: string | null;
   published_audio_url_j: string | null;
+  published_audio_url_o: string | null;
 };
 
 type QuizOptionRow = {
@@ -68,27 +69,32 @@ function resolveImage(path: string | null) {
 /* ------------------------------------------------------
    MAIN PLAYER
 ------------------------------------------------------ */
-  const VOICES = [
-    {
-      code: "en-US-Neural2-D",
-      label: "Male Voice D",
-      urlKey: "published_audio_url_d",
-      hashKey: "caption_hash_d",
-    },
-    {
-      code: "en-US-Neural2-A",
-      label: "Male Voice A",
-      urlKey: "published_audio_url_a",
-      hashKey: "caption_hash_a",
-    },
-    {
-      code: "en-US-Neural2-J",
-      label: "Male Voice J",
-      urlKey: "published_audio_url_j",
-      hashKey: "caption_hash_j",
-    },
-  ];
-
+    const VOICES = [
+  {
+    code: "en-US-Neural2-A",
+    label: "Voice A (Neutral Male)",
+    urlKey: "published_audio_url_a",
+    hashKey: "caption_hash_a",
+  },
+  {
+    code: "en-US-Neural2-D",
+    label: "Voice D (Neural2 Male 1)",   // replaced Chirp-HD-D
+    urlKey: "published_audio_url_d",
+    hashKey: "caption_hash_d",
+  },
+  {
+    code: "en-US-Neural2-I",
+    label: "Voice I (Neural2 Male 2)",   // replaced Chirp-HD-O
+    urlKey: "published_audio_url_o",     // reuse same DB column
+    hashKey: "caption_hash_o",
+  },
+  {
+    code: "en-US-Neural2-J",
+    label: "Voice J (Neural2 Male 3)",
+    urlKey: "published_audio_url_j",
+    hashKey: "caption_hash_j",
+  },
+];
 
 
   export default function CoursePlayerClient() {
@@ -112,27 +118,35 @@ function resolveImage(path: string | null) {
   const [loading, setLoading] = useState(true);
 
   const [volume, setVolume] = useState(0.8);
-  const [voice, setVoice] = useState("en-US-Neural2-D"); 
+  const [voice, setVoice] = useState("en-US-Chirp-HD-D"); 
 
 
 
 /* ------------------------------------------------------
-   VOICE URL RESOLVER
+   VOICE URL RESOLVER (UPDATED)
 ------------------------------------------------------ */
-   function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
-      if (!first) return null;
+function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
+  if (!first) return null;
 
-      switch (voice) {
-        case "en-US-Neural2-D":
-          return first.published_audio_url_d;
-        case "en-US-Neural2-A":
-          return first.published_audio_url_a;
-        case "en-US-Neural2-J":
-          return first.published_audio_url_j;
-        default:
-          return null;
-      }
-    }
+  switch (voice) {
+    case "en-US-Neural2-A":
+      return first.published_audio_url_a;
+
+    // Neural2-D replaces old Chirp-D but still uses the same DB field
+    case "en-US-Neural2-D":
+      return first.published_audio_url_d;
+
+    // Neural2-I replaces old Chirp-O but still uses the same DB field
+    case "en-US-Neural2-I":
+      return first.published_audio_url_o;
+
+    case "en-US-Neural2-J":
+      return first.published_audio_url_j;
+
+    default:
+      return null;
+  }
+}
 
 
     // load saved voice on mount
@@ -217,7 +231,8 @@ function resolveImage(path: string | null) {
         line_index,
         published_audio_url_d,
         published_audio_url_a,
-        published_audio_url_j
+        published_audio_url_j,
+        published_audio_url_o
       `)
       .in("slide_id", slideIds)
       .order("line_index", { ascending: true });

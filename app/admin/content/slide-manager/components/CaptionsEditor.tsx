@@ -418,14 +418,16 @@ async function duplicateSlide(slide: Slide) {
       // Clear URLs + Hashes for D/A/C voices
       await supabase
         .from("slide_captions")
-        .update({
-          published_audio_url_d: null,
-          published_audio_url_a: null,
-          published_audio_url_j: null,
-          caption_hash_d: null,
-          caption_hash_a: null,
-          caption_hash_j: null,
-        })
+          .update({
+              published_audio_url_a: null,
+              published_audio_url_d: null,
+              published_audio_url_o: null,
+              published_audio_url_j: null,
+              caption_hash_a: null,
+              caption_hash_d: null,
+              caption_hash_o: null,
+              caption_hash_j: null,
+            })
         .in(
           "slide_id",
           slides.map((s) => s.id)
@@ -447,13 +449,15 @@ async function duplicateSlide(slide: Slide) {
       await supabase
         .from("slide_captions")
         .update({
-          published_audio_url_d: null,
-          published_audio_url_a: null,
-          published_audio_url_j: null,
-          caption_hash_d: null,
-          caption_hash_a: null,
-          caption_hash_j: null,
-        })
+            published_audio_url_a: null,
+            published_audio_url_d: null,
+            published_audio_url_o: null,
+            published_audio_url_j: null,
+            caption_hash_a: null,
+            caption_hash_d: null,
+            caption_hash_o: null,
+            caption_hash_j: null,
+          })
         .eq("id", cap.id);
 
       showToast("Caption audio reset");
@@ -477,13 +481,15 @@ async function duplicateSlide(slide: Slide) {
       await supabase
         .from("slide_captions")
         .update({
-          published_audio_url_d: null,
-          published_audio_url_a: null,
-          published_audio_url_j: null,
-          caption_hash_d: null,
-          caption_hash_a: null,
-          caption_hash_j: null,
-        })
+            published_audio_url_a: null,
+            published_audio_url_d: null,
+            published_audio_url_o: null,
+            published_audio_url_j: null,
+            caption_hash_a: null,
+            caption_hash_d: null,
+            caption_hash_o: null,
+            caption_hash_j: null,
+          })
         .in("slide_id", slideIds);
 
       showToast("All lesson audio reset");
@@ -814,16 +820,19 @@ async function duplicateSlide(slide: Slide) {
                     />
 
                     {/* AUDIO PLAYER (per-caption) */}
-                    {(() => {
-                      let url = null;
+                     {(() => {
+                    let url = null;
 
-                      if (selectedVoice === "en-US-Neural2-D") {
-                        url = cap.published_audio_url_d;
-                      } else if (selectedVoice === "en-US-Neural2-A") {
+                      if (selectedVoice === "en-US-Neural2-A") {
                         url = cap.published_audio_url_a;
+                      } else if (selectedVoice === "en-US-Neural2-D") {
+                        url = cap.published_audio_url_d;
+                      } else if (selectedVoice === "en-US-Neural2-I") {
+                        url = cap.published_audio_url_o; // reused column
                       } else if (selectedVoice === "en-US-Neural2-J") {
                         url = cap.published_audio_url_j;
                       }
+
 
                       return url ? (
                         <audio
@@ -837,6 +846,7 @@ async function duplicateSlide(slide: Slide) {
                         </p>
                       );
                     })()}
+
 
 
 
