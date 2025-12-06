@@ -48,7 +48,10 @@
     const [showResetLessonModal, setShowResetLessonModal] = useState(false);
     const [resetCaptionTarget, setResetCaptionTarget] = useState<Caption | null>(null);
 
-    
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [progressTotal, setProgressTotal] = useState(0);
+  
   /* Concurrency-Limited Parallel Generation Utility */
 function runWithConcurrencyLimit<T, R>(
   items: T[],
@@ -131,8 +134,10 @@ async function generateAudio(caption: Caption) {
     console.log("Generated audio:", data);
 
     if (selectedLessonId) {
-      await loadLessonData(selectedLessonId);
-    }
+    // Allow Postgres + Storage to commit
+    await new Promise((r) => setTimeout(r, 300));
+    await loadLessonData(selectedLessonId);
+  }
 
     showToast("Audio generated");
   } catch (err) {
@@ -148,13 +153,26 @@ async function generateAllAudio() {
   try {
     if (!captions.length) return;
 
+    setIsGenerating(true);
+    setProgress(0);
+    setProgressTotal(captions.length);
+
+    let completed = 0;
+
     await runWithConcurrencyLimit(
       captions,
       3,
       async (cap) => {
-        if (!cap.caption?.trim()) return null;
+        if (!cap.caption?.trim()) {
+          completed++;
+          setProgress(completed);
+          return null;
+        }
 
-        const hash = await computeHash(cap.caption);
+        const hash =
+          cap.forcedHash
+            ? cap.forcedHash
+            : await computeHash(cap.caption);
 
         const body = {
           captionId: cap.id,
@@ -163,32 +181,50 @@ async function generateAllAudio() {
           voice: selectedVoice,
         };
 
-        const { data, error } = await supabase.functions.invoke(
+        const { error } = await supabase.functions.invoke(
           "tts-generate-caption",
           { body }
         );
+
+        completed++;
+        setProgress(completed);
 
         if (error) {
           console.error("TTS error for caption", cap.id, error);
           return null;
         }
 
-        console.log("Generated audio for caption", cap.id, data);
-        return data;
+        if (cap.forcedHash) {
+          setCaptions((prev) =>
+            prev.map((c) =>
+              c.id === cap.id ? { ...c, forcedHash: undefined } : c
+            )
+          );
+        }
+
+        return true;
       }
     );
 
-    if (selectedLessonId) await loadLessonData(selectedLessonId);
+    if (selectedLessonId) {
+      await new Promise((r) => setTimeout(r, 300));
+      await loadLessonData(selectedLessonId);
+    }
 
     showToast("All audio generated");
   } catch (err) {
     console.error("Batch TTS error:", err);
     showToast("Batch audio failed");
+  } finally {
+    setIsGenerating(false);
   }
 }
 
 
-  /* TOAST */
+
+  /* -------------------------------------
+                   TOAST 
+  --------------------------------------*/
     function showToast(msg: string) {
       setToast(msg);
       setAnimateToast(true);
@@ -411,7 +447,7 @@ async function duplicateSlide(slide: Slide) {
     /* -------------------------------------------------------------
       RESET AUDIO FOR LESSON (DB ONLY)
     ------------------------------------------------------------- */
-    async function resetAudioForLesson() {
+    async function resetLessonAudio() {
       if (!selectedLessonId) return;
       setResetting(true);
 
@@ -443,62 +479,46 @@ async function duplicateSlide(slide: Slide) {
       RESET AUDIO FOR CAPTION
     ------------------------------------------------------------- */
 
-    async function resetCaptionAudio(cap: Caption) {
-      if (!cap) return;
+async function resetCaptionAudio(cap: Caption) {
+  if (!cap) return;
 
-      await supabase
-        .from("slide_captions")
-        .update({
-            published_audio_url_a: null,
-            published_audio_url_d: null,
-            published_audio_url_o: null,
-            published_audio_url_j: null,
-            caption_hash_a: null,
-            caption_hash_d: null,
-            caption_hash_o: null,
-            caption_hash_j: null,
-          })
-        .eq("id", cap.id);
+  // 1. Generate a brand new hash
+  const newHash = crypto.randomUUID();
 
-      showToast("Caption audio reset");
+  // 2. Reset all URLs, reset existing hashes, reset seconds
+  await supabase
+    .from("slide_captions")
+    .update({
+      published_audio_url_a: null,
+      published_audio_url_d: null,
+      published_audio_url_o: null,
+      published_audio_url_j: null,
 
-      if (selectedLessonId) {
-        await loadLessonData(selectedLessonId);
-      }
-    }
+      caption_hash_a: null,
+      caption_hash_d: null,
+      caption_hash_o: null,
+      caption_hash_j: null,
 
-    async function resetLessonAudio() {
-      if (!selectedLessonId) return;
+      seconds: null
+    })
+    .eq("id", cap.id);
 
-      const confirmReset = globalThis.confirm(
-        "This will erase ALL generated audio for this lesson.\nThis action affects the live course.\n\nContinue?"
-      );
+  // 3. Update UI so that the NEXT Generate call uses NEW HASH
+  setCaptions(prev =>
+    prev.map(c =>
+      c.id === cap.id
+        ? { ...c, forcedHash: newHash } // <-- store the new hash in UI state
+        : c
+    )
+  );
 
-      if (!confirmReset) return;
+  showToast("Caption audio reset");
 
-      const slideIds = slides.map(s => s.id);
-
-      await supabase
-        .from("slide_captions")
-        .update({
-            published_audio_url_a: null,
-            published_audio_url_d: null,
-            published_audio_url_o: null,
-            published_audio_url_j: null,
-            caption_hash_a: null,
-            caption_hash_d: null,
-            caption_hash_o: null,
-            caption_hash_j: null,
-          })
-        .in("slide_id", slideIds);
-
-      showToast("All lesson audio reset");
-
-      if (selectedLessonId) {
-        await loadLessonData(selectedLessonId);
-      }
-    }
-
+  // 4. Reload data if needed
+  if (selectedLessonId) {
+    await loadLessonData(selectedLessonId);
+  }
+}
 
     /* ---------------------------------------------------------
       RENDER
@@ -642,19 +662,37 @@ async function duplicateSlide(slide: Slide) {
           {/* GENERATE ALL AUDIO */}
           <button
             type="button"
+            disabled={isGenerating}
             onClick={() => setShowGenerateAllModal(true)}
-            className="
+            className={`
+              relative
               px-3 py-1.5
-              bg-[#ca5608]
               text-white
               text-xs
+              w-60
               rounded
               cursor-pointer
-              hover:bg-[#a14505]
-            "
+              overflow-hidden
+              ${isGenerating ? "bg-[#a14505] opacity-90 cursor-not-allowed" : "bg-[#ca5608] hover:bg-[#fc7212]"}
+            `}
           >
-            Generate Audio for All Lesson Captions
+            {/* PROGRESS BAR BEHIND TEXT */}
+            {isGenerating && (
+              <div
+                className="absolute inset-0 bg-[#fc7212] transition-all duration-300"
+                style={{ width: `${(progress / progressTotal) * 100}%` }}
+              />
+            )}
+
+            {/* BUTTON LABEL */}
+            <span className="relative z-10">
+              {isGenerating
+                ? `Generating ${progress}/${progressTotal}…`
+                : "Generate Audio for All Lesson Captions"}
+            </span>
           </button>
+
+
 
           {/* RESET LESSON AUDIO */}
           <button
@@ -677,7 +715,8 @@ async function duplicateSlide(slide: Slide) {
     )}
 
 
-  {/* ALWAYS VISIBLE BULK BAR */}
+ {/* ALWAYS VISIBLE BULK BAR — ONLY IN CAPTIONS TAB */}
+{tab === "captions" && (
   <div className="mb-4 p-4 bg-gray-50 border border-gray-300 rounded-xl shadow-sm flex items-center justify-between">
 
     {/* LEFT SIDE STATUS */}
@@ -691,15 +730,19 @@ async function duplicateSlide(slide: Slide) {
     <div className="flex gap-3">
 
       {/* Select All */}
-      <button type="button"
-        onClick={() => setSelectedSlides(new Set(slides.map((s) => String(s.id))))}
+      <button
+        type="button"
+        onClick={() =>
+          setSelectedSlides(new Set(slides.map((s) => String(s.id))))
+        }
         className="px-3 py-1.5 text-xs bg-gray-200 rounded hover:bg-gray-300 cursor-pointer"
       >
         Select All
       </button>
 
       {/* Clear Selection */}
-      <button type="button"
+      <button
+        type="button"
         onClick={() => setSelectedSlides(new Set())}
         className="px-3 py-1.5 text-xs bg-gray-200 rounded hover:bg-gray-300 cursor-pointer"
       >
@@ -707,14 +750,17 @@ async function duplicateSlide(slide: Slide) {
       </button>
 
       {/* Change Image */}
-      <button type="button"
+      <button
+        type="button"
         onClick={() => selectedSlides.size > 0 && setMediaModalOpen(true)}
         disabled={selectedSlides.size === 0}
         className={`
           px-3 py-1.5 text-xs rounded
-          ${selectedSlides.size > 0
-            ? "bg-[#001f40] text-white hover:bg-[#003266]"
-            : "bg-gray-300 text-gray-500 cursor-not-allowed"}
+          ${
+            selectedSlides.size > 0
+              ? "bg-[#001f40] text-white hover:bg-[#003266]"
+              : "bg-gray-300 text-gray-500 cursor-not-allowed"
+          }
         `}
       >
         Change Image
@@ -722,143 +768,132 @@ async function duplicateSlide(slide: Slide) {
 
     </div>
   </div>
+)}
 
+{/* SLIDE LIST — ONLY IN CAPTIONS TAB */}
+{tab === "captions" && slides.length > 0 && (
+  slides.map((slide) => {
+    const cap = captions.find((c) => c.slide_id === slide.id);
+    const isSelected = selectedSlides.has(String(slide.id));
+    const imageUrl = resolveImage(slide.image_path);
 
-  {/* SLIDE LIST */}
-    {slides.length > 0 &&
-      slides.map((slide) => {
-        const cap = captions.find((c) => c.slide_id === slide.id);
-        const isSelected = selectedSlides.has(String(slide.id));
-        const imageUrl = resolveImage(slide.image_path);
+    return (
+      <div
+        key={slide.id}
+        className={`
+          relative
+          p-4
+          bg-white
+          border border-gray-300
+          rounded-xl
+          shadow-sm
+          hover:shadow-md
+          hover:bg-gray-50
+          transition
+          mb-5
+          flex gap-5
+          items-start
+          ${isSelected ? "outline outline-2 outline-[#ca5608]" : ""}
+        `}
+      >
+        {/* LEFT COLUMN */}
+        <div className="flex flex-col items-center w-[220px]">
 
-        return (
-          <div
-            key={slide.id}
-            className={`
-              relative
-              p-4
-              bg-white
-              border border-gray-300
-              rounded-xl
-              shadow-sm
-              hover:shadow-md
-              hover:bg-gray-50
-              transition
-              mb-5
-              flex gap-5
-              items-start
-              ${isSelected ? "outline outline-2 outline-[#ca5608]" : ""}
-            `}
+          <div className="w-full aspect-[16/9] bg-gray-100 rounded overflow-hidden shadow-sm">
+            <img src={imageUrl} className="w-full h-full object-cover" />
+          </div>
+
+          <div className="flex gap-9 mt-3 items-center text-sm text-gray-700">
+            <label className="flex items-center gap-1 cursor-pointer text-xs">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={isSelected}
+                onChange={() => toggleSlideSelection(slide.id)}
+              />
+              Select
+            </label>
+
+            <Plus
+              size={18}
+              className="text-[#ca5608] cursor-pointer hover:text-[#a14505]"
+              onClick={() => addSlideAfter(slide)}
+            />
+
+            <Copy
+              size={16}
+              className="text-[#001f40] cursor-pointer hover:text-[#003266]"
+              onClick={() => duplicateSlide(slide)}
+            />
+
+            <Trash2
+              size={16}
+              className="text-red-500 cursor-pointer hover:text-red-700"
+              onClick={() => {
+                setDeleteTarget(slide);
+                setShowDeleteModal(true);
+              }}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMediaTargetSlide(slide);
+              setMediaModalOpen(true);
+            }}
+            className="mt-3 text-xs bg-[#001f40] text-white px-3 py-1.5 rounded hover:bg-[#003266] cursor-pointer"
           >
+            Choose Media
+          </button>
 
-            {/* LEFT COLUMN */}
-            <div className="flex flex-col items-center w-[220px]">
+        </div>
 
-              <div className="w-full aspect-[16/9] bg-gray-100 rounded overflow-hidden shadow-sm">
-                <img src={imageUrl} className="w-full h-full object-cover" />
-              </div>
+        {/* RIGHT COLUMN */}
+        <div className="flex-1">
+          <div className="bg-white border border-gray-300 rounded-xl shadow-sm p-4 hover:shadow-md transition">
 
-              <button type="button"
-                onClick={() => {
-                  setMediaTargetSlide(slide);
-                  setMediaModalOpen(true);
-                }}
-                className="mt-3 text-xs bg-[#001f40] text-white px-3 py-1.5 rounded hover:bg-[#003266] cursor-pointer"
-              >
-                Choose Media
-              </button>
+            {cap && (
+              <div className="flex flex-col gap-3">
 
-              <div className="flex gap-9 mt-3 items-center text-sm text-gray-700">
-                <label className="flex items-center gap-1 cursor-pointer text-xs">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={isSelected}
-                    onChange={() => toggleSlideSelection(slide.id)}
-
-                  />
-                  Select
-                </label>
-
-                <Plus
-                  size={18}
-                  className="text-[#ca5608] cursor-pointer hover:text-[#a14505]"
-                  onClick={() => addSlideAfter(slide)}
+                <CaptionEditorRow
+                  cap={cap}
+                  onSave={(txt) => saveCaption(cap.id, txt)}
+                  onGenerateAudio={() => generateAudio(cap)}
+                  onResetAudio={() => resetCaptionAudio(cap)}
                 />
 
-                <Copy
-                  size={16}
-                  className="text-[#001f40] cursor-pointer hover:text-[#003266]"
-                  onClick={() => duplicateSlide(slide)}
-                />
+                {/* AUDIO PLAYER */}
+                {(() => {
+                  let url = null;
 
-                <Trash2
-                  size={16}
-                  className="text-red-500 cursor-pointer hover:text-red-700"
-                  onClick={() => {
-                    setDeleteTarget(slide);
-                    setShowDeleteModal(true);
-                  }}
-                />
-              </div>
+                  if (selectedVoice === "en-US-Neural2-A") url = cap.published_audio_url_a;
+                  else if (selectedVoice === "en-US-Neural2-D") url = cap.published_audio_url_d;
+                  else if (selectedVoice === "en-US-Neural2-I") url = cap.published_audio_url_o;
+                  else if (selectedVoice === "en-US-Neural2-J") url = cap.published_audio_url_j;
 
-            </div>
-   
-
-            {/* RIGHT COLUMN */}
-            <div className="flex-1">
-              <div className="bg-white border border-gray-300 rounded-xl shadow-sm p-4 hover:shadow-md transition">
-
-                {cap && (
-                  <div className="flex flex-col gap-3">
-
-                    <CaptionEditorRow
-                      cap={cap}
-                      onSave={(txt) => saveCaption(cap.id, txt)}
-                      onGenerateAudio={() => generateAudio(cap)}
-                      onResetAudio={() => resetCaptionAudio(cap)}
+                  return url ? (
+                    <audio
+                      controls
+                      src={url}
+                      className="w-full mt-3 h-10 bg-white rounded border-gray-300"
                     />
-
-                    {/* AUDIO PLAYER (per-caption) */}
-                     {(() => {
-                    let url = null;
-
-                      if (selectedVoice === "en-US-Neural2-A") {
-                        url = cap.published_audio_url_a;
-                      } else if (selectedVoice === "en-US-Neural2-D") {
-                        url = cap.published_audio_url_d;
-                      } else if (selectedVoice === "en-US-Neural2-I") {
-                        url = cap.published_audio_url_o; // reused column
-                      } else if (selectedVoice === "en-US-Neural2-J") {
-                        url = cap.published_audio_url_j;
-                      }
-
-
-                      return url ? (
-                        <audio
-                          controls
-                          src={url}
-                          className="w-full mt-3 h-10 bg-white rounded border-gray-300"
-                        />
-                      ) : (
-                        <p className="text-xs text-gray-400 mt-2 italic">
-                          No audio available for this caption.
-                        </p>
-                      );
-                    })()}
-
-
-
-
-                  </div>
-                )}
-
+                  ) : (
+                    <p className="text-xs text-gray-400 mt-2 italic">
+                      No audio available for this caption.
+                    </p>
+                  );
+                })()}
               </div>
-            </div>
+            )}
 
           </div>
-        );
-      })}
+        </div>
+      </div>
+    );
+  })
+)}
+
       
 {/* RESET CAPTION AUDIO MODAL */}
 {resetCaptionTarget && (
@@ -1013,7 +1048,7 @@ async function duplicateSlide(slide: Slide) {
 
             <button
               type="button"
-              onClick={resetAudioForLesson}
+              onClick={resetLessonAudio}
               disabled={resetting}
               className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50 cursor-pointer"
             >

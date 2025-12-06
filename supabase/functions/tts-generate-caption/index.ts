@@ -3,48 +3,44 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { synthesizeSpeech } from "./gcpTts.ts";
+import { synthesizeSpeech, getWavDuration } from "./gcpTts.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// Voices
+// ------------------------------------------
+// Four Neural2 Voices (Final Configuration)
+// ------------------------------------------
 const VOICES = [
   {
     code: "en-US-Neural2-A",
-    label: "Voice A (Neutral Male)",
     urlKey: "published_audio_url_a",
     hashKey: "caption_hash_a",
   },
   {
     code: "en-US-Neural2-D",
-    label: "Voice D (Neural2 Male 1)",   // replaced Chirp-HD-D
     urlKey: "published_audio_url_d",
     hashKey: "caption_hash_d",
   },
   {
     code: "en-US-Neural2-I",
-    label: "Voice I (Neural2 Male 2)",   // replaced Chirp-HD-O
-    urlKey: "published_audio_url_o",     // reuse same DB column
+    urlKey: "published_audio_url_o",
     hashKey: "caption_hash_o",
   },
   {
     code: "en-US-Neural2-J",
-    label: "Voice J (Neural2 Male 3)",
     urlKey: "published_audio_url_j",
     hashKey: "caption_hash_j",
   },
 ];
 
-
-// ----------------------------------------------------------------------
-// Helper: generate TTS → upload → update DB
-// ----------------------------------------------------------------------
-// ----------------------------------------------------------------------
-// Helper: generate TTS → upload → update DB
-// ----------------------------------------------------------------------
+/* ------------------------------------------------------
+   Generate WAV → Upload → Update DB with:
+     - URL
+     - hash
+     - seconds (for compliance)
+------------------------------------------------------ */
 async function generateForVoice(
   row: any,
   targetVoice: string,
@@ -58,53 +54,63 @@ async function generateForVoice(
   if (!voiceConfig) return;
 
   const existingHash = row[voiceConfig.hashKey];
-  const needsUpdate = !existingHash || existingHash !== hash;
+  const existingUrl = row[voiceConfig.urlKey];
+
+  // IMPORTANT: also check URL — if it's NULL, we MUST regenerate
+  const needsUpdate =
+    !existingUrl || !existingHash || existingHash !== hash;
 
   if (!needsUpdate) {
     skippedVoices.push(targetVoice);
     return;
   }
 
-  // CLEAN PLAIN TEXT — NO <speak> TAGS HERE
+  // Escape HTML & apostrophes for safe SSML
   const cleaned = text
-  .trim()
-  .replace(/&/g, "&amp;")
-  .replace(/</g, "&lt;")
-  .replace(/>/g, "&gt;")
+    .trim()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/'/g, "&apos;")
+    .replace(/,\s*/g, ", ");
 
-  // CHIRP FIX: escape apostrophes
-  .replace(/'/g, "&apos;")
+  console.log("SSML CLEANED:", cleaned);
 
-  // CHIRP FIX: ensure comma spacing is consistent
-  .replace(/,\s*/g, ", ")
-  ;
+  // ---- Generate WAV ----
+  const wavBytes = await synthesizeSpeech(cleaned, targetVoice);
 
+  // ---- Compute Duration ----
+  const rawSeconds = getWavDuration(wavBytes);
+  const PADDING = 0.8;
+  const finalSeconds = Math.ceil(rawSeconds + PADDING);
 
-  console.log("SSML CLEANED:", JSON.stringify(cleaned));
+  console.log(
+    `Voice ${targetVoice} → Raw: ${rawSeconds}s → Final (padded): ${finalSeconds}s`
+  );
 
-  // MUST send plain text — gcpTts.ts wraps <speak> for us
-  const audioBytes = await synthesizeSpeech(cleaned, targetVoice);
-
-  const wavBuffer = new Uint8Array(audioBytes).buffer;
-  const file = new Blob([wavBuffer], { type: "audio/wav" });
-
+  // ---- Upload WAV File ----
   const path = `${targetVoice}/${captionId}.wav`;
 
   const { error: uploadError } = await supabase.storage
     .from("tts_final")
-    .upload(path, file, { upsert: true } as any);
+    .upload(path, wavBytes, { upsert: true } as any);
 
   if (uploadError) throw uploadError;
 
   const publicUrl =
     `${SUPABASE_URL}/storage/v1/object/public/tts_final/${path}`;
 
+  // ---- Update DB Row ----
+  const updatePayload: any = {
+    [voiceConfig.urlKey]: publicUrl,
+    [voiceConfig.hashKey]: hash,
+    seconds: finalSeconds, // UPDATE SECONDS FOR THIS VOICE
+    updated_at: new Date().toISOString(),
+  };
+
   const { error: updateError } = await supabase
     .from("slide_captions")
-    .update({
-      [voiceConfig.urlKey]: publicUrl,
-      [voiceConfig.hashKey]: hash,
-    })
+    .update(updatePayload)
     .eq("id", captionId);
 
   if (updateError) throw updateError;
@@ -112,11 +118,10 @@ async function generateForVoice(
   updatedVoices.push(targetVoice);
 }
 
-// ----------------------------------------------------------------------
-// Main HTTP handler
-// ----------------------------------------------------------------------
+/* ------------------------------------------------------
+   MAIN HANDLER
+------------------------------------------------------ */
 serve(async (req: Request) => {
-
   if (req.method === "OPTIONS") {
     return new Response("ok", {
       headers: {
@@ -135,7 +140,6 @@ serve(async (req: Request) => {
     console.log("Raw incoming body:", bodyText);
 
     const { captionId, text, hash, voice } = JSON.parse(bodyText);
-
     console.log("Parsed request:", { captionId, voice, hash });
 
     if (!captionId || !text || !hash || !voice) {
@@ -156,7 +160,7 @@ serve(async (req: Request) => {
     const updatedVoices: string[] = [];
     const skippedVoices: string[] = [];
 
-    // Generate requested voice
+    // 1. Generate requested voice first.
     await generateForVoice(
       row,
       voice,
@@ -167,7 +171,7 @@ serve(async (req: Request) => {
       skippedVoices,
     );
 
-    // Generate all other voices
+    // 2. Then generate all remaining voices.
     for (const v of VOICES) {
       if (v.code === voice) continue;
       await generateForVoice(
@@ -191,12 +195,11 @@ serve(async (req: Request) => {
             "authorization, x-client-info, apikey, content-type",
           "Access-Control-Allow-Methods": "POST, OPTIONS",
         },
-      },
+      }
     );
 
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-
     console.error("ERROR in tts-generate-caption:", message);
 
     return new Response(JSON.stringify({ error: message }), {

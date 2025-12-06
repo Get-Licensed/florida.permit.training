@@ -63,20 +63,34 @@ export default function LessonExplorer({
       {/* CONTROL BUTTONS */}
       <div className="flex items-center justify-between mb-2">
 
-        {/* REFRESH */}
-        <button
-          onClick={loadData}
-          className="
-            px-3 py-1.5 
-            bg-[#ca5608] 
-            text-white 
-            text-xs 
-            rounded-md 
-            hover:bg-[#a44706]
-          "
-        >
-          Refresh
-        </button>
+      {/* REFRESH */}
+      <button
+        onClick={async () => {
+          await loadData();
+
+          // Collapse everything so refresh gives immediate visual feedback
+          const reset: Record<string, boolean> = {};
+          modules.forEach((m) => (reset[m.id] = false));
+          setOpenModules(reset);
+
+          // Re-trigger parent selection so slide/caption data is reloaded
+          if (selectedLessonId) {
+            onSelect(selectedLessonId);
+          }
+        }}
+        className="
+          px-3 py-1.5 
+          bg-[#ca5608] 
+          text-white 
+          text-xs 
+          rounded-md 
+          cursor-pointer
+          hover:bg-[#a44706]
+        "
+      >
+        Refresh
+      </button>
+
 
         {/* OPEN ALL / CLOSE ALL */}
         <button
@@ -85,6 +99,7 @@ export default function LessonExplorer({
             px-3 py-1.5 
             text-xs 
             rounded-md 
+            cursor-pointer
             border border-[#001f40] 
             text-[#001f40] 
             hover:bg-[#001f40] hover:text-white
@@ -127,7 +142,7 @@ export default function LessonExplorer({
                       key={l.id}
                       onClick={() => onSelect(l.id.toString())}
                       className={`
-                        flex items-center gap-2 px-2 py-1 rounded cursor-pointer
+                        flex items-center text-xs gap-2 px-2 py-1 rounded cursor-pointer
                         ${
                           selected
                             ? "bg-[#ca5608]/10 text-[#ca5608] font-medium"

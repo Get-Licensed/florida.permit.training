@@ -178,7 +178,7 @@ export default function MediaLibraryModal({
           </div>
 
           {/* RIGHT SECTION: CLOSE */}
-          <button onClick={onClose} className="text-2xl leading-none">✕</button>
+          <button onClick={onClose} className="text-2xl cursor-pointer leading-none">✕</button>
         </div>
 
         {/* GRID */}

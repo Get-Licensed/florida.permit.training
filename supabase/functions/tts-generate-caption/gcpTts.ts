@@ -1,4 +1,6 @@
 // supabase/functions/tts-generate-caption/gcpTts.ts
+//----------------------------------------------------
+
 import * as jose from "https://deno.land/x/jose@v5.2.0/index.ts";
 
 /* -------------------------------------------------------
@@ -13,7 +15,9 @@ function pcmToWav(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
 
   let offset = 0;
   const writeString = (s: string) => {
-    for (let i = 0; i < s.length; i++) view.setUint8(offset++, s.charCodeAt(i));
+    for (let i = 0; i < s.length; i++) {
+      view.setUint8(offset++, s.charCodeAt(i));
+    }
   };
 
   const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
@@ -23,8 +27,8 @@ function pcmToWav(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
   writeString("WAVE");
 
   writeString("fmt ");
-  view.setUint32(offset, 16, true); offset += 4; // Subchunk1Size
-  view.setUint16(offset, 1, true); offset += 2; // AudioFormat = PCM
+  view.setUint32(offset, 16, true); offset += 4;
+  view.setUint16(offset, 1, true); offset += 2;
   view.setUint16(offset, numChannels, true); offset += 2;
   view.setUint32(offset, sampleRate, true); offset += 4;
   view.setUint32(offset, byteRate, true); offset += 4;
@@ -38,24 +42,42 @@ function pcmToWav(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
 }
 
 /* -------------------------------------------------------
+   WAV DURATION CALCULATOR
+   Assumes:
+     - 44-byte PCM WAV header
+     - 24kHz
+     - mono
+     - 16-bit samples
+------------------------------------------------------- */
+export function getWavDuration(wavBytes: Uint8Array): number {
+  const HEADER_SIZE = 44;
+  const sampleRate = 24000;
+  const numChannels = 1;
+  const bitsPerSample = 16;
+
+  const bytesPerSample = bitsPerSample / 8;
+
+  const pcmDataBytes = wavBytes.length - HEADER_SIZE;
+  if (pcmDataBytes <= 0) return 0;
+
+  const totalSamples = pcmDataBytes / (bytesPerSample * numChannels);
+  const duration = totalSamples / sampleRate;
+
+  return duration;
+}
+
+/* -------------------------------------------------------
    FINAL — CLEAN SSML + NO WHITESPACE
-   Works for Chirp, Neural2, Standard, Wavenet
 ------------------------------------------------------- */
 export async function synthesizeSpeech(
   ssmlInput: string,
   voice: string
 ): Promise<Uint8Array> {
 
-  // CLEAN SSML
   const ssmlClean = `<speak>${ssmlInput.trim()}</speak>`;
-
-  // 🔥 LOG EXACT SSML SENT TO GOOGLE
   console.log("Final SSML sent:", ssmlClean);
 
-
-  /* ---------------------------------------------------
-     Load Google OAuth credentials
-  --------------------------------------------------- */
+  // Google auth
   const clientEmail = Deno.env.get("GOOGLE_CLIENT_EMAIL");
   const rawPrivateKey = Deno.env.get("GOOGLE_PRIVATE_KEY");
 
@@ -66,13 +88,10 @@ export async function synthesizeSpeech(
   const privateKeyPem = rawPrivateKey.replace(/\\n/g, "\n");
   const privateKey = await jose.importPKCS8(privateKeyPem, "RS256");
 
-  /* ---------------------------------------------------
-     Build JWT for Google OAuth
-  --------------------------------------------------- */
   const now = Math.floor(Date.now() / 1000);
   const claims = {
     iss: clientEmail,
-    sub: clientEmail, // REQUIRED for service accounts
+    sub: clientEmail,
     scope: "https://www.googleapis.com/auth/cloud-platform",
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
@@ -83,9 +102,6 @@ export async function synthesizeSpeech(
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .sign(privateKey);
 
-  /* ---------------------------------------------------
-     Exchange JWT → OAuth access token
-  --------------------------------------------------- */
   const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -102,10 +118,7 @@ export async function synthesizeSpeech(
   const accessToken = tokenJson.access_token;
   if (!accessToken) throw new Error("OAuth error: access_token missing");
 
-  /* ---------------------------------------------------
-     GOOGLE TTS REQUEST — LINEAR16 PCM
-     (Chirp requires clean SSML)
-  --------------------------------------------------- */
+  // Google TTS call
   const ttsResp = await fetch(
     "https://texttospeech.googleapis.com/v1/text:synthesize",
     {
@@ -137,10 +150,10 @@ export async function synthesizeSpeech(
     throw new Error("TTS error: missing audioContent");
   }
 
-  /* ---------------------------------------------------
-     Base64 → PCM → WAV
-  --------------------------------------------------- */
-  const pcm = Uint8Array.from(atob(ttsJson.audioContent), c => c.charCodeAt(0));
+  // Base64 → PCM → WAV
+  const pcm = Uint8Array.from(atob(ttsJson.audioContent), (c) =>
+    c.charCodeAt(0)
+  );
   const wavBytes = pcmToWav(pcm);
 
   return wavBytes;

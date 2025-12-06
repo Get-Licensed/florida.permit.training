@@ -6,7 +6,7 @@ import { Caption } from "./types";
 type Props = {
   cap: Caption;
   onSave: (text: string) => void;
-  onGenerateAudio: () => void;
+  onGenerateAudio: () => Promise<void>;
   onResetAudio: () => void;
 };
 
@@ -19,10 +19,37 @@ export default function CaptionEditorRow({
   const [value, setValue] = useState(cap.caption || "");
   const [saving, setSaving] = useState(false);
 
+  // SINGLE AUDIO GENERATION PROGRESS
+  const [isGeneratingSingle, setIsGeneratingSingle] = useState(false);
+  const [singleProgress, setSingleProgress] = useState(0);
+
   async function handleSave() {
     setSaving(true);
     await onSave(value);
     setSaving(false);
+  }
+
+  async function handleGenerateAudio() {
+    setIsGeneratingSingle(true);
+    setSingleProgress(0);
+
+    // Smooth animation to ~80%
+    let p = 0;
+    const interval = setInterval(() => {
+      p += 7;
+      setSingleProgress(p);
+      if (p >= 80) clearInterval(interval);
+    }, 120);
+
+    await onGenerateAudio();
+
+    clearInterval(interval);
+    setSingleProgress(100);
+
+    setTimeout(() => {
+      setIsGeneratingSingle(false);
+      setSingleProgress(0);
+    }, 500);
   }
 
   return (
@@ -36,6 +63,7 @@ export default function CaptionEditorRow({
           rounded-lg
           bg-white
           shadow-sm
+          text-xs
           focus:outline-none
           focus:ring-2
           focus:ring-[#ca5608]
@@ -49,14 +77,40 @@ export default function CaptionEditorRow({
       <div className="flex justify-end mt-2">
         <div className="flex items-center gap-3">
 
-        {/* GENERATE AUDIO */}
+          {/* GENERATE AUDIO BUTTON WITH PROGRESS BAR */}
           <button
             type="button"
-            onClick={onGenerateAudio}
-            className="px-3 py-1.5 bg-[#ca5608] text-white text-xs rounded hover:bg-[#a14505] cursor-pointer"
+            onClick={handleGenerateAudio}
+            disabled={isGeneratingSingle}
+            className="
+              relative
+              px-3 py-1.5
+              text-xs
+              rounded
+              overflow-hidden
+              text-white
+              cursor-pointer
+              w-40
+              bg-[#ca5608]
+              hover:bg-[#fc7212]
+              disabled:opacity-90
+              disabled:cursor-not-allowed
+            "
           >
-            Generate Caption Audio
+            {/* ORANGE PROGRESS LAYER */}
+            {isGeneratingSingle && (
+              <div
+                className="absolute inset-0 bg-[#fc7212] transition-all duration-200"
+                style={{ width: `${singleProgress}%` }}
+              />
+            )}
+
+            {/* LABEL */}
+            <span className="relative z-10">
+              {isGeneratingSingle ? "Generating…" : "Generate Caption Audio"}
+            </span>
           </button>
+
           {/* RESET CAPTION AUDIO */}
           <button
             type="button"
