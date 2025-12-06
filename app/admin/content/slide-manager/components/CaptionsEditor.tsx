@@ -520,6 +520,31 @@ async function resetCaptionAudio(cap: Caption) {
   }
 }
 
+    /* -------------------------------------------------------------
+      COUNT TIME FOR LESSONS
+    ------------------------------------------------------------- */
+
+function formatSeconds(total: number) {
+  const m = Math.floor(total / 60).toString().padStart(2, "0");
+  const s = Math.floor(total % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+const totalLessonSeconds = captions.reduce(
+  (sum, c) => sum + (c.seconds || 0),
+  0
+);
+
+/* -------------------------------------------------------------
+    COUNT TIME FOR LESSONS
+ ------------------------------------------------------------- */
+
+      function Spinner() {
+        return (
+          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        );
+      }
+
     /* ---------------------------------------------------------
       RENDER
     --------------------------------------------------------- */
@@ -638,60 +663,91 @@ async function resetCaptionAudio(cap: Caption) {
         </div> 
       )}
 
-    {/* AUDIO GENERATION BAR */}
-    {tab === "captions" && captions.length > 0 && (
+  {/* BULK SECTION (Audio + Image + Lesson Total) */}
+{tab === "captions" && captions.length > 0 && (
+  <div className="mb-6 flex gap-4 items-stretch">
+
+    {/* LEFT SIDE — LESSON TOTAL (fixed width, spans both rows) */}
+    <div className="w-[180px] min-w-[180px] bg-white border border-gray-300 rounded-xl shadow-sm
+                    flex flex-col items-center justify-center p-4">
+
+      {/* TIME CIRCLE */}
+      <div className="w-20 h-20 bg-[#ca5608] text-white rounded-full 
+                      flex items-center justify-center text-xl font-semibold shadow">
+        {formatSeconds(totalLessonSeconds)}
+      </div>
+
+      <div className="mt-3 text-[#001f40] text-sm font-medium text-center">
+        Lesson Total
+      </div>
+    </div>
+
+    {/* RIGHT SIDE — TWO STACKED BULK BARS */}
+    <div className="flex-1 flex flex-col gap-4">
+
+      {/* ──────────────────────────────
+           BULK AUDIO EDITOR (unchanged)
+         ────────────────────────────── */}
       <div
         className="
-          mb-4
-          p-4
-          bg-gray-50
-          border border-gray-300
-          rounded-xl
-          shadow-sm
+          p-4 bg-gray-50 border border-gray-300 rounded-xl shadow-sm
           flex items-center justify-between
         "
       >
-        {/* LEFT SIDE LABEL */}
-        <span className="text-sm text-[#001f40] font-bold">
-          Bulk Audio Editor
-        </span>
+        <span className="text-sm text-[#001f40] font-bold">Bulk Audio Editor</span>
 
-        {/* RIGHT SIDE BUTTONS */}
         <div className="flex gap-3">
 
-          {/* GENERATE ALL AUDIO */}
-          <button
-            type="button"
-            disabled={isGenerating}
-            onClick={() => setShowGenerateAllModal(true)}
-            className={`
-              relative
-              px-3 py-1.5
-              text-white
-              text-xs
-              w-60
-              rounded
-              cursor-pointer
-              overflow-hidden
-              ${isGenerating ? "bg-[#a14505] opacity-90 cursor-not-allowed" : "bg-[#ca5608] hover:bg-[#fc7212]"}
-            `}
-          >
-            {/* PROGRESS BAR BEHIND TEXT */}
+      {/* GENERATE ALL AUDIO */}
+        <button
+          type="button"
+          disabled={isGenerating}
+          onClick={() => setShowGenerateAllModal(true)}
+          className={`
+            relative px-3 py-1.5 text-white text-xs w-60 rounded cursor-pointer overflow-hidden
+            ${
+              isGenerating
+                ? "bg-[#a14505] opacity-90 cursor-not-allowed"
+                : "bg-[#ca5608] hover:bg-[#fc7212]"
+            }
+          `}
+        >
+          {isGenerating && (
+            <div
+              className="absolute inset-0 bg-[#fc7212] transition-all duration-300"
+              style={{ width: `${(progress / progressTotal) * 100}%` }}
+            />
+          )}
+
+          <span className="relative z-10 flex items-center justify-center gap-2">
             {isGenerating && (
-              <div
-                className="absolute inset-0 bg-[#fc7212] transition-all duration-300"
-                style={{ width: `${(progress / progressTotal) * 100}%` }}
-              />
+              <svg
+                className="animate-spin h-4 w-4 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-30"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-80"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v4l-3 3H4z"
+                />
+              </svg>
             )}
 
-            {/* BUTTON LABEL */}
-            <span className="relative z-10">
-              {isGenerating
-                ? `Generating ${progress}/${progressTotal}…`
-                : "Generate Audio for All Lesson Captions"}
-            </span>
-          </button>
-
+            {isGenerating
+              ? `Generating ${progress}/${progressTotal}…`
+              : "Generate Audio for All Lesson Captions"}
+          </span>
+        </button>
 
 
           {/* RESET LESSON AUDIO */}
@@ -699,73 +755,62 @@ async function resetCaptionAudio(cap: Caption) {
             type="button"
             onClick={() => setShowResetLessonModal(true)}
             className="
-              px-3 py-1.5
-              bg-red-600
-              text-white
-              text-xs
-              rounded
-              cursor-pointer
-              hover:bg-red-700
+              px-3 py-1.5 bg-red-600 text-white text-xs rounded cursor-pointer hover:bg-red-700
             "
           >
-            Reset All Lesson Audio
+            Reset Lesson Audio
           </button>
         </div>
       </div>
-    )}
 
+      {/* ──────────────────────────────
+           BULK IMAGE SELECTOR
+         ────────────────────────────── */}
+      <div className="p-4 bg-gray-50 border border-gray-300 rounded-xl shadow-sm 
+                      flex items-center justify-between">
 
- {/* ALWAYS VISIBLE BULK BAR — ONLY IN CAPTIONS TAB */}
-{tab === "captions" && (
-  <div className="mb-4 p-4 bg-gray-50 border border-gray-300 rounded-xl shadow-sm flex items-center justify-between">
+        <span className="text-sm text-[#001f40] font-bold">
+          {selectedSlides.size > 0
+            ? `${selectedSlides.size} selected`
+            : "Bulk Image Selector"}
+        </span>
 
-    {/* LEFT SIDE STATUS */}
-    <span className="text-sm text-[#001f40] font-bold">
-      {selectedSlides.size > 0
-        ? `${selectedSlides.size} selected`
-        : "Bulk Image Selector"}
-    </span>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              setSelectedSlides(new Set(slides.map((s) => String(s.id))))
+            }
+            className="px-3 py-1.5 text-xs bg-gray-200 rounded hover:bg-gray-300 cursor-pointer"
+          >
+            Select All
+          </button>
 
-    {/* RIGHT SIDE ACTIONS */}
-    <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => setSelectedSlides(new Set())}
+            className="px-3 py-1.5 text-xs bg-gray-200 rounded hover:bg-gray-300 cursor-pointer"
+          >
+            Clear
+          </button>
 
-      {/* Select All */}
-      <button
-        type="button"
-        onClick={() =>
-          setSelectedSlides(new Set(slides.map((s) => String(s.id))))
-        }
-        className="px-3 py-1.5 text-xs bg-gray-200 rounded hover:bg-gray-300 cursor-pointer"
-      >
-        Select All
-      </button>
-
-      {/* Clear Selection */}
-      <button
-        type="button"
-        onClick={() => setSelectedSlides(new Set())}
-        className="px-3 py-1.5 text-xs bg-gray-200 rounded hover:bg-gray-300 cursor-pointer"
-      >
-        Clear
-      </button>
-
-      {/* Change Image */}
-      <button
-        type="button"
-        onClick={() => selectedSlides.size > 0 && setMediaModalOpen(true)}
-        disabled={selectedSlides.size === 0}
-        className={`
-          px-3 py-1.5 text-xs rounded
-          ${
-            selectedSlides.size > 0
-              ? "bg-[#001f40] text-white hover:bg-[#003266]"
-              : "bg-gray-300 text-gray-500 cursor-not-allowed"
-          }
-        `}
-      >
-        Change Image
-      </button>
-
+          <button
+            type="button"
+            onClick={() => selectedSlides.size > 0 && setMediaModalOpen(true)}
+            disabled={selectedSlides.size === 0}
+            className={`
+              px-3 py-1.5 text-xs rounded
+              ${
+                selectedSlides.size > 0
+                  ? "bg-[#001f40] text-white hover:bg-[#003266]"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }
+            `}
+          >
+            Change Image
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 )}
@@ -863,30 +908,45 @@ async function resetCaptionAudio(cap: Caption) {
                   onResetAudio={() => resetCaptionAudio(cap)}
                 />
 
-                {/* AUDIO PLAYER */}
-                {(() => {
-                  let url = null;
+                  {/* AUDIO SECTION */}
+                  {(() => {
+                    let url = null;
 
-                  if (selectedVoice === "en-US-Neural2-A") url = cap.published_audio_url_a;
-                  else if (selectedVoice === "en-US-Neural2-D") url = cap.published_audio_url_d;
-                  else if (selectedVoice === "en-US-Neural2-I") url = cap.published_audio_url_o;
-                  else if (selectedVoice === "en-US-Neural2-J") url = cap.published_audio_url_j;
+                    if (selectedVoice === "en-US-Neural2-A") url = cap.published_audio_url_a;
+                    else if (selectedVoice === "en-US-Neural2-D") url = cap.published_audio_url_d;
+                    else if (selectedVoice === "en-US-Neural2-I") url = cap.published_audio_url_o;
+                    else if (selectedVoice === "en-US-Neural2-J") url = cap.published_audio_url_j;
 
-                  return url ? (
-                    <audio
-                      controls
-                      src={url}
-                      className="w-full mt-3 h-10 bg-white rounded border-gray-300"
-                    />
-                  ) : (
-                    <p className="text-xs text-gray-400 mt-2 italic">
-                      No audio available for this caption.
-                    </p>
-                  );
-                })()}
+                    return url ? (
+                      <div className="flex items-center gap-4 mt-3">
+
+                        {/* TIME CIRCLE */}
+                        <div className="
+                          w-12 h-12 
+                          bg-[#ca5608] 
+                          text-white 
+                          rounded-full 
+                          flex items-center justify-center
+                          text-sm font-semibold
+                        ">
+                          {cap.seconds ?? 0}s
+                        </div>
+
+                        {/* AUDIO PLAYER WITHOUT TIME DISPLAY */}
+                        <audio
+                          controls
+                          src={url + `?t=${cap.seconds}` /* forces refresh safely */}
+                          className="flex-1 h-10 rounded border-gray-300 bg-white"
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 mt-2 italic">
+                        No audio available for this caption.
+                      </p>
+                    );
+                  })()}
               </div>
             )}
-
           </div>
         </div>
       </div>

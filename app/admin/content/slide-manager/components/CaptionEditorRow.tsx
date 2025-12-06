@@ -10,6 +10,31 @@ type Props = {
   onResetAudio: () => void;
 };
 
+// small inline spinner (same as CaptionEditorRow)
+function SpinnerMini() {
+  return (
+    <svg
+      className="animate-spin h-4 w-4 text-white ml-1 inline-block"
+      viewBox="0 0 50 50"
+    >
+      <circle
+        className="opacity-25"
+        cx="25"
+        cy="25"
+        r="20"
+        stroke="white"
+        strokeWidth="5"
+        fill="none"
+      />
+      <path
+        className="opacity-75"
+        fill="white"
+        d="M25 5a20 20 0 0120 20h-5a15 15 0 00-15-15V5z"
+      />
+    </svg>
+  );
+}
+
 export default function CaptionEditorRow({
   cap,
   onSave,
@@ -19,7 +44,6 @@ export default function CaptionEditorRow({
   const [value, setValue] = useState(cap.caption || "");
   const [saving, setSaving] = useState(false);
 
-  // SINGLE AUDIO GENERATION PROGRESS
   const [isGeneratingSingle, setIsGeneratingSingle] = useState(false);
   const [singleProgress, setSingleProgress] = useState(0);
 
@@ -33,7 +57,7 @@ export default function CaptionEditorRow({
     setIsGeneratingSingle(true);
     setSingleProgress(0);
 
-    // Smooth animation to ~80%
+    // Smooth to ~80%
     let p = 0;
     const interval = setInterval(() => {
       p += 7;
@@ -54,7 +78,6 @@ export default function CaptionEditorRow({
 
   return (
     <div className="w-full p-3 border border-gray-300 rounded-lg bg-white">
-      {/* TEXTAREA */}
       <textarea
         className="
           w-full
@@ -73,45 +96,65 @@ export default function CaptionEditorRow({
         rows={3}
       />
 
-      {/* ACTION BAR */}
       <div className="flex justify-end mt-2">
         <div className="flex items-center gap-3">
 
-          {/* GENERATE AUDIO BUTTON WITH PROGRESS BAR */}
-          <button
-            type="button"
-            onClick={handleGenerateAudio}
-            disabled={isGeneratingSingle}
-            className="
-              relative
-              px-3 py-1.5
-              text-xs
-              rounded
-              overflow-hidden
-              text-white
-              cursor-pointer
-              w-40
-              bg-[#ca5608]
-              hover:bg-[#fc7212]
-              disabled:opacity-90
-              disabled:cursor-not-allowed
-            "
-          >
-            {/* ORANGE PROGRESS LAYER */}
-            {isGeneratingSingle && (
-              <div
-                className="absolute inset-0 bg-[#fc7212] transition-all duration-200"
-                style={{ width: `${singleProgress}%` }}
-              />
-            )}
+          {/* GENERATE */}
+            <button
+              type="button"
+              onClick={handleGenerateAudio}
+              disabled={isGeneratingSingle}
+              className="
+                relative
+                h-11
+                px-3 py-1.5F
+                text-xs
+                rounded
+                overflow-hidden
+                text-white
+                cursor-pointer
+                w-40
+                bg-[#ca5608]
+                hover:bg-[#fc7212]
+                disabled:opacity-90
+                disabled:cursor-not-allowed
+              "
+            >
+              {isGeneratingSingle && (
+                <div
+                  className="absolute inset-0 bg-[#fc7212] transition-all duration-200"
+                  style={{ width: `${singleProgress}%` }}
+                />
+              )}
 
-            {/* LABEL */}
-            <span className="relative z-10">
-              {isGeneratingSingle ? "Generating…" : "Generate Caption Audio"}
-            </span>
-          </button>
+              <span className="relative z-10 flex items-center gap-2">
+                {isGeneratingSingle && (
+                  <svg
+                    className="animate-spin h-4 w-4 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-30"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-80"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4l-3 3H4z"
+                    />
+                  </svg>
+                )}
+                {isGeneratingSingle ? "Generating…" : "Generate Caption Audio"}
+              </span>
+            </button>
 
-          {/* RESET CAPTION AUDIO */}
+          {/* RESET */}
           <button
             type="button"
             onClick={onResetAudio}
@@ -129,7 +172,6 @@ export default function CaptionEditorRow({
           >
             {saving ? "Saving..." : "Save Caption"}
           </button>
-
         </div>
       </div>
     </div>

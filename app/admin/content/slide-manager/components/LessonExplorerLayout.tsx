@@ -15,7 +15,7 @@ export default function LessonExplorerLayout({
     <div className="flex w-full h-full">
 
       {/* LEFT COLUMN */}
-      <div className="w-[25%] min-w-[220px] border-r p-3 overflow-y-auto space-y-6">
+      <div className="w-[30%] min-w-[220px] border-r px-6 py-3 overflow-y-auto space-y-6">
 
         {/* TOOL PANEL (Preview / Editor / Bulk) */}
         {toolSidebar && (
@@ -31,7 +31,7 @@ export default function LessonExplorerLayout({
       </div>
 
       {/* RIGHT COLUMN */}
-      <div className="w-[75%] p-6 overflow-y-auto">
+      <div className="w-[70%] px-6 py-1 overflow-y-auto">
         {children}
       </div>
     </div>
