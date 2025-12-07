@@ -5,6 +5,23 @@
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { Suspense } from "react";
+import dynamic from "next/dynamic";
+import dynamic from "next/dynamic";
+import { Suspense } from "react";
+
+const Player = dynamic(() => import("./player/CoursePlayerClient"), {
+  ssr: false,
+});
+
+export default function CoursePage() {
+  return (
+    <Suspense fallback={<div>Loading…</div>}>
+      <Player />
+    </Suspense>
+  );
+}
+
 
 /* ------------------------------------------------------
    TYPES

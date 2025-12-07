@@ -116,7 +116,7 @@ export default function PublicMenuHeader({
           <nav className="flex flex-col gap-4 text-lg">
             {[
               { name: "Dashboard", href: "/dashboard" },
-              { name: "My Course", href: "/course" },
+              { name: "My Course", href: "/course/player" },
               { name: "My Permit", href: "/my-permit" },
               { name: "My Profile", href: "/profile" },
               { name: "Support", href: "/support" },

@@ -69,7 +69,7 @@ export default function AuthCallback() {
         .eq("id", user.id)
         .single();
 
-      const redirectTo = profile?.is_admin ? "/admin" : "/course";
+      const redirectTo = profile?.is_admin ? "/admin" : "/course/player";
 
       // Popup → send to opener and close
       if (window.opener) {

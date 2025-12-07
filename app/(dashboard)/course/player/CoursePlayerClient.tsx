@@ -5,8 +5,6 @@
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef } from "react";
-import React from "react";
-
 
 /* ------------------------------------------------------
    TYPES
@@ -71,7 +69,7 @@ function resolveImage(path: string | null) {
 /* ------------------------------------------------------
    MAIN PLAYER
 ------------------------------------------------------ */
-    const VOICES = [
+const VOICES = [
   {
     code: "en-US-Neural2-A",
     label: "John",
@@ -80,14 +78,14 @@ function resolveImage(path: string | null) {
   },
   {
     code: "en-US-Neural2-D",
-    label: "Paul",   // replaced Chirp-HD-D
+    label: "Paul",   
     urlKey: "published_audio_url_d",
     hashKey: "caption_hash_d",
   },
   {
     code: "en-US-Neural2-I",
-    label: "Ringo",   // replaced Chirp-HD-O
-    urlKey: "published_audio_url_o",     // reuse same DB column
+    label: "Ringo",   
+    urlKey: "published_audio_url_o",     
     hashKey: "caption_hash_o",
   },
   {
@@ -99,24 +97,12 @@ function resolveImage(path: string | null) {
 ];
 
 
- export default function CoursePlayer({
-  audioRef,
-  volume,
-  setVolume,
-}: {
-  audioRef?: React.RefObject<HTMLAudioElement | null>;
-  volume?: number;
-  setVolume?: (v: number) => void;
-}) {
-
-
-
+  export default function CoursePlayerClient() {
   const searchParams = useSearchParams();
   const initialModuleId = searchParams.get("module_id");
 
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
-  const [resumeLoaded, setResumeLoaded] = useState(false);
 
   const [lessons, setLessons] = useState<LessonRow[]>([]);
   const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
@@ -131,35 +117,11 @@ function resolveImage(path: string | null) {
   const [slideIndex, setSlideIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const [voice, setVoice] = useState<string>("");
+  const [volume, setVolume] = useState(0.8);
+  const [voice, setVoice] = useState("en-US-Neural2-D");
 
   const [audioTime, setAudioTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0); 
-  const [audioUnlocked, setAudioUnlocked] = useState(false);
-  const safeVolume = typeof volume === 'number' ? volume : 1
-
-
-// FIRST-USER GESTURE → unlock + play
-useEffect(() => {
-  const unlockAudio = () => {
-    const el = audioRef?.current;
-    if (!el) return;
-
-    setAudioUnlocked(true);
-    setIsPaused(false);
-
-    el.play().catch(() => {});
-  };
-
-  window.addEventListener("click", unlockAudio, { once: true });
-  window.addEventListener("touchstart", unlockAudio, { once: true });
-
-  return () => {
-    window.removeEventListener("click", unlockAudio);
-    window.removeEventListener("touchstart", unlockAudio);
-  };
-}, [audioRef]);
-
 
 /* ------------------------------------------------------
    VOICE URL RESOLVER (UPDATED)
@@ -187,14 +149,6 @@ function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
   }
 }
 
-    // volume sync
-
-useEffect(() => {
-  if (!audioRef?.current) return;
-  if (typeof volume !== "number") return;
-  audioRef.current.volume = volume;
-}, [volume, audioRef]);
-
 
     // load saved voice on mount
   useEffect(() => {
@@ -213,158 +167,40 @@ useEffect(() => {
   const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
   const [canProceed, setCanProceed] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-
-// ------------------------------------------------------
-// PROGRESS STATE
-// ------------------------------------------------------
-
-const userId = supabase.auth.getUser; // or however you're getting the session later
-const COURSE_ID = "FL_PERMIT_TRAINING";
-const [user, setUser] = useState<any>(null);
-const [requiredSeconds, setRequiredSeconds] = useState<number>(0);
-const [slideComplete, setSlideComplete] = useState(false);
-
-
-useEffect(() => {
-  supabase.auth.getUser().then(({ data }) => {
-    setUser(data.user);
-    console.log("USER LOADED:", data.user);
-  });
-}, []);
-
-
-  // local cache of last saved allowed module
-  const [savedProgress, setSavedProgress] = useState<number>(0);
-
-  async function loadProgress() {
-  if (!user?.id) return;
-
-  const { data } = await supabase
-    .from("course_progress_slides")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("course_id", COURSE_ID)
-    .order("updated_at", { ascending: false })
-    .limit(1);
-
-    if (data?.[0]) {
-    const p = data[0];
-    // store the numeric module_index you save in your progress table
-    setSavedProgress(p.module_index ?? 0);
-    setSlideIndex(p.slide_index ?? 0);
-  }
-}
-
-// just load saved progress WHEN WE KNOW USER
-useEffect(() => {
-  if (!user?.id) return;
-  loadProgress();
-}, [user?.id]);
-
-
-async function saveProgress() {
-  // do not save until we know resume has been applied
-  if (!user?.id || !resumeLoaded) {
-    console.log("skip saveProgress, no user or resume not loaded");
-    return;
-  }
-
-  try {
-    await supabase.from("course_progress").upsert({
-      user_id: user.id,
-      course_id: COURSE_ID,
-      lesson_id: lessons[currentLessonIndex]?.id,
-      module_index: currentModuleIndex,
-      slide_index: slideIndex,
-      elapsed_seconds: Math.floor(elapsedSeconds),
-      total_seconds: Math.floor(totalModuleSeconds),
-      completed:
-        currentModuleIndex === modules.length - 1 &&
-        currentLessonIndex === lessons.length - 1 &&
-        slideIndex === totalSlides - 1,
-    }, { onConflict: "user_id,course_id,lesson_id,module_index" });
-  } catch (err) {
-    console.error("saveProgress failed", err);
-  }
-}
-
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
 // ---- UNLOCK AUTOPLAY ON FIRST USER GESTURE ----
 useEffect(() => {
-  const unlock = () => {
-    setAudioUnlocked(true);
+  function unlock() {
+    if (!audioRef.current) return;
+    audioRef.current.play().catch(() => {});
+    window.removeEventListener("click", unlock);
+    window.removeEventListener("touchstart", unlock);
+  }
 
-    const el = audioRef?.current;
-    if (el) {
-      el.play().catch(() => {});
-    }
-  };
-
-  window.addEventListener("click", unlock, { once: true });
-  window.addEventListener("touchstart", unlock, { once: true });
+  window.addEventListener("click", unlock);
+  window.addEventListener("touchstart", unlock);
 
   return () => {
     window.removeEventListener("click", unlock);
     window.removeEventListener("touchstart", unlock);
   };
-}, [audioRef]);
-
-
-// === PER-SECOND TIMER ===
-useEffect(() => {
-  if (!requiredSeconds) return;
-  const slide = slides[slideIndex];
-  if (!slide) return;
-  if (!user?.id) return;
-
-  let elapsed = 0;
-
-  const id = setInterval(() => {
-    elapsed += 1;
-
-    fetch("/api/progress/complete-slide", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: user.id,
-        module_id: modules[currentModuleIndex]?.id,
-        lesson_id: lessons[currentLessonIndex]?.id,
-        slide_id: slide.id,
-        slide_index: slideIndex,
-        required_seconds: requiredSeconds,
-        effective_seconds_increment: 1,
-      }),
-    });
-
-    if (elapsed >= requiredSeconds) {
-      setSlideComplete(true);
-      clearInterval(id);
-    }
-  }, 1000);
-
-  return () => clearInterval(id);
-}, [requiredSeconds, slideIndex, user?.id, modules, lessons]);
+}, []);
 
   //-----------------------------------
 // TIME-BASED PROGRESS CALCULATIONS
 //-----------------------------------
-const totalModuleSeconds = (() => {
-  let sec = 0;
-  for (const slideId in captions) {
-    const caps = captions[slideId] || [];
-    sec += caps.reduce((a,c)=> a + (c.seconds ?? 0), 0);
-  }
-  return sec;
-})();
-
+const totalModuleSeconds = slides.reduce((sum, slide) => {
+  const caps = captions[slide.id] || [];
+  return sum + caps.reduce((s, c) => s + (c.seconds ?? 0), 0);
+}, 0);
 
 const elapsedSeconds = (() => {
   let sec = 0;
 
   // full slides already completed
   for (let i = 0; i < slideIndex; i++) {
-    const slide = slides[i];
-    if (!slide) continue;
-    const caps = captions[slide.id] || [];
+    const caps = captions[slides[i].id] || [];
     sec += caps.reduce((s, c) => s + (c.seconds ?? 0), 0);
   }
 
@@ -386,135 +222,43 @@ const elapsedSeconds = (() => {
   return sec;
 })();
 
-/* ---------------------------------------
-   COMPUTE MODULE TOTALS
----------------------------------------- */
-    const moduleSeconds: Record<string, number> = {};
 
-    modules.forEach((mod) => {
-      moduleSeconds[mod.id] = 0;
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
 
-      const modLessons = lessons.filter((l) => l.module_id === mod.id);
-
-      modLessons.forEach((lesson) => {
-        const lessonSlides = slides.filter((s) => s.lesson_id === lesson.id);
-        const slideIds = lessonSlides.map((s) => s.id);
-
-        // captions is Record<string, CaptionRow[]>
-        const lessonCaptions = slideIds.flatMap((sid) => captions[sid] || []);
-
-        const sum = lessonCaptions.reduce(
-          (acc, c) => acc + (Number(c.seconds) || 0),
-          0
-        );
-
-        moduleSeconds[mod.id] += sum;
-      });
-    });
-
-    // total for active module
-    const currentModule = modules[currentModuleIndex];
-    const currentModuleTotal =
-      currentModule ? moduleSeconds[currentModule.id] || 0 : 0;
-
-
-  /* ------------------------------------------------------
-     NAV / QUIZ DERIVED STATE
-  ------------------------------------------------------ */
-const totalSlides = slides.length;
-const totalQuiz = quizQuestions.length;
-const isQuizMode = slideIndex === totalSlides && totalQuiz > 0;
-
-const showContinueInstruction =
-  currentModuleIndex === 0 &&
-  slideIndex === totalSlides - 1 &&
-  !isQuizMode;
-
-  /* ------------------------------------------------------
-   LOAD SEQUENCE
------------------------------------------------------- */
-useEffect(() => {
-  loadModules();
-}, []);
-
-// once modules exist, apply resume
-useEffect(() => {
-  if (!modules.length) return;
-
-  const idx = Math.min(savedProgress, modules.length - 1);
-
-  if (idx >= 0) {
-    setCurrentModuleIndex(idx);
-  }
-
-  // mark that resume-from-DB has been applied
-  setResumeLoaded(true);
-}, [modules, savedProgress]);
-
-
-// load DB progress too
-useEffect(() => {
-  if (!user?.id) return;
-  loadProgress();
-}, [user?.id]);
-
-useEffect(() => {
-  if (!modules.length) return;
-  const mod = modules[currentModuleIndex];
-  if (!mod) return;
-  loadLessons(mod.id);
-}, [modules, currentModuleIndex]);
-
-
-
-useEffect(() => {
-  if (lessons.length) {
-    loadLessonContent(lessons[currentLessonIndex].id);
-  }
-}, [lessons, currentLessonIndex]);
-
-
-/* ------------------------------------------------------
-   BASE AUTOPLAY (fires when metadata is ready)
------------------------------------------------------- */
-useEffect(() => {
-  const el = audioRef?.current;
-  if (!el) return;
-
-  function safePlay() {
-    const a = audioRef?.current;
-    if (!a) return;
-    if (!isPaused) {
-      a.play().catch(() => {});
+    function safePlay() {
+      const a = audioRef.current;
+      if (!a) return;
+      if (!isPaused) {
+        a.play().catch(() => {});
+      }
     }
-  }
 
-  el.addEventListener("loadedmetadata", safePlay);
-  el.addEventListener("canplaythrough", safePlay);
+    audio.addEventListener("loadedmetadata", safePlay);
+    audio.addEventListener("canplaythrough", safePlay);
 
-  return () => {
-    const a = audioRef?.current;
-    if (!a) return;
-    a.removeEventListener("loadedmetadata", safePlay);
-    a.removeEventListener("canplaythrough", safePlay);
-  };
-}, [isPaused, audioRef]);
-
+    return () => {
+      audio.removeEventListener("loadedmetadata", safePlay);
+      audio.removeEventListener("canplaythrough", safePlay);
+    };
+  }, [isPaused]);
 
 /* ------------------------------------------------------
-   PAUSE / PLAY FUNCTIONS
------------------------------------------------------- */
+    PAUSE / PLAY FUNCTIONS
+------------------------------------------------------ 
 function handlePause() {
-  if (!audioRef?.current) return;
+  if (!audioRef.current) return;
   audioRef.current.pause();
   setIsPaused(true);
 }
 
 function handlePlay() {
-  if (!audioRef?.current) return;
+  if (!audioRef.current) return;
+  // always try to play; if browser blocks, we just catch
   audioRef.current.play().catch(() => {});
   setIsPaused(false);
-}
+}*/
 
   /* ------------------------------------------------------
      LOAD MODULES
@@ -551,184 +295,135 @@ function handlePlay() {
     }
   }
 
-/* ------------------------------------------------------
-   LOAD LESSON CONTENT (module-wide captions)
------------------------------------------------------- */
-async function loadLessonContent(lessonId: number) {
-  setSlides([]);
-  setCaptions({});
-  setQuizQuestions([]);
-  setSlideIndex(0);
-  setQuizIndex(0);
+  /* ------------------------------------------------------
+     LOAD LESSON CONTENT
+  ------------------------------------------------------ */
+  async function loadLessonContent(lessonId: number) {
+    setSlides([]);
+    setCaptions({});
+    setQuizQuestions([]);
+    setSlideIndex(0);
+    setQuizIndex(0);
 
-  /* get the active module id */
-  const activeModuleId = modules[currentModuleIndex]?.id;
-  if (!activeModuleId) return;
-
-  /* get ALL lessons in this module */
-  const moduleLessons = lessons.filter(
-    (l) => l.module_id === activeModuleId
-  );
-
-  /* get ALL slides for ALL lessons in this module */
-  const { data: moduleSlides } = await supabase
-    .from("lesson_slides")
-    .select("*")
-    .in(
-      "lesson_id",
-      moduleLessons.map((l) => l.id)
-    )
-    .order("order_index", { ascending: true });
-
-  setSlides(moduleSlides || []);
-
-  const moduleSlideIds = moduleSlides?.map((s) => s.id) ?? [];
-
-  /* fetch ALL captions for ALL module slides */
-  const { data: moduleCaptionRows } = await supabase
-    .from("slide_captions")
-    .select(`
-      id,
-      slide_id,
-      caption,
-      seconds,
-      line_index,
-      published_audio_url_d,
-      published_audio_url_a,
-      published_audio_url_j,
-      published_audio_url_o
-    `)
-    .in("slide_id", moduleSlideIds)
-    .order("line_index", { ascending: true });
-
-  /* group module captions by slide */
-  const grouped: Record<string, CaptionRow[]> = {};
-  moduleSlides?.forEach((s) => {
-    grouped[s.id] =
-      moduleCaptionRows?.filter(
-        (c) => String(c.slide_id) === String(s.id)
-      ) ?? [];
-  });
-
-  setCaptions(grouped);
-
-  /* fetch quiz for the active lesson ONLY (unchanged) */
-  const { data: quizRows } = await supabase
-    .from("quizzes")
-    .select("*")
-    .eq("lesson_id", lessonId)
-    .order("order_index", { ascending: true });
-
-  if (quizRows?.length) {
-    const quizIds = quizRows.map((q) => q.id);
-
-    const { data: optionRows } = await supabase
-      .from("quiz_options")
+    const { data: slideRows } = await supabase
+      .from("lesson_slides")
       .select("*")
-      .in("quiz_id", quizIds)
+      .eq("lesson_id", lessonId)
       .order("order_index", { ascending: true });
 
-    const qList: QuizState[] = quizRows.map((q) => ({
-      id: q.id,
-      question: q.question,
-      options:
-        optionRows?.filter((o) => o.quiz_id === q.id) || [],
-      selected: null,
-      submitted: false,
-    }));
+    setSlides(slideRows || []);
 
-    setQuizQuestions(qList);
+    const slideIds = slideRows?.map((s) => s.id) ?? [];
+    const { data: captionRows } = await supabase
+      .from("slide_captions")
+      .select(`
+        id,
+        slide_id,
+        caption,
+        seconds,
+        line_index,
+        published_audio_url_d,
+        published_audio_url_a,
+        published_audio_url_j,
+        published_audio_url_o
+      `)
+      .in("slide_id", slideIds)
+      .order("line_index", { ascending: true });
+
+
+ const grouped: Record<string, CaptionRow[]> = {};
+slideRows?.forEach((s) => {
+  grouped[s.id] =
+    captionRows?.filter((c) => String(c.slide_id) === String(s.id)) ?? [];
+});
+
+// ADD THIS LOG HERE
+console.log("CAPTIONS PER SLIDE", grouped);
+
+setCaptions(grouped);
+
+
+    const { data: quizRows } = await supabase
+      .from("quizzes")
+      .select("*")
+      .eq("lesson_id", lessonId)
+      .order("order_index", { ascending: true });
+
+    if (quizRows?.length) {
+      const quizIds = quizRows.map((q) => q.id);
+
+      const { data: optionRows } = await supabase
+        .from("quiz_options")
+        .select("*")
+        .in("quiz_id", quizIds)
+        .order("order_index", { ascending: true });
+
+      const qList: QuizState[] = quizRows.map((q) => ({
+        id: q.id,
+        question: q.question,
+        options: optionRows?.filter((o) => o.quiz_id === q.id) || [],
+        selected: null,
+        submitted: false,
+      }));
+
+      setQuizQuestions(qList);
+    }
+
+    setLoading(false);
   }
 
-  setLoading(false);
-}
+  /* ------------------------------------------------------
+     NAV / QUIZ DERIVED STATE
+  ------------------------------------------------------ */
+  const totalSlides = slides.length;
+  const totalQuiz = quizQuestions.length;
+  const isQuizMode = slideIndex === totalSlides && totalQuiz > 0;
+
+  const showContinueInstruction =
+  currentModuleIndex === 0 &&
+  slideIndex === totalSlides - 1 &&
+  !isQuizMode;
 
 
-    // when a new slide is loaded, clear paused so narration can auto-play
-    useEffect(() => {
-      if (isQuizMode) return;     // optional: don't auto-unpause when entering quiz
-      setIsPaused(false);
-    }, [slideIndex, isQuizMode]);
-
-      // RESET caption state on NEW slide
-   useEffect(() => {
-      setSlideComplete(false);
-
-      setCurrentCaptionIndex(0);
-      setCanProceed(false);
-
-        // allow autoplay on new slide (unless quiz)
-        if (!isQuizMode) {
-          setIsPaused(false);
-        }
-
-        console.log("SLIDE RESET >>>", {
-          slideIndex,
-          clearedCaption: true,
-        });
-      }, [slideIndex, isQuizMode]);
-
-      // === START-SLIDE PROGRESS ===
-      useEffect(() => {
-        if (!user?.id) return;
-        const slide = slides[slideIndex];
-        if (!slide) return;
-
-        // tell backend we viewed this slide
-        fetch("/api/progress/start-slide", {
-          method: "POST",
-          body: JSON.stringify({
-            user_id: user.id,
-            module_id: modules[currentModuleIndex]?.id,
-            lesson_id: lessons[currentLessonIndex]?.id,
-            slide_id: slide.id,
-            slide_index: slideIndex,
-          }),
-        });
-
-        // reset complete flag
-        setSlideComplete(false);
-
-        // fetch required seconds
-        fetch(`/api/progress/required-seconds?slide_id=${slide.id}`)
-          .then((r) => r.json())
-          .then((r) => {
-            const sec = r.required_seconds ?? 0;
-            setRequiredSeconds(sec);
-          });
-      }, [slideIndex, user?.id, modules, lessons]);
+   // when a new slide is loaded, clear paused so narration can auto-play
+  useEffect(() => {
+    if (isQuizMode) return;     // optional: don't auto-unpause when entering quiz
+    setIsPaused(false);
+  }, [slideIndex, isQuizMode]);
 
 
-      // Safety net ONLY on initial slide load
-      useEffect(() => {
-        const slide = slides[slideIndex];
-        if (!slide) return;
 
-        const caps = captions[slide.id] || [];
-        const urls = caps.map(c => resolveVoiceUrl(c, voice)).filter(Boolean);
+  /* ------------------------------------------------------
+     LOAD SEQUENCE
+  ------------------------------------------------------ */
+  useEffect(() => {
+    loadModules();
+  }, []);
 
-        if (!urls.length) {
-          // no audio for this slide → proceed
-          setCanProceed(true);
-          setSlideComplete(true);     
+  useEffect(() => {
+    if (modules.length) loadLessons(modules[currentModuleIndex].id);
+  }, [modules, currentModuleIndex]);
 
-          setTimeout(() => {
-            if (!isQuizMode && !isPaused) goNext(true);
-          }, 300);
-        }
-      }, [slideIndex]);
+  useEffect(() => {
+    if (lessons.length) loadLessonContent(lessons[currentLessonIndex].id);
+  }, [lessons, currentLessonIndex]);
+  
 
-
-// ----------------------------------------------------
-// Play correct audio whenever the current caption changes
-// ----------------------------------------------------
+/* ------------------------------------------------------
+   PLAYLIST PLAYBACK (Slide changed)
+------------------------------------------------------ */
 useEffect(() => {
-  const audio = audioRef?.current;
+  const audio = audioRef.current;
   if (!audio) return;
 
-  // do not auto-start on load or while user has paused
-  if (isPaused) return;
-  if (isQuizMode) return;
+  // reset caption progression
+  setCurrentCaptionIndex(0);
+  setCanProceed(false);
+
+  if (isQuizMode) {
+    audio.pause();
+    return;
+  }
 
   const slide = slides[slideIndex];
   if (!slide) return;
@@ -738,118 +433,143 @@ useEffect(() => {
     .map((c) => resolveVoiceUrl(c, voice))
     .filter(Boolean) as string[];
 
-  if (!urls.length) return;
-
-  const url = urls[currentCaptionIndex];
-  if (!url) return;
-
-  // only restart if src changed
-  if (audio.src !== url) {
-    audio.src = url;
-    audio.currentTime = 0;
-    audio.load();
+  if (!urls.length) {
+    setCanProceed(true);
+    return;
   }
 
-  // safe play
-  audio.play().catch(() => {});
+  // set first src if changed
+  if (audio.src !== urls[0]) {
+    audio.src = urls[0];
+  }
 
+  // auto-play only if not paused
+  if (!isPaused) {
+    // requestAnimationFrame makes sure src has taken effect
+    requestAnimationFrame(() => {
+      audio.play().catch(() => {});
+    });
+
+    // extra fallback — fires once after audio can actually play
+    audio.addEventListener(
+      "canplay",
+      () => {
+        if (!isPaused) {
+          audio.play().catch(() => {});
+        }
+      },
+      { once: true }
+    );
+  }
 }, [
-  currentCaptionIndex,
-  isQuizMode,
-  isPaused,
-  slides,
   slideIndex,
-  captions,
+  isQuizMode,
   voice,
+  captions,
+  slides,
+  isPaused
 ]);
 
+// Safety net: if slide has no captions or URLs, auto-advance
 useEffect(() => {
-  const el = audioRef?.current;
-  if (!el) return;
-  if (!audioUnlocked) return;
+  const slide = slides[slideIndex];
+  if (!slide) return;
 
-  if (!isPaused) {
-    el.play().catch(() => {});
+  const caps = captions[slide.id] || [];
+  const urls = caps.map(c => resolveVoiceUrl(c, voice)).filter(Boolean);
+
+  if (!urls.length) {
+    setCanProceed(true);
+    setTimeout(() => {
+      if (!isQuizMode && !isPaused) goNext();
+    }, 300);
   }
-}, [audioUnlocked, isPaused, audioRef]);
+}, [currentCaptionIndex, slideIndex]);
+
+//-------------------------------------------------------------------------//
+
+  useEffect(() => {
+      if (!audioRef.current) return;
+      if (isQuizMode) return;
+      if (isPaused) return; // NEW: don't auto-play when paused
+
+      const slide = slides[slideIndex];
+      if (!slide) return;
+
+      const caps = captions[slide.id] || [];
+      const urls = caps
+        .map(c => resolveVoiceUrl(c, voice))
+        .filter(Boolean) as string[];
+
+      if (!urls.length) return;
+      if (!urls[currentCaptionIndex]) return;
+
+   // load audio for current caption index
+    if (!isPaused && urls[currentCaptionIndex]) {
+      if (audioRef.current.src !== urls[currentCaptionIndex]) {
+        audioRef.current.src = urls[currentCaptionIndex];
+      }
+      audioRef.current.play().catch(() => {});
+    }
+
+    }, [currentCaptionIndex, isQuizMode, isPaused, slides, slideIndex, captions, voice]);
+
 
 
 /* ------------------------------------------------------
-   NAVIGATION
------------------------------------------------------- */
-const goNext = useCallback(
-  (fromAuto?: boolean) => {
+     NAVIGATION
+  ------------------------------------------------------ */
+    const goNext = useCallback((manual?: boolean) => {
+      // Block auto-advance while in module 0, but manual override allowed
+      if (currentModuleIndex === 0 && !manual) return;
 
-    // Only block USER attempts to jump forward to another module.
-    // Do NOT block slide-to-slide inside the same module.
-    if (!fromAuto && currentModuleIndex > savedProgress) return;
+      // Block auto-advance when narration not finished, unless manual
+      if (!isQuizMode && !canProceed && !manual) return;
 
-    // USER navigation must respect timing.
-    // Auto (TTS) skips this.
-    if (!fromAuto && !isQuizMode && !canProceed) return;
 
-    // ───────────── SLIDE / CAPTION MODE ─────────────
-    if (!isQuizMode) {
-      if (slideIndex < totalSlides - 1) {
-        setSlideIndex((i) => i + 1);
+
+      if (!isQuizMode) {
+        if (slideIndex < totalSlides - 1)
+          return setSlideIndex(i => i + 1);
+
+        if (totalQuiz > 0) {
+          setSlideIndex(totalSlides);
+          return setQuizIndex(0);
+        }
+
+        if (currentLessonIndex < lessons.length - 1)
+          return setCurrentLessonIndex(i => i + 1);
+
+        if (currentModuleIndex < modules.length - 1)
+          return setCurrentModuleIndex(i => i + 1);
+
         return;
       }
 
-      if (totalQuiz > 0) {
-        setSlideIndex(totalSlides);
-        setQuizIndex(0);
-        return;
-      }
+      // QUIZ MODE
+      if (quizIndex < totalQuiz - 1)
+        return setQuizIndex(i => i + 1);
 
-      if (currentLessonIndex < lessons.length - 1) {
-        setCurrentLessonIndex(i => i + 1);
-        setSlideIndex(0);
-        setCurrentCaptionIndex(0);
-        setCanProceed(false);
-        return;
-      }
+      if (currentLessonIndex < lessons.length - 1)
+        return setCurrentLessonIndex(i => i + 1);
+
+      if (currentModuleIndex < modules.length - 1)
+        return setCurrentModuleIndex(i => i + 1);
+    }, [
+      isQuizMode,
+      canProceed,
+      slideIndex,
+      totalSlides,
+      totalQuiz,
+      quizIndex,
+      currentLessonIndex,
+      lessons.length,
+      currentModuleIndex,
+      modules.length,
+    ]);
 
 
-      if (currentModuleIndex < modules.length - 1) {
-        setCurrentModuleIndex((i) => i + 1);
-        return;
-      }
-
-      return;
-    }
-
-    // ───────────── QUIZ MODE ─────────────
-    if (quizIndex < totalQuiz - 1) {
-      setQuizIndex((i) => i + 1);
-      return;
-    }
-
-    if (currentLessonIndex < lessons.length - 1) {
-      setCurrentLessonIndex((i) => i + 1);
-      return;
-    }
-
-    if (currentModuleIndex < modules.length - 1) {
-      setCurrentModuleIndex((i) => i + 1);
-      return;
-    }
-  },
-  [
-    isQuizMode,
-    canProceed,
-    savedProgress,
-    slideIndex,
-    totalSlides,
-    totalQuiz,
-    quizIndex,
-    currentLessonIndex,
-    lessons.length,
-    currentModuleIndex,
-    modules.length,
-  ]
-);
-
-const goPrev = () => {
+  const goPrev = () => {
     if (isQuizMode) {
       if (quizIndex > 0) return setQuizIndex((i) => i - 1);
       return setSlideIndex(totalSlides - 1);
@@ -887,10 +607,8 @@ const goPrev = () => {
     }
   }
 
-    const progressPercentage = totalModuleSeconds > 0
-      ? (elapsedSeconds / totalModuleSeconds) * 100
-      : 0;
-
+    const progressPercentage =
+    totalModuleSeconds > 0 ? (elapsedSeconds / totalModuleSeconds) * 100 : 0;
 
     // SMOOTHING
     const [smoothProgress, setSmoothProgress] = useState(progressPercentage);
@@ -933,7 +651,7 @@ const goPrev = () => {
         />
       </div>
 
-{/* AUDIO CONTROLS (VOICE + VOLUME) */}
+ {/* AUDIO CONTROLS (VOICE + VOLUME) */}
 <div className="absolute top-0 right-0 z-2 bg-white text-[#001f40] px-4 py-3 flex items-center gap-4 pointer-events-auto">
 
   <div className="relative">
@@ -966,151 +684,161 @@ const goPrev = () => {
     ))}
   </select>
 </div>
+<div className="flex items-center gap-2">
+  <input
+    type="range"
+    min="0"
+    max="1"
+    step="0.05"
+    value={volume}
+    onChange={(e) => {
+      const v = Number(e.target.value);
+      setVolume(v);
+      if (audioRef.current) audioRef.current.volume = v;
+    }}
+    className="vol-range w-24 h-1 cursor-pointer appearance-none"
+  />
+
+  <style jsx>{`
+    .vol-range {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+    }
+    .vol-range::-webkit-slider-runnable-track {
+      height: 4px;
+      background: #001f40;
+      border-radius: 2px;
+    }
+    .vol-range::-moz-range-track {
+      height: 4px;
+      background: #001f40;
+      border-radius: 2px;
+    }
+    .vol-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #001f40;
+      margin-top: -2px;
+    }
+    .vol-range::-moz-range-thumb {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #001f40;
+    }
+  `}</style>
+</div>
 
 </div>
 
-    {/* MAIN */}
-<div className="relative flex-1 w-screen h-screen overflow-hidden pt-0 md:pt-10 pb-[160px] z-0">
 
+
+  
+
+{/* MAIN */}
+<div
+  className="relative flex-1 w-screen h-screen overflow-hidden cursor-pointer pt-0 md:pt-10 pb-[160px] z-0"
+  onClick={(e) => {
+    const target = e.target as HTMLElement;
+
+    // ignore clicks on UI controls
+    if (
+      target.closest("button") ||
+      target.closest("input")  ||
+      target.closest("select") ||
+      target.closest("a")
+    ) return;
+
+    // manual advance
+    goNext(true);
+  }}
+>
   {!isQuizMode ? (
     <SlideView currentImage={currentImage} />
-  ) : (
-    <QuizView
-      quizQuestions={quizQuestions}
-      quizIndex={quizIndex}
-      setQuizQuestions={setQuizQuestions}
-      goNext={goNext}
-      setCanProceed={setCanProceed}
-      audioDuration={audioDuration}
-    />
-  )}
-
-  {/* CLICK-TO-PAUSE OVERLAY */}
-{!isQuizMode && (
-  <div
-    className="absolute inset-0 z-20"
-    onClick={() => {
-      const a = audioRef?.current;
-      if (!a) return;
-
-      if (isPaused || a.paused) {
-        handlePlay();
-      } else {
-        handlePause();
-      }
-    }}
-    style={{ cursor: "default" }}
-  />
-)}
-
-
-</div>
-
+  ) : (            <QuizView
+            quizQuestions={quizQuestions}
+            quizIndex={quizIndex}
+            setQuizQuestions={setQuizQuestions}
+            goNext={goNext}
+          />
+        )}
+      </div>
 
   {/* NARRATION AUDIO ELEMENT */}
-    <audio
-      ref={audioRef}
-      preload="auto"
-      controls={false}
-      onTimeUpdate={(e) => {
-        const a = e.currentTarget;
-        setAudioTime(a.currentTime);
-      }}
-      onLoadedMetadata={(e) => {
-        const a = e.currentTarget;
-        setAudioDuration(a.duration);
-      }}
-      onEnded={() => {
-        console.log("ENDED >>>", {
-          slideIndex,
-          currentCaptionIndex,
-          paused: isPaused,
-          isQuizMode,
-        });
+<audio
+  ref={audioRef}
+  autoPlay
+  preload="auto"
+  controls={false}
+  onTimeUpdate={(e) => {
+    const a = e.currentTarget;
+    setAudioTime(a.currentTime);
+  }}
+  onLoadedMetadata={(e) => {
+    const a = e.currentTarget;
+    setAudioDuration(a.duration);
+  }}
+  onEnded={() => {
+    console.log("ENDED >>>", {
+      slideIndex,
+      currentCaptionIndex,
+      paused: isPaused,
+      isQuizMode,
+    });
 
-        if (isQuizMode) return;
-        if (isPaused) return;
+    if (isQuizMode) return;
+    if (isPaused) return;
 
-        const slide = slides[slideIndex];
-        if (!slide) return;
+    const slide = slides[slideIndex];
+    if (!slide) return;
 
-        const caps = captions[slide.id] || [];
-        const urls = caps
-          .map(c => resolveVoiceUrl(c, voice))
-          .filter(Boolean) as string[];
+    const caps = captions[slide.id] || [];
+    const urls = caps
+      .map(c => resolveVoiceUrl(c, voice))
+      .filter(Boolean) as string[];
 
-        console.log("ENDED URLs:", urls);
-        console.log("CAP LIST", caps.map(c => c.caption));
-
-
-
-       // no audio on this slide → finish slide
-          if (!urls.length) {
-            setCanProceed(true);
-            setSlideComplete(true);   // <<< add
-            setTimeout(() => {
-              if (!isQuizMode && !isPaused) goNext(true);
-            }, 300);
-            return;
-          }
+    console.log("ENDED URLs:", urls);
+    console.log("CAP LIST", caps.map(c => c.caption));
 
 
-        // if NOT last caption → advance caption
-        if (currentCaptionIndex < urls.length - 1) {
-          console.log("Advancing caption to", currentCaptionIndex + 1);
-          setCurrentCaptionIndex(i => i + 1);
-          return;
-        }
 
-        // last caption of slide
-      console.log("Last caption, finishing slide");
-
-      // allow next
+    // no audio on this slide → finish slide
+    if (!urls.length) {
       setCanProceed(true);
-      setSlideComplete(true);   // <<< add
-
-      // SAVE PROGRESS HERE
-      saveProgress();
-
-      // ===== MODULE PROGRESS (search: MODULE-PROGRESS) =====
-      fetch("/api/progress/complete-module", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: user.id,
-          module_id: modules[currentModuleIndex]?.id,
-          slide_index: slideIndex,
-          highest_slide_index: slideIndex,
-        }),
-      }).catch(console.error);
-
-      // ===== SUMMARY (search: SUMMARY-UPDATE) =====
-      fetch("/api/progress/update-summary", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: user.id,
-          course_id: COURSE_ID,
-        }),
-      }).catch(console.error);
-
-
-      // move to next slide
       setTimeout(() => {
-        if (!isQuizMode && !isPaused) goNext(true);
+        if (!isQuizMode && !isPaused) goNext();
       }, 300);
+      return;
+    }
 
-      }}
-    />
+    // if NOT last caption → advance caption
+    if (currentCaptionIndex < urls.length - 1) {
+      console.log("Advancing caption to", currentCaptionIndex + 1);
+      setCurrentCaptionIndex(i => i + 1);
+      return;
+    }
+
+    // last caption of slide
+    console.log("Last caption, finishing slide");
+    setCanProceed(true);
+    setTimeout(() => {
+      if (!isQuizMode && !isPaused) goNext();
+    }, 300);
+  }}
+/>
 
 {showContinueInstruction && (
-  <div className="fixed bottom-[230px] left-0 right-0 flex justify-center z-40">
+  <div className="fixed bottom-[250px] left-0 right-0 flex justify-center z-40">
     <button
       onClick={() => {
-        setAudioUnlocked(true);
-  if (!audioRef?.current) return;{
+        if (audioRef?.current) {
           audioRef.current.play().catch(()=>{});
         }
-        handlePlay();
-        goNext();
+     //   handlePlay();
+        goNext(true);     // manual advance
       }}
       className="
         px-12 py-5
@@ -1140,8 +868,8 @@ const goPrev = () => {
         audioTime={audioTime}
         audioDuration={audioDuration}
         captionText={captionText}
-        slideComplete={slideComplete}
-        currentModuleTotal={currentModuleTotal}
+      //  slideComplete={slideComplete}
+      //  currentModuleTotal={currentModuleTotal}
         elapsedSeconds={elapsedSeconds}
         currentModuleIndex={currentModuleIndex}
         currentLessonIndex={currentLessonIndex}
@@ -1187,15 +915,7 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
   );
 }
 
-  function QuizView({
-    quizQuestions,
-    quizIndex,
-    setQuizQuestions,
-    goNext,
-    setCanProceed,
-    audioDuration,
-  }: any) {
-
+function QuizView({ quizQuestions, quizIndex, setQuizQuestions, goNext }: any) {
   const q = quizQuestions[quizIndex];
 
   return (
@@ -1237,60 +957,48 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
           })}
         </div>
 
-          {!q.submitted ? (
-            <div className="flex gap-4 justify-center">
-              {/* SUBMIT */}
-              <button
-                onClick={() => {
-                  if (!q.selected) return;
-
-                  setCanProceed(true);
-
-                  setQuizQuestions((prev: QuizState[]) => {
-                    const updated = [...prev];
-                    updated[quizIndex].submitted = true;
-                    return updated;
-                  });
-
-                }}
-
-                disabled={!q.selected}
-                className={`px-5 py-2 rounded text-white ${
-                  q.selected ? "bg-[#ca5608]" : "bg-gray-400"
-                }`}
-              >
-                Submit
-              </button>
-
-
-              {/* SKIP */}
-             <button
+        {!q.submitted ? (
+          <div className="flex gap-4 justify-center">
+            <button
               onClick={() => {
-                setCanProceed(true);
-
-                setQuizQuestions((prev: QuizState[]) => {
+                if (!q.selected) return;
+                setQuizQuestions((prev: any) => {
                   const updated = [...prev];
                   updated[quizIndex].submitted = true;
                   return updated;
                 });
               }}
+              disabled={!q.selected}
+              className={`px-5 py-2 rounded text-white ${
+                q.selected ? "bg-[#ca5608]" : "bg-gray-400"
+              }`}
+            >
+              Submit
+            </button>
 
+            <button
+              onClick={() => {
+                setQuizQuestions((prev: any) => {
+                  const updated = [...prev];
+                  updated[quizIndex].submitted = true;
+                  return updated;
+                });
+              }}
               className="px-5 py-2 rounded border border-gray-400 text-gray-600"
             >
               Skip
             </button>
-
-            </div>
-          ) : (
-            <div className="flex justify-center mt-6">
-              <button
-                onClick={goNext}
-                className="px-6 py-2 bg-[#ca5608] text-white rounded-lg"
-              >
-                Next Question
-              </button>
-            </div>
-          )}
+          </div>
+        ) : (
+          <div className="flex justify-center mt-6">
+            <button
+              onClick={goNext}
+              className="px-6 py-2 bg-[#ca5608] text-white rounded-lg"
+            >
+              Next Question
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1316,50 +1024,27 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
       lessons,
     }: any) {
 
-
-return (
-  <div className="fixed bottom-[40px] left-0 right-0 bg-white border-t shadow-inner h-[180px] z-30">
-    <div className="h-full max-w-6xl mx-auto px-6 flex items-center justify-center">
-
-      {/* CAPTIONS OR QUIZ TEXT */}
-      <div className="text-center mt-18 text-[#001f40] text-sm flex-1">
-
-        {!isQuizMode && captionText ? (
-          <p className="text-base leading-[32px] whitespace-pre-wrap text-center text-[#001f40]">
-            {captionText}
-          </p>
-        ) : (
-          <>
-            {isQuizMode
-              ? `Question ${quizIndex + 1} of ${totalQuiz}`
-              : `Slide ${slideIndex + 1} of ${totalSlides}  |  ${audioTime.toFixed(1)}s / ${audioDuration.toFixed(1)}s`
-            }
-          </>
-        )}
-
-        {/* SMALL META BELOW */}
-        <div className="mt-12 flex flex-col items-center text-[10px] leading-tight opacity-80">
-
-          <div className="flex items-center gap-1 whitespace-nowrap">
-            <span> *TEMPORARY </span>
-            <span>Slide {slideIndex + 1} of {totalSlides}</span>
-            <span>›</span>
-            <span>{audioTime.toFixed(1)}s / {audioDuration.toFixed(1)}s</span>
-            <span>›</span>
-            <span>Module left: {(currentModuleTotal - elapsedSeconds).toFixed(0)}s</span>
-            <span>{modules[currentModuleIndex]?.title}</span>
-            <span>›</span>
-            <span>{lessons[currentLessonIndex]?.title}</span>
-            <span> *TEMPORARY </span>
-
+      return (
+        <div className="fixed bottom-[40px] left-0 right-0 bg-white border-t shadow-inner h-[180px] z-30">
+          <div className="h-full max-w-6xl mx-auto px-6 flex items-center justify-between">
+      <div className="text-center mt-2 text-[#001f40] text-sm flex-1">
+            {!isQuizMode && captionText ? (
+            <p className="text-base leading-[32px] whitespace-pre-wrap text-center text-[#001f40]">
+                {captionText}
+              </p>
+            ) : (
+              <>
+                {isQuizMode
+                  ? `Question ${quizIndex + 1} of ${totalQuiz}`
+                  : `Slide ${slideIndex + 1} of ${totalSlides}  |  ${audioTime.toFixed(1)}s / ${audioDuration.toFixed(1)}s`
+                }
+              </>
+            )}
+            </div>        
           </div>
         </div>
-
-      </div>
-
-    </div>
-  </div>
-);
+        
+      );
     }
 
 /* ------------------------------------------------------
@@ -1387,44 +1072,34 @@ function TimelineWithPromo({
         <div className="relative flex w-full h-4 items-center">
 
           {/* MODULE SEGMENTS */}
-{modules.map((m, i) => {
-  const completed = i < currentModuleIndex;
-  const active = i === currentModuleIndex;
+          {modules.map((m, i) => {
+            const completed = i < currentModuleIndex;
+            const active = i === currentModuleIndex;
 
-  // TODO: read real progress from DB
-  const savedProgress = currentModuleIndex;
-
-  return (
-    <div
-      key={m.id}
-      className={`
-        relative h-full flex items-center
-        ${i <= savedProgress ? "cursor-pointer" : "cursor-not-allowed opacity-60"}
-      `}
-      style={{ width: `${segmentWidth}%` }}
-      onClick={() => {
-        if (i <= savedProgress) goToModule(i);      // backward always ok, forward only if unlocked
-      }}
-    >
-      <div
-        className={`
-          h-2 flex-1 transition-all
-          ${
-            active
-              ? "bg-[#ca5608] shadow-[0_0_6px_#ca5608]"
-              : completed
-              ? "bg-[#ca5608]"
-              : "bg-[#001f40]/80"
-          }
-          ${i === 0 ? "rounded-l-full" : ""}
-        `}
-      />
-      <div className="w-[2px] h-full bg-white" />
-    </div>
-  );
-})}
-
-    
+            return (
+              <div
+                key={m.id}
+                className="relative h-full flex items-center"
+                style={{ width: `${segmentWidth}%` }}
+                onClick={() => completed && goToModule(i)}
+              >
+                <div
+                  className={`
+                    h-2 flex-1 transition-all
+                    ${
+                      active
+                        ? "bg-[#ca5608] shadow-[0_0_6px_#ca5608]"
+                        : completed
+                        ? "bg-[#ca5608]"
+                        : "bg-[#001f40]/80"
+                    }
+                    ${i === 0 ? "rounded-l-full" : ""}
+                  `}
+                />
+                <div className="w-[2px] h-full bg-white" />
+              </div>
+            );
+          })}
 
           {/* FINAL PROMO SEGMENT (ONLY ONE) */}
           <div
