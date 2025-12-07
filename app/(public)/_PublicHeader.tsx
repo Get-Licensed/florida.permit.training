@@ -5,76 +5,91 @@ import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
 
-export default function PublicMenuHeader() {
+export default function PublicMenuHeader({
+  volume,
+  setVolume,
+  audioRef,
+}: {
+  volume?: number;
+  setVolume?: (v: number) => void;
+  audioRef?: React.RefObject<HTMLAudioElement | null>;
+}) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
 
-  /* === DISABLED NAV ITEMS === */
-  const navItems = [
-    { name: "Dashboard", href: "/dashboard" },
-    { name: "My Course", href: "/course" },
-    { name: "My Permit", href: "/my-permit" },
-    { name: "My Profile", href: "/profile" },
-    { name: "Support", href: "/support" },
-  ];
+  useEffect(() => {
+    async function loadProfile() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user?.id) return;
 
-  /* === GOOGLE POPUP LOGIN === */
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", session.user.id)
+        .single();
+
+      if (data?.full_name) setFullName(data.full_name);
+    }
+    loadProfile();
+  }, []);
+
   const handleLogin = async () => {
     try {
       const redirect = `${window.location.origin}/auth/callback`;
-
-      const res = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: redirect,
-          skipBrowserRedirect: true,
-        },
-      });
-
-      if (res?.data?.url) {
-        window.open(
-          res.data.url,
-          "GoogleLogin",
-          `width=520,height=650,top=${window.screenY + 80},left=${window.screenX + 120}`
-        );
-        return;
-      }
-
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo: redirect },
       });
-    } catch (err) {
-      console.error("Google Login Error:", err);
-    }
+    } catch {}
   };
 
-  /* === CLOSE WHEN CLICKING OUTSIDE === */
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
-
-  /* ======================================================== */
   return (
-    <>
-      {/* PUBLIC WHITE HEADER – always above progress bar */}
-      <header className="flex justify-between items-center p-3 bg-white border-b border-gray-200 relative z-[60]">
-        <Link href="/" className="flex items-center">
-          <div className="h-12 w-12 bg-white rounded-full flex items-center justify-center p-2 shadow-md">
-            <img src="/logo.png" alt="Florida Permit Training" className="h-full w-full object-contain" />
-          </div>
-        </Link>
+    <div className="relative overflow-visible">
+      <Link href="/dashboard">
+        <img
+          src="/logo.png"
+          alt="Florida Permit Training"
+          className="h-20 w-20 absolute left-3 top-[14px] z-[80]"
+          style={{
+            filter: `
+            drop-shadow(0 0 1px white)
+            drop-shadow(0 0 1px white)
+            drop-shadow(0 0 1px white)
+            drop-shadow(0 0 1px white)
+            drop-shadow(0 0 1px white)
+            drop-shadow(0 0 1px white)
+          `,
+          }}
+        />
+      </Link>
 
-        {/* Blue Hamburger */}
+      <header className="flex justify-end items-center pr-3 pl-[100px] py-3 bg-white border-b border-gray-200 relative z-[60]">
+        <div className="text-[#001f40] text-sm font-semibold truncate max-w-[200px] mr-4">
+          {fullName}
+        </div>
+
+        {typeof volume === "number" && setVolume && (
+          <div className="mr-4 flex items-center gap-2">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={(e) => {
+                setVolume(Number(e.target.value));
+              }}
+              className="vol-range w-20 h-1 cursor-pointer appearance-none"
+            />
+          </div>
+        )}
+
         <button
+          type="button"
           onClick={() => setMenuOpen(true)}
           className="text-3xl font-bold text-[#001f40]"
         >
@@ -82,7 +97,6 @@ export default function PublicMenuHeader() {
         </button>
       </header>
 
-      {/* PUBLIC SIDE MENU */}
       {menuOpen && (
         <div
           ref={menuRef}
@@ -91,6 +105,7 @@ export default function PublicMenuHeader() {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold">Menu</h2>
             <button
+              type="button"
               onClick={() => setMenuOpen(false)}
               className="text-2xl font-bold text-[#001f40]"
             >
@@ -99,41 +114,74 @@ export default function PublicMenuHeader() {
           </div>
 
           <nav className="flex flex-col gap-4 text-lg">
-            {navItems.map((item) => (
+            {[
+              { name: "Dashboard", href: "/dashboard" },
+              { name: "My Course", href: "/course" },
+              { name: "My Permit", href: "/my-permit" },
+              { name: "My Profile", href: "/profile" },
+              { name: "Support", href: "/support" },
+            ].map((item) => (
               <span
                 key={item.name}
                 className={`transition-colors duration-200 select-none cursor-not-allowed
-                  ${
-                    pathname === item.href
-                      ? "text-[#001f40] font-semibold underline"
-                      : "text-gray-400"
-                  }
-                `}
+              ${
+                pathname === item.href
+                  ? "text-[#001f40] font-semibold underline"
+                  : "text-gray-400"
+              }
+            `}
               >
                 {item.name}
               </span>
             ))}
-
-            {/* LOGIN BUTTON */}
-            <button
-              onClick={handleLogin}
-              className="
-                mt-6 flex items-center justify-center 
-                border border-[#001f40] bg-white text-[#001f40] 
-                text-[18px] font-bold px-4 py-2 rounded-md 
-                hover:shadow-lg transition-all
-              "
-            >
-              <img
-                src="/Google-Icon.png"
-                alt="Google Icon"
-                className="w-[22px] h-[22px] mr-2"
-              />
-              Continue with Google
-            </button>
           </nav>
+
+          <button
+            type="button"
+            onClick={handleLogin}
+            className="mt-6 flex items-center justify-center border border-[#001f40] bg-white text-[#001f40] text-[18px] font-bold px-4 py-2 rounded-md hover:shadow-lg transition-all"
+          >
+            <img
+              src="/Google-Icon.png"
+              alt="Google Icon"
+              className="w-[22px] h-[22px] mr-2"
+            />
+            Continue with Google
+          </button>
         </div>
       )}
-    </>
+
+      <style jsx>{`
+        .vol-range {
+          -webkit-appearance: none;
+          appearance: none;
+          background: transparent;
+        }
+        .vol-range::-webkit-slider-runnable-track {
+          height: 4px;
+          background: #001f40;
+          border-radius: 2px;
+        }
+        .vol-range::-moz-range-track {
+          height: 4px;
+          background: #001f40;
+          border-radius: 2px;
+        }
+        .vol-range::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #001f40;
+          margin-top: -2px;
+        }
+        .vol-range::-moz-range-thumb {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #001f40;
+        }
+      `}</style>
+    </div>
   );
 }

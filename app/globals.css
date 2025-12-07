@@ -88,3 +88,24 @@ body {
 .sortable-chosen {
   background-color: rgba(202, 86, 8, 0.12) !important; /* Slight orange */
 }
+
+/* -------------------------------------------------
+ VOLUME KNOB
+ --------------------------------------------------- */
+
+
+.vol-range::-webkit-slider-thumb {
+  width: 10px;        /* smaller */
+  height: 10px;
+  border-radius: 50%;
+  background: #001f40; /* brand color */
+  cursor: pointer;
+}
+
+.vol-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #001f40;
+  cursor: pointer;
+}

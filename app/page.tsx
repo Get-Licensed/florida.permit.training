@@ -493,4 +493,3 @@ function Tooltip({ hoverItem, vw, mouseX }: any) {
     </div>
   );
 }
-

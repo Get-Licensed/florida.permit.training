@@ -73,7 +73,7 @@ export default function AdminPortalPage() {
         {/* FULL CONTENT EDITOR */}
         <AdminCard
           icon={<Settings size={32} className="text-[#001f40]" />}
-          title="Full Content Editor"
+          title="Outline View"
           description="Manage modules, lessons, slides, and structured content."
           href="/admin/content"
           buttonText="Open Editor"

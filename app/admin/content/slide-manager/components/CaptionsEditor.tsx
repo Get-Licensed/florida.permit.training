@@ -2,7 +2,7 @@
 
 "use client";
 
-  import { useState } from "react";
+  import { useState, useEffect } from "react";
   import { supabase } from "@/utils/supabaseClient";
 
   import LessonExplorerLayout from "./LessonExplorerLayout";
@@ -52,6 +52,15 @@
     const [progress, setProgress] = useState(0);
     const [progressTotal, setProgressTotal] = useState(0);
   
+
+// whenever user clicks the PREVIEW tab, reload the lesson data
+useEffect(() => {
+  if (tab === "preview" && selectedLessonId) {
+    loadLessonData(selectedLessonId);
+  }
+}, [tab, selectedLessonId]);
+
+
   /* Concurrency-Limited Parallel Generation Utility */
 function runWithConcurrencyLimit<T, R>(
   items: T[],
@@ -585,7 +594,7 @@ const totalLessonSeconds = captions.reduce(
         {/* PREVIEW MODE */}
         {tab === "preview" && selectedLessonId && currentSlide && (
           <div className="w-full flex flex-col items-center">
-
+<h2 className="text-lg font-semibold items-center">**CURRENTLY DE-BUGGING THIS FEATURE**</h2>
             {/* NAV BUTTONS */}
             <div className="flex justify-center gap-6 mb-6 w-full">
               <button type="button"

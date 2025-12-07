@@ -5,6 +5,8 @@
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef } from "react";
+import React from "react";
+
 
 /* ------------------------------------------------------
    TYPES
@@ -72,32 +74,43 @@ function resolveImage(path: string | null) {
     const VOICES = [
   {
     code: "en-US-Neural2-A",
-    label: "Voice A",
+    label: "John",
     urlKey: "published_audio_url_a",
     hashKey: "caption_hash_a",
   },
   {
     code: "en-US-Neural2-D",
-    label: "Voice D",   // replaced Chirp-HD-D
+    label: "Paul",   // replaced Chirp-HD-D
     urlKey: "published_audio_url_d",
     hashKey: "caption_hash_d",
   },
   {
     code: "en-US-Neural2-I",
-    label: "Voice I",   // replaced Chirp-HD-O
+    label: "Ringo",   // replaced Chirp-HD-O
     urlKey: "published_audio_url_o",     // reuse same DB column
     hashKey: "caption_hash_o",
   },
   {
     code: "en-US-Neural2-J",
-    label: "Voice J",
+    label: "George",
     urlKey: "published_audio_url_j",
     hashKey: "caption_hash_j",
   },
 ];
 
 
-  export default function CoursePlayerClient() {
+ export default function CoursePlayer({
+  audioRef,
+  volume,
+  setVolume,
+}: {
+  audioRef?: React.RefObject<HTMLAudioElement | null>;
+  volume?: number;
+  setVolume?: (v: number) => void;
+}) {
+
+
+
   const searchParams = useSearchParams();
   const initialModuleId = searchParams.get("module_id");
 
@@ -118,11 +131,35 @@ function resolveImage(path: string | null) {
   const [slideIndex, setSlideIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const [volume, setVolume] = useState(0.8);
-  const [voice, setVoice] = useState("en-US-Neural2-D");
+  const [voice, setVoice] = useState<string>("");
 
   const [audioTime, setAudioTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0); 
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const safeVolume = typeof volume === 'number' ? volume : 1
+
+
+// FIRST-USER GESTURE → unlock + play
+useEffect(() => {
+  const unlockAudio = () => {
+    const el = audioRef?.current;
+    if (!el) return;
+
+    setAudioUnlocked(true);
+    setIsPaused(false);
+
+    el.play().catch(() => {});
+  };
+
+  window.addEventListener("click", unlockAudio, { once: true });
+  window.addEventListener("touchstart", unlockAudio, { once: true });
+
+  return () => {
+    window.removeEventListener("click", unlockAudio);
+    window.removeEventListener("touchstart", unlockAudio);
+  };
+}, [audioRef]);
+
 
 /* ------------------------------------------------------
    VOICE URL RESOLVER (UPDATED)
@@ -150,6 +187,14 @@ function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
   }
 }
 
+    // volume sync
+
+useEffect(() => {
+  if (!audioRef?.current) return;
+  if (typeof volume !== "number") return;
+  audioRef.current.volume = volume;
+}, [volume, audioRef]);
+
 
     // load saved voice on mount
   useEffect(() => {
@@ -167,8 +212,7 @@ function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
 
   const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
   const [canProceed, setCanProceed] = useState(false);
-  const [isPaused, setIsPaused] = useState(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
 
 // ------------------------------------------------------
 // PROGRESS STATE
@@ -247,21 +291,23 @@ async function saveProgress() {
 
 // ---- UNLOCK AUTOPLAY ON FIRST USER GESTURE ----
 useEffect(() => {
-  function unlock() {
-    if (!audioRef.current) return;
-    audioRef.current.play().catch(() => {});
-    window.removeEventListener("click", unlock);
-    window.removeEventListener("touchstart", unlock);
-  }
+  const unlock = () => {
+    setAudioUnlocked(true);
 
-  window.addEventListener("click", unlock);
-  window.addEventListener("touchstart", unlock);
+    const el = audioRef?.current;
+    if (el) {
+      el.play().catch(() => {});
+    }
+  };
+
+  window.addEventListener("click", unlock, { once: true });
+  window.addEventListener("touchstart", unlock, { once: true });
 
   return () => {
     window.removeEventListener("click", unlock);
     window.removeEventListener("touchstart", unlock);
   };
-}, []);
+}, [audioRef]);
 
 
 // === PER-SECOND TIMER ===
@@ -432,55 +478,40 @@ useEffect(() => {
    BASE AUTOPLAY (fires when metadata is ready)
 ------------------------------------------------------ */
 useEffect(() => {
-  const audio = audioRef.current;
-  if (!audio) return;
+  const el = audioRef?.current;
+  if (!el) return;
 
   function safePlay() {
-    const a = audioRef.current;
+    const a = audioRef?.current;
     if (!a) return;
     if (!isPaused) {
       a.play().catch(() => {});
     }
   }
 
-  audio.addEventListener("loadedmetadata", safePlay);
-  audio.addEventListener("canplaythrough", safePlay);
+  el.addEventListener("loadedmetadata", safePlay);
+  el.addEventListener("canplaythrough", safePlay);
 
   return () => {
-    audio.removeEventListener("loadedmetadata", safePlay);
-    audio.removeEventListener("canplaythrough", safePlay);
+    const a = audioRef?.current;
+    if (!a) return;
+    a.removeEventListener("loadedmetadata", safePlay);
+    a.removeEventListener("canplaythrough", safePlay);
   };
-}, [isPaused]);
-
-/* ------------------------------------------------------
-   AUTOPLAY RETRY LOOP (DISABLED FOR NOW)
------------------------------------------------------- */
-// useEffect(() => {
-//   const audio = audioRef.current;
-//   if (!audio || isPaused || isQuizMode) return;
-//
-//   const attemptPlay = () => {
-//     if (audio.paused) {
-//       audio.play().catch(() => {});
-//     }
-//   };
-//
-//   const id = setInterval(attemptPlay, 750);
-//   return () => clearInterval(id);
-// }, [isPaused, isQuizMode, slideIndex, voice]);
+}, [isPaused, audioRef]);
 
 
 /* ------------------------------------------------------
    PAUSE / PLAY FUNCTIONS
 ------------------------------------------------------ */
 function handlePause() {
-  if (!audioRef.current) return;
+  if (!audioRef?.current) return;
   audioRef.current.pause();
   setIsPaused(true);
 }
 
 function handlePlay() {
-  if (!audioRef.current) return;
+  if (!audioRef?.current) return;
   audioRef.current.play().catch(() => {});
   setIsPaused(false);
 }
@@ -688,16 +719,15 @@ async function loadLessonContent(lessonId: number) {
       }, [slideIndex]);
 
 
-//-------------------------------------------------------------------------//
+// ----------------------------------------------------
 // Play correct audio whenever the current caption changes
-//-------------------------------------------------------------------------//
+// ----------------------------------------------------
 useEffect(() => {
-  const audio = audioRef.current;
+  const audio = audioRef?.current;
   if (!audio) return;
 
   // do not auto-start on load or while user has paused
   if (isPaused) return;
-
   if (isQuizMode) return;
 
   const slide = slides[slideIndex];
@@ -709,6 +739,7 @@ useEffect(() => {
     .filter(Boolean) as string[];
 
   if (!urls.length) return;
+
   const url = urls[currentCaptionIndex];
   if (!url) return;
 
@@ -719,7 +750,7 @@ useEffect(() => {
     audio.load();
   }
 
-  // safe play if user has unpaused
+  // safe play
   audio.play().catch(() => {});
 
 }, [
@@ -731,6 +762,17 @@ useEffect(() => {
   captions,
   voice,
 ]);
+
+useEffect(() => {
+  const el = audioRef?.current;
+  if (!el) return;
+  if (!audioUnlocked) return;
+
+  if (!isPaused) {
+    el.play().catch(() => {});
+  }
+}, [audioUnlocked, isPaused, audioRef]);
+
 
 /* ------------------------------------------------------
    NAVIGATION
@@ -892,70 +934,37 @@ const goPrev = () => {
       </div>
 
 {/* AUDIO CONTROLS (VOICE + VOLUME) */}
-<div className="absolute top-4 right-4 z-50 bg-black/60 text-white rounded-xl px-4 py-3 flex items-center gap-4 pointer-events-auto">
+<div className="absolute top-0 right-0 z-2 bg-white text-[#001f40] px-4 py-3 flex items-center gap-4 pointer-events-auto">
 
   <div className="relative">
-    <select
-      value={voice}
-      onChange={(e) => setVoice(e.target.value)}
-      className="
-        bg-black/60 text-white 
-        text-xs 
-        px-2 py-1 
-        rounded-md 
-        outline-none 
-        border border-white/30
-        hover:bg-black/70
-      "
-    >
-      {VOICES.map((v) => (
-        <option
-          key={v.code}
-          value={v.code}
-          className="bg-black text-white"
-        >
-          {v.label}
-        </option>
-      ))}
-    </select>
-</div>
+  <select
+    value={voice}
+    onChange={(e) => setVoice(e.target.value)}
+    className="
+      bg-[#001F40] text-white
+      text-xs 
+      px-2 py-1 
+      rounded-md 
+      outline-none 
+      border border-white/30
+      hover:bg-[#002a5f]
+    "
+  >
+    {/* Placeholder */}
+    <option value="" disabled>
+      Select Voice…
+    </option>
 
-  <div className="flex items-center gap-2">
-    <span className="text-xs opacity-80">Vol</span>
-    <input
-      type="range"
-      min="0"
-      max="1"
-      step="0.05"
-      value={volume}
-      onChange={(e) => {
-        const v = Number(e.target.value);
-        setVolume(v);
-        if (audioRef.current) audioRef.current.volume = v;
-      }}
-      className="w-24 accent-[#ca5608]"
-    />
-  </div>
-
-  <div className="ml-4 flex items-center gap-2 text-xs">
-    <span>
-      Slide {slideIndex + 1} of {totalSlides}
-    </span>
-    <span>›</span>
-    <span>
-      {audioTime.toFixed(1)}s / {audioDuration.toFixed(1)}s
-    </span>
-      <span>› Module time left: {(currentModuleTotal - elapsedSeconds).toFixed(0)}s
-    </span>
-  </div>
-  <div className="ml-4 flex items-center gap-2 text-xs opacity-90">
-  <span>
-    {modules[currentModuleIndex]?.title}
-  </span>
-  <span>›</span>
-  <span>
-    {lessons[currentLessonIndex]?.title}
-  </span>
+    {VOICES.map((v) => (
+      <option
+        key={v.code}
+        value={v.code}
+        className="bg-[#001F40] text-white"
+      >
+        {v.label}
+      </option>
+    ))}
+  </select>
 </div>
 
 </div>
@@ -977,22 +986,22 @@ const goPrev = () => {
   )}
 
   {/* CLICK-TO-PAUSE OVERLAY */}
-  {!isQuizMode && (
-    <div
-      className="absolute inset-0 z-20"
-      onClick={() => {
-        const a = audioRef.current;
-        if (!a) return;
+{!isQuizMode && (
+  <div
+    className="absolute inset-0 z-20"
+    onClick={() => {
+      const a = audioRef?.current;
+      if (!a) return;
 
-        if (isPaused || a.paused) {
-          handlePlay();
-        } else {
-          handlePause();
-        }
-      }}
-      style={{ cursor: "default" }}
-    />
-  )}
+      if (isPaused || a.paused) {
+        handlePlay();
+      } else {
+        handlePause();
+      }
+    }}
+    style={{ cursor: "default" }}
+  />
+)}
 
 
 </div>
@@ -1001,7 +1010,6 @@ const goPrev = () => {
   {/* NARRATION AUDIO ELEMENT */}
     <audio
       ref={audioRef}
-      autoPlay
       preload="auto"
       controls={false}
       onTimeUpdate={(e) => {
@@ -1093,17 +1101,32 @@ const goPrev = () => {
       }}
     />
 
-
-        {showContinueInstruction && (
-          <div className="fixed bottom-[200px] left-0 right-0 flex justify-center z-40">
-              <button
-              onClick={() => goNext()}
-              className="px-6 py-3 rounded-lg bg-[#ca5608] text-white text-lg shadow-lg"
-            >
-              Continue
-            </button>
-          </div>
-        )}
+{showContinueInstruction && (
+  <div className="fixed bottom-[230px] left-0 right-0 flex justify-center z-40">
+    <button
+      onClick={() => {
+        setAudioUnlocked(true);
+  if (!audioRef?.current) return;{
+          audioRef.current.play().catch(()=>{});
+        }
+        handlePlay();
+        goNext();
+      }}
+      className="
+        px-12 py-5
+        rounded-xl
+        bg-[#000]/30
+        cursor-pointer
+        border-[5px] border-[#fff]
+        text-[#fff] font-semibold
+        text-xl
+        shadow-md
+      "
+    >
+      Continue
+    </button>
+  </div>
+)}
 
       {/* FOOTER NAV */}
       <FooterNav
@@ -1116,8 +1139,14 @@ const goPrev = () => {
         totalSlides={totalSlides}
         audioTime={audioTime}
         audioDuration={audioDuration}
-        captionText={captionText}   
-        slideComplete={slideComplete} 
+        captionText={captionText}
+        slideComplete={slideComplete}
+        currentModuleTotal={currentModuleTotal}
+        elapsedSeconds={elapsedSeconds}
+        currentModuleIndex={currentModuleIndex}
+        currentLessonIndex={currentLessonIndex}
+        modules={modules}
+        lessons={lessons}
       />
 
 
@@ -1279,43 +1308,58 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
       audioDuration,
       captionText,
       slideComplete,
+      currentModuleTotal,
+      elapsedSeconds,
+      currentModuleIndex, 
+      currentLessonIndex,
+      modules,
+      lessons,
     }: any) {
 
-      return (
-        <div className="fixed bottom-[40px] left-0 right-0 bg-white border-t shadow-inner h-[180px] z-30">
-          <div className="h-full max-w-6xl mx-auto px-6 flex items-center justify-between">
-            <button onClick={goPrev} className="p-2 hover:opacity-80">
-              <img src="/back-arrow.png" className="w-16" />
-            </button>
 
-            <div className="text-center text-[#001f40] text-sm">          
-            {!isQuizMode && captionText ? (
-            <p className="text-base leading-[32px] whitespace-pre-wrap text-center text-[#001f40]">
-                {captionText}
-              </p>
-            ) : (
-              <>
-                {isQuizMode
-                  ? `Question ${quizIndex + 1} of ${totalQuiz}`
-                  : `Slide ${slideIndex + 1} of ${totalSlides}  |  ${audioTime.toFixed(1)}s / ${audioDuration.toFixed(1)}s`
-                }
-              </>
-            )}
-            </div>
+return (
+  <div className="fixed bottom-[40px] left-0 right-0 bg-white border-t shadow-inner h-[180px] z-30">
+    <div className="h-full max-w-6xl mx-auto px-6 flex items-center justify-center">
 
-            <button
-              onClick={() => {
-                if (!slideComplete && !isQuizMode) return;
-                goNext();
-              }}
-              disabled={!slideComplete && !isQuizMode}
-              className="p-2 hover:opacity-80"
-            >
-               <img src="/forward-arrow.png" className="w-16" />
-            </button>
+      {/* CAPTIONS OR QUIZ TEXT */}
+      <div className="text-center mt-18 text-[#001f40] text-sm flex-1">
+
+        {!isQuizMode && captionText ? (
+          <p className="text-base leading-[32px] whitespace-pre-wrap text-center text-[#001f40]">
+            {captionText}
+          </p>
+        ) : (
+          <>
+            {isQuizMode
+              ? `Question ${quizIndex + 1} of ${totalQuiz}`
+              : `Slide ${slideIndex + 1} of ${totalSlides}  |  ${audioTime.toFixed(1)}s / ${audioDuration.toFixed(1)}s`
+            }
+          </>
+        )}
+
+        {/* SMALL META BELOW */}
+        <div className="mt-12 flex flex-col items-center text-[10px] leading-tight opacity-80">
+
+          <div className="flex items-center gap-1 whitespace-nowrap">
+            <span> *TEMPORARY </span>
+            <span>Slide {slideIndex + 1} of {totalSlides}</span>
+            <span>›</span>
+            <span>{audioTime.toFixed(1)}s / {audioDuration.toFixed(1)}s</span>
+            <span>›</span>
+            <span>Module left: {(currentModuleTotal - elapsedSeconds).toFixed(0)}s</span>
+            <span>{modules[currentModuleIndex]?.title}</span>
+            <span>›</span>
+            <span>{lessons[currentLessonIndex]?.title}</span>
+            <span> *TEMPORARY </span>
+
           </div>
         </div>
-      );
+
+      </div>
+
+    </div>
+  </div>
+);
     }
 
 /* ------------------------------------------------------
