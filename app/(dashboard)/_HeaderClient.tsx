@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-sloppy-imports
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
@@ -37,25 +38,27 @@ export default function HeaderClient() {
 
   return (
     <>
-      {/* WHITE HEADER */}
-      <header className="flex justify-between items-center p-3 bg-white border-b border-gray-200">
+      {/* TOP HEADER */}
+      <header className="flex justify-between items-center p-3 bg-white border-b border-gray-200 relative">
+
         <Link href="/dashboard" className="flex items-center">
           <div className="h-12 w-12 bg-white rounded-full flex items-center justify-center p-2 shadow-md">
             <img src="/logo.png" alt="Florida Permit Training" className="h-full w-full object-contain" />
           </div>
         </Link>
 
-        {/* Blue Hamburger */}
-        <button onClick={() => setMenuOpen(true)} className="text-3xl font-bold text-[#001f40] cursor-pointer">
+        <button
+          onClick={() => setMenuOpen(true)}
+          className="text-3xl font-bold text-[#001f40] cursor-pointer">
           ☰
         </button>
       </header>
 
-      {/* WHITE SIDE MENU */}
+      {/* SIDE MENU */}
       {menuOpen && (
         <div
           ref={menuRef}
-          className="fixed top-0 right-0 w-64 h-[100dvh] bg-white text-[#001f40] p-6 shadow-xl z-50 overflow-y-auto"
+          className="fixed top-0 right-0 w-72 h-[100dvh] bg-white text-[#001f40] p-6 shadow-xl z-50 overflow-y-auto"
         >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold">Menu</h2>
@@ -68,6 +71,7 @@ export default function HeaderClient() {
           </div>
 
           <nav className="flex flex-col gap-4 text-lg">
+
             {navItems.map((item) => {
               const isActive = pathname === item.href;
               return (

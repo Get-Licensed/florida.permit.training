@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-sloppy-imports
 "use client";
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.replace("/");
   };
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -37,29 +37,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [menuOpen]);
 
   return (
-    <main
-      className="
-        flex flex-col bg-white
-        min-h-[100vh]
-        md:h-[100dvh]
-        md:overflow-hidden
-      "
-    >
-      {/* HEADER */}
-      <header
-        className={`
-          flex justify-between items-center p-3 
-          bg-white border-b border-gray-200
-          ${pathname === "/course" ? "mt-2" : ""}
-        `}
-      >
+    <main className="flex flex-col bg-white min-h-[100vh] md:h-[100dvh] md:overflow-hidden">
+      
+      {/* TOP HEADER */}
+      <header className="flex justify-between items-center p-3 bg-white border-b border-gray-200">
         <Link href="/dashboard" className="flex items-center">
           <div className="h-12 w-12 bg-white rounded-full flex items-center justify-center p-2 shadow-md">
-            <img
-              src="/logo.png"
-              alt="Florida Permit Training"
-              className="h-full w-full object-contain"
-            />
+            <img src="/logo.png" alt="Florida Permit Training" className="h-full w-full object-contain" />
           </div>
         </Link>
 
@@ -76,19 +60,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {menuOpen && (
         <div
           ref={menuRef}
-          className="
-            fixed top-0 right-0 w-64
-            h-[100dvh]
-            bg-white text-[#001f40] p-6 shadow-xl z-50
-            overflow-y-auto
-          "
+          className="fixed top-0 right-0 w-64 h-[100dvh] bg-white text-[#001f40] p-6 shadow-xl z-50 overflow-y-auto"
         >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold">Menu</h2>
-            <button
-              onClick={() => setMenuOpen(false)}
-              className="text-2xl font-bold cursor-pointer"
-            >
+            <button onClick={() => setMenuOpen(false)} className="text-2xl font-bold cursor-pointer">
               ✕
             </button>
           </div>
@@ -102,9 +78,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   href={item.href}
                   onClick={() => setMenuOpen(false)}
                   className={`transition-colors duration-200 ${
-                    isActive
-                      ? "text-[#ca5608] font-semibold underline"
-                      : "text-[#001f40] hover:text-[#ca5608]"
+                    isActive ? "text-[#ca5608] font-semibold underline" : "text-[#001f40] hover:text-[#ca5608]"
                   }`}
                 >
                   {item.name}
@@ -112,26 +86,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               );
             })}
 
-            <button
-              onClick={handleLogout}
-              className="mt-6 text-left text-[#001f40] hover:text-[#ca5608]"
-            >
+            <button onClick={handleLogout} className="mt-6 text-left text-[#001f40] hover:text-[#ca5608]">
               Log Out
             </button>
           </nav>
         </div>
       )}
 
-      {/* CONTENT */}
-      <div
-        className="
-          flex-1 
-          overflow-y-auto 
-          md:overflow-y-hidden
-          touch-pan-y
-          overscroll-none
-        "
-      >
+      {/* PAGE CONTENT */}
+      <div className="flex-1 overflow-y-auto md:overflow-y-hidden touch-pan-y overscroll-none">
         {children}
       </div>
     </main>
