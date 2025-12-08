@@ -65,7 +65,6 @@ function resolveImage(path: string | null) {
   return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
 }
 
-
 /* ------------------------------------------------------
    MAIN PLAYER
 ------------------------------------------------------ */
@@ -78,14 +77,14 @@ const VOICES = [
   },
   {
     code: "en-US-Neural2-D",
-    label: "Paul",   
+    label: "Paul",
     urlKey: "published_audio_url_d",
     hashKey: "caption_hash_d",
   },
   {
     code: "en-US-Neural2-I",
-    label: "Ringo",   
-    urlKey: "published_audio_url_o",     
+    label: "Ringo",
+    urlKey: "published_audio_url_o",
     hashKey: "caption_hash_o",
   },
   {
@@ -96,8 +95,7 @@ const VOICES = [
   },
 ];
 
-
-  export default function CoursePlayerClient() {
+export default function CoursePlayerClient() {
   const searchParams = useSearchParams();
   const initialModuleId = searchParams.get("module_id");
 
@@ -121,33 +119,28 @@ const VOICES = [
   const [voice, setVoice] = useState("en-US-Neural2-D");
 
   const [audioTime, setAudioTime] = useState(0);
-  const [audioDuration, setAudioDuration] = useState(0); 
+  const [audioDuration, setAudioDuration] = useState(0);
 
-/* ------------------------------------------------------
-   VOICE URL RESOLVER (UPDATED)
------------------------------------------------------- */
-function resolveVoiceUrl(first: CaptionRow | undefined, voice: string) {
-  if (!first) return null;
+  /* ------------------------------------------------------
+     VOICE URL RESOLVER (UPDATED)
+  ------------------------------------------------------ */
+  function resolveVoiceUrl(first: CaptionRow | undefined, voiceCode: string) {
+    if (!first) return null;
 
-  switch (voice) {
-    case "en-US-Neural2-A":
-      return first.published_audio_url_a;
-
-    // Neural2-D replaces old Chirp-D but still uses the same DB field
-    case "en-US-Neural2-D":
-      return first.published_audio_url_d;
-
-    // Neural2-I replaces old Chirp-O but still uses the same DB field
-    case "en-US-Neural2-I":
-      return first.published_audio_url_o;
-
-    case "en-US-Neural2-J":
-      return first.published_audio_url_j;
-
-    default:
-      return null;
+    switch (voiceCode) {
+      case "en-US-Neural2-A":
+        return first.published_audio_url_a;
+      case "en-US-Neural2-D":
+        return first.published_audio_url_d;
+      case "en-US-Neural2-I":
+        return first.published_audio_url_o;
+      case "en-US-Neural2-J":
+        return first.published_audio_url_j;
+      default:
+        return null;
+    }
   }
-}
+
 
 
     // load saved voice on mount
