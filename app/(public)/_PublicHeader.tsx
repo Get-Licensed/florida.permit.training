@@ -68,34 +68,34 @@ export default function PublicMenuHeader({
       </Link>
 
       <header className="flex justify-end items-center pr-3 pl-[100px] py-3 bg-white border-b border-gray-200 relative z-[60]">
-        <div className="text-[#001f40] text-sm font-semibold truncate max-w-[200px] mr-4">
-          {fullName}
-        </div>
+  
+  <div className="flex items-center gap-4 mr-4">
+    <span className="text-[#001f40] text-sm font-semibold truncate max-w-[200px]">
+      {fullName}
+    </span>
 
-        {typeof volume === "number" && setVolume && (
-          <div className="mr-4 flex items-center gap-2">
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={volume}
-              onChange={(e) => {
-                setVolume(Number(e.target.value));
-              }}
-              className="vol-range w-20 h-1 cursor-pointer appearance-none"
-            />
-          </div>
-        )}
+    {typeof volume === "number" && setVolume && (
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        value={volume}
+        onChange={(e) => setVolume(Number(e.target.value))}
+        className="vol-range w-20 h-1 cursor-pointer appearance-none"
+      />
+    )}
+  </div>
 
-        <button
-          type="button"
-          onClick={() => setMenuOpen(true)}
-          className="text-3xl font-bold text-[#001f40]"
-        >
-          ☰
-        </button>
-      </header>
+  <button
+    type="button"
+    onClick={() => setMenuOpen(true)}
+    className="text-3xl font-bold text-[#001f40]"
+  >
+    ☰
+  </button>
+</header>
+
 
       {menuOpen && (
         <div
@@ -116,7 +116,7 @@ export default function PublicMenuHeader({
           <nav className="flex flex-col gap-4 text-lg">
             {[
               { name: "Dashboard", href: "/dashboard" },
-              { name: "My Course", href: "/course/player" },
+              { name: "My Course", href: "/course" },
               { name: "My Permit", href: "/my-permit" },
               { name: "My Profile", href: "/profile" },
               { name: "Support", href: "/support" },

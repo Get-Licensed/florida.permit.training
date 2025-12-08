@@ -353,105 +353,81 @@ function FooterTimeline({
       <div className="w-full px-4 md:px-0">
         <div className="md:max-w-6xl md:mx-auto p-4">
 
-          {/* ARROWS */}
-          <div
-            className="flex justify-between items-center select-none"
-            style={{ paddingLeft: "8px", paddingRight: "8px", paddingBottom: "40px" }}
-          >
-            <img
-              src="/back-arrow.png"
-              alt="Previous"
-              className="w-14 sm:w-20 object-contain pointer-events-none"
-              style={{ filter: "grayscale(1) brightness(1.64)" }}
-            />
-            <img
-              src="/forward-arrow.png"
-              alt="Next"
-              className="w-14 sm:w-20 object-contain pointer-events-none"
-              style={{ filter: "grayscale(1) brightness(1.64)" }}
-            />
-          </div>
-
           {/* TIMELINE RAIL */}
           <div className="relative w-full h-6 flex items-center">
             <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full" />
 
-            {/* GLOW ORB */}
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-[18px] h-[18px] rounded-full border border-[#fff8f0] pointer-events-none"
-              style={{
-                left: "-2px",
-                backgroundColor: "#ca5608",
-                boxShadow: `0 0 10px 6px #ca560855`
-              }}
-            />
-
             {/* MODULE SEGMENTS */}
             <div className="relative w-full h-6 flex items-center">
-              {TIMELINE.map((item: any, i: number) => {
-                const isLast = i === TIMELINE.length - 1;
+{TIMELINE.map((item: any, i: number) => {
+  const isFirst = i === 0;
+  const isLast = i === TIMELINE.length - 1;
 
-                /* 🎯 FINAL SEGMENT */
-                if (isLast) {
-                  return (
-                    <div
-                      key={item.id}
-                      ref={finalSegmentRef}  /* STEP 3: attach ref */
-                      className="relative h-full flex items-center justify-center cursor-pointer"
-                      style={{ width: "4%" }}
-                      data-final-segment
-                      onMouseEnter={(e) => {
-                        setHoverItem(item);
-                        setMouseX(e.clientX);
-                        handleHoverTimeline(item, e.clientX);
-                      }}
-                      onMouseMove={(e) => {
-                        setMouseX(e.clientX);
-                        setLastPromoX(e.clientX); /* always track live when hovered */
-                      }}
-                      onMouseLeave={() => setHoverItem(null)}
-                      onClick={() => {
-                        if (vw < 768 && item.id === "finalActions") {
-                          setMobilePromoOpen(true);
-                        }
-                      }}
-                    >
-                      <div className="flex-1 h-2 bg-[#001f40] rounded-r-full"></div>
-                    </div>
-                  );
-                }
+  let bg = "#4B1E1E";
+  if (isFirst) bg = "#ca5608";
+  if (isLast)  bg = "#001f40";
 
+  // FINAL segment logic stays but color from bg
+  if (isLast) {
+    return (
+      <div
+        key={item.id}
+        ref={finalSegmentRef}
+        className="relative h-full flex items-center justify-center cursor-pointer"
+        style={{ width: "4%" }}
+        data-final-segment
+        onMouseEnter={(e) => {
+          setHoverItem(item);
+          setMouseX(e.clientX);
+          handleHoverTimeline(item, e.clientX);
+        }}
+        onMouseMove={(e) => {
+          setMouseX(e.clientX);
+          setLastPromoX(e.clientX);
+        }}
+        onMouseLeave={() => setHoverItem(null)}
+        onClick={() => {
+          if (vw < 768) setMobilePromoOpen(true);
+        }}
+      >
+        <div
+          className="flex-1 h-2 rounded-r-full"
+          style={{
+            backgroundColor: bg,
+boxShadow: isFirst ? `0 0 14px ${bg}` : "none",
+          }}
+        />
+      </div>
+    );
+  }
 
-                /* 🔵 NON-FINAL SEGMENTS */
-                return (
-                  <div
-                    key={item.id}
-                    style={{ width: `${widthPercent(item)}%` }}
-                    className="relative h-full flex items-center justify-center transition-all cursor-pointer"
-                    onMouseEnter={(e) => {
-                      setHoverItem(item);
-                      setMouseX(e.clientX);
-                      handleHoverTimeline(item, e.clientX);
-                    }}
-                    onMouseMove={(e) => setMouseX(e.clientX)}
-                    onMouseLeave={() => setHoverItem(null)}
-                    onClick={() => {
-                      if (vw < 768 && item.id === "finalActions") {
-                        setMobilePromoOpen(true);
-                      }
-                    }}
-                  >
-                    <div
-                      className={`flex-1 h-2 ${
-                        i === 0
-                          ? "bg-[#ca5608] rounded-l-full"
-                          : "bg-[#001f40]"
-                      }`}
-                    />
-                    <div className="w-[3px] h-full bg-white" />
-                  </div>
-                );
-              })}
+  // Middle + first
+  return (
+    <div
+      key={item.id}
+      style={{ width: `${widthPercent(item)}%` }}
+      className="relative h-full flex items-center justify-center transition-all cursor-pointer"
+      onMouseEnter={(e) => {
+        setHoverItem(item);
+        setMouseX(e.clientX);
+        handleHoverTimeline(item, e.clientX);
+      }}
+      onMouseMove={(e) => setMouseX(e.clientX)}
+      onMouseLeave={() => setHoverItem(null)}
+    >
+      <div
+        className="flex-1 h-2"
+        style={{
+          backgroundColor: bg,
+          borderTopLeftRadius: isFirst ? 999 : 0,
+          borderBottomLeftRadius: isFirst ? 999 : 0,
+boxShadow: isFirst ? `0 0 14px ${bg}` : "none",
+        }}
+      />
+      {!isLast && <div className="w-[3px] h-full bg-white" />}
+    </div>
+  );
+})}
             </div>
 
           </div>
