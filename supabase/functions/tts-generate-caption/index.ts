@@ -81,9 +81,7 @@ async function generateForVoice(
 
   // ---- Compute Duration ----
   const rawSeconds = getWavDuration(wavBytes);
-  const PADDING = 0.8;
-  const finalSeconds = Math.ceil(rawSeconds + PADDING);
-
+  const finalSeconds = Math.round(rawSeconds);
   console.log(
     `Voice ${targetVoice} → Raw: ${rawSeconds}s → Final (padded): ${finalSeconds}s`
   );
