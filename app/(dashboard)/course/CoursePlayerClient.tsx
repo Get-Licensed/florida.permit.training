@@ -111,6 +111,19 @@ export default function CoursePlayerClient() {
   const [restoredReady, setRestoredReady] = useState(false)
 
   const cancelAutoplay = useRef(false);
+  const resetAudioElement = useCallback(() => {
+  const audio = audioRef.current;
+  if (!audio) return;
+
+  audio.pause();
+  audio.src = "";
+  audio.load();
+  audio.currentTime = 0;
+
+  // do NOT touch cancelAutoplay here
+}, []);
+
+
 
 //--------------------------------------------------------------------
 // VOICE URL RESOLVER (UPDATED)
@@ -153,9 +166,22 @@ const [isPaused, setIsPaused] = useState(false);
 
 const audioRef = useRef<HTMLAudioElement | null>(null);
 
-function togglePlay() {
-  setIsPaused(prev => !prev);
-}
+const hardResetAudio = useCallback(() => {
+  const audio = audioRef.current;
+  if (!audio) return;
+
+  // stop immediately
+  audio.pause();
+  audio.currentTime = 0;
+
+  // clear the source so nothing buffered plays
+  audio.src = "";
+  audio.load();        // force the empty src to take effect
+
+  // drop any pending canplay from previous track
+  audio.oncanplay = null;
+}, []);
+
 
 //--------------------------------------------------------------------
 // UNLOCK AUTOPLAY ON FIRST USER GESTURE
@@ -483,15 +509,11 @@ useEffect(() => {
    SLIDE RESET (very important)
 ------------------------------------------------------ */
 useEffect(() => {
-  const audio = audioRef.current;
-  if (!audio) return;
-
-  audio.pause();
-  audio.currentTime = 0;
-  audio.src = "";
+  resetAudioElement();
   setCurrentCaptionIndex(0);
   setCanProceed(false);
-}, [slideIndex]);
+}, [slideIndex, resetAudioElement]);
+
 
 /* ------------------------------------------------------
    SAFE AUTOPLAY (Slide changed)
@@ -517,15 +539,19 @@ useEffect(() => {
     return;
   }
 
+  // during a hard reset (module jump, Continue click), don't touch src
+  if (cancelAutoplay.current) {
+    return;
+  }
+
   if (audio.src !== nextUrl) {
     audio.src = nextUrl;
 
     try {
       audio.load();
-      audio.currentTime = 0;      // pre-seek so play starts from frame 0
+      audio.currentTime = 0; // ensure start at 0
     } catch {}
 
-    // wait for ready state before playing
     audio.oncanplay = () => {
       audio.oncanplay = null;
       if (!isPaused && !cancelAutoplay.current) {
@@ -533,26 +559,22 @@ useEffect(() => {
       }
     };
 
-    return;   // do not fall through
+    return;
   }
 
-  // if src already matches, only play if not paused
+  // same src; resume only if user hasn’t paused and we’re not in a reset
   if (!isPaused && !cancelAutoplay.current) {
-    // small delay prevents cutting first words
-    setTimeout(() => {
-      audio.play().catch(() => {});
-    }, 40);
+    audio.play().catch(() => {});
   }
-
 }, [
   slideIndex,
   currentCaptionIndex,
   captions,
   voice,
   slides,
-  contentReady
+  contentReady,
+  isPaused,
 ]);
-
 
 /* ------------------------------------------------------
    PAUSE
@@ -700,15 +722,18 @@ const goNext = useCallback(async () => {
     return;
   }
 
-  // next module
-  if (currentModuleIndex < modules.length - 1) {
-    const nextModule = currentModuleIndex + 1;
-    setCurrentModuleIndex(nextModule);
-    setCurrentLessonIndex(0);
-    setSlideIndex(0);
-    record(nextModule, 0, 0);
-    return;
-  }
+// next module
+if (currentModuleIndex < modules.length - 1) {
+  const nextModule = currentModuleIndex + 1;
+  resetAudioElement();
+  setContentReady(false);
+  setCurrentModuleIndex(nextModule);
+  setCurrentLessonIndex(0);
+  setSlideIndex(0);
+  record(nextModule, 0, 0);
+  return;
+}
+
 
   // end of all modules — no op
 }, [
@@ -765,23 +790,18 @@ function goToModule(i: number) {
   // block locked modules first
   if (i > maxCompletedIndex + 1) return;
 
-  // hard-reset any current audio
-  if (audioRef.current) {
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
-    audioRef.current.src = "";
-  }
+  resetAudioElement();
+  setContentReady(false);
 
-  // reset navigation state
   setCurrentModuleIndex(i);
   setCurrentLessonIndex(0);
   setSlideIndex(0);
   setCurrentCaptionIndex(0);
 
-  // entering a new module → require narration/timer again
   setCanProceed(false);
   setIsPaused(false);
 }
+
 
 // page loader only BEFORE progress + first content load
 if (!progressReady || !contentReady) {
@@ -793,6 +813,11 @@ if (!progressReady || !contentReady) {
       />
     </div>
   );
+}
+
+
+function togglePlay() {
+  setIsPaused(prev => !prev);
 }
 
   /* ------------------------------------------------------
@@ -992,15 +1017,11 @@ if (!progressReady || !contentReady) {
 {showContinueInstruction && (
   <div className="fixed bottom-[250px] left-0 right-0 flex justify-center z-40">
     <button
-      onClick={() => {
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
-          audioRef.current.src = "";     // hard reset source
-        }
-        setIsPaused(false);               // ensure resumed state is known
-        goNext();
-      }}
+     onClick={() => {
+      resetAudioElement();
+      setIsPaused(false);
+      goNext();
+    }}
 
       className="
         px-12 py-5
