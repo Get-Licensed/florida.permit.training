@@ -168,6 +168,9 @@ const [isPaused, setIsPaused] = useState(false);
 
 const audioRef = useRef<HTMLAudioElement | null>(null);
 
+function togglePlay() {
+  setIsPaused(prev => !prev);
+}
 
 //--------------------------------------------------------------------
 // UNLOCK AUTOPLAY ON FIRST USER GESTURE
@@ -483,12 +486,11 @@ const showContinueInstruction =
   canProceed &&
   !isQuizMode;
 
-// when new slide arrives → auto-unpause
+// STEP3: auto-unpause when slide changes
 useEffect(() => {
   if (isQuizMode) return;
   setIsPaused(false);
 }, [slideIndex, isQuizMode]);
-
 
 
 /* ------------------------------------------------------
@@ -515,13 +517,11 @@ useEffect(() => {
   const audio = audioRef.current;
   if (!audio) return;
 
-  if (isPaused) return; // stop here!
-
   audio.pause();
   audio.currentTime = 0;
   setCurrentCaptionIndex(0);
   setCanProceed(false);
-}, [slideIndex, isPaused]);
+}, [slideIndex]);
 
 /* ------------------------------------------------------
    SAFE AUTOPLAY (Slide changed)
@@ -555,34 +555,32 @@ if (audio.src !== nextUrl) {
 }
 
 
+if (!isPaused) {
+  audio.play().catch(() => {});
+}
+
+
 }, [slideIndex, currentCaptionIndex, isQuizMode, captions, voice, slides]);
 
 /* ------------------------------------------------------
    PAUSE
 ------------------------------------------------------ */
 useEffect(() => {
-  const audio = audioRef.current;
-  if (!audio) return;
-
-  if (isPaused) {
-    audio.pause();
-  }
+  const a = audioRef.current;
+  if (!a) return;
+  if (isPaused) a.pause();
 }, [isPaused]);
 
 /* ------------------------------------------------------
    RESUME
 ------------------------------------------------------ */
 useEffect(() => {
-  const audio = audioRef.current;
-  if (!audio) return;
+  const a = audioRef.current;
+  if (!a) return;
   if (isPaused) return;
   if (isQuizMode) return;
-
-  requestAnimationFrame(() => {
-    audio.play().catch(() => {});
-  });
-}, [isPaused]);
-
+  requestAnimationFrame(() => a.play().catch(()=>{}));
+}, [isPaused])
 
 /* ------------------------------------------------------
    PROGRESS UPDATERS (copy/paste exactly)
@@ -832,6 +830,9 @@ const goPrev = () => {
 function goToModule(i: number) {
   if (i > maxCompletedIndex + 1) return;
   setCurrentModuleIndex(i);
+  setCurrentLessonIndex(0);
+  setSlideIndex(0);
+  setCurrentCaptionIndex(0);
   setCanProceed(true);
   setIsPaused(false);
 }
@@ -948,16 +949,11 @@ if (!contentReady) {
 
 </div>
 
-
-
   
 {/* MAIN -------------------------------------------------- */}
 <div
   className="relative flex-1 w-screen h-screen overflow-hidden pt-0 md:pt-10 pb-[160px] z-0"
   onClick={(e) => {
-    const a = audioRef.current;
-    if (!a) return;
-
     const tgt = e.target as HTMLElement;
     if (
       tgt.closest("button") ||
@@ -966,10 +962,9 @@ if (!contentReady) {
       tgt.closest("a")
     ) return;
 
-    // toggle the paused state ONLY
-    setIsPaused(prev => !prev);
+    // only toggles state – actual play/pause handled in effects
+    togglePlay();
   }}
-
 >
 
   {!isQuizMode ? (
@@ -982,7 +977,10 @@ if (!contentReady) {
       goNext={goNext}
     />
   )}
+
 </div>
+
+
 {/* NARRATION AUDIO ELEMENT -------------------------------- */}
 <audio
   ref={audioRef}
@@ -1014,7 +1012,7 @@ if (!contentReady) {
     }
   }}
   onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration)}
- onEnded={async () => {
+  onEnded={async () => {
   if (isQuizMode) return;
   if (isPaused) return;
 
