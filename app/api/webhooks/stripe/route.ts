@@ -7,7 +7,10 @@ import { supabase } from "@/utils/supabaseClient";
 
 // EMAIL (RESEND)
 import { Resend } from "resend";
-const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Only create if env is present so build doesn't crash
+const resendApiKey = process.env.RESEND_API_KEY ?? "";
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -17,7 +20,7 @@ export async function POST(req: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? "";
 
   const stripe = new Stripe(secret, {
-    // @ts-ignore: allow installed version
+    // @ts-ignore
     apiVersion: undefined,
   });
 
@@ -50,23 +53,25 @@ export async function POST(req: NextRequest) {
       .eq("user_id", userId)
       .eq("course_id", courseId);
 
-    // ---------------------
-    // SEND NOTIFICATION EMAIL
-    // ---------------------
-    try {
-      await resend.emails.send({
-        from: "Florida Permit Training <support@florida.permit.training>",
-        to: "amrigeethan@gmail.com",
-        subject: "Payment Received",
-        html: `
-          <p>A user just completed payment.</p>
-          <p>User ID: ${userId}</p>
-          <p>Course: ${courseId}</p>
-          <p>PaymentIntent: ${pi.id}</p>
-        `,
-      });
-    } catch (err) {
-      console.error("Error sending email:", err);
+    // send email only if we have a key
+    if (resend) {
+      try {
+        await resend.emails.send({
+          from: "Florida Permit Training <support@florida.permit.training>",
+          to: "amrigeethan@gmail.com",
+          subject: "Payment Received",
+          html: `
+            <p>A user just completed payment.</p>
+            <p>User ID: ${userId}</p>
+            <p>Course: ${courseId}</p>
+            <p>PaymentIntent: ${pi.id}</p>
+          `,
+        });
+      } catch (err) {
+        console.error("Error sending email:", err);
+      }
+    } else {
+      console.warn("RESEND_API_KEY missing, skipping email notification");
     }
 
     return new Response("Success", { status: 200 });
@@ -75,7 +80,7 @@ export async function POST(req: NextRequest) {
   return new Response("Unhandled event", { status: 200 });
 }
 
-// Next.js raw body requirement
+// Keep raw body behavior for Stripe
 export const config = {
   api: {
     bodyParser: false,
