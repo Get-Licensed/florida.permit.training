@@ -537,88 +537,52 @@ useEffect(() => {
   if (!slide) return;
 
   const caps = captions[slide.id] || [];
-  if (!caps.length) {
-    setCanProceed(true);
-    return;
-  }
-
-  const urls = caps
-    .map(c => resolveVoiceUrl(c, voice))
-    .filter(Boolean) as string[];
-
-  if (!urls.length) {
-    setCanProceed(true);
-    return;
-  }
-
-  const url = urls[0];
-
-  // New slide (or new voice) → reset to start of that audio
-  audio.pause();
-  audio.currentTime = 0;
-  audio.src = url;
-
-  const handleLoaded = () => {
-    // Only auto-play if user is not paused
-    if (!isPaused) {
-      audio.play().catch(() => {});
-    }
-  };
-
-  audio.addEventListener("loadeddata", handleLoaded);
-
-  return () => {
-    audio.removeEventListener("loadeddata", handleLoaded);
-  };
-}, [slideIndex, voice, captions, slides, isQuizMode]); // NOTE: no isPaused here
-
-/* ------------------------------------------------------
-   ONLY reset audio if NOT paused
------------------------------------------------------- */
-useEffect(() => {
-  const audio = audioRef.current;
-  if (!audio) return;
-  if (isQuizMode) return;
-
-  const slide = slides[slideIndex];
-  if (!slide) return;
-
-  const caps = captions[slide.id] || [];
-  if (!caps.length) {
-    setCanProceed(true);
-    return;
-  }
-
   const urls = caps.map(c => resolveVoiceUrl(c, voice)).filter(Boolean);
   if (!urls.length) {
     setCanProceed(true);
     return;
   }
 
-  const url = urls[0];
+  const nextUrl = urls[currentCaptionIndex];
+if (!nextUrl) {
+  setCanProceed(true);
+  return;
+}
+if (audio.src !== nextUrl) {
+  audio.src = nextUrl;
+  audio.load();
+  audio.currentTime = 0;
+}
 
-  // reset only when NOT paused
-  if (!isPaused) {
+
+}, [slideIndex, currentCaptionIndex, isQuizMode, captions, voice, slides]);
+
+/* ------------------------------------------------------
+   PAUSE
+------------------------------------------------------ */
+useEffect(() => {
+  const audio = audioRef.current;
+  if (!audio) return;
+
+  if (isPaused) {
     audio.pause();
-    audio.currentTime = 0;
-    audio.src = url!;
-    // audio.load();  // remove this load for same-slide
-    requestAnimationFrame(() => audio.load());
   }
+}, [isPaused]);
 
+/* ------------------------------------------------------
+   RESUME
+------------------------------------------------------ */
+useEffect(() => {
+  const audio = audioRef.current;
+  if (!audio) return;
+  if (isPaused) return;
+  if (isQuizMode) return;
 
-  const start = async () => {
-    try {
-      // on resume, continue from same pos (no reset here)
-      if (!isPaused && audio.src === url) {
-        await audio.play().catch(() => {});
-      }
-    } catch {}
-  };
+  requestAnimationFrame(() => {
+    audio.play().catch(() => {});
+  });
+}, [isPaused]);
 
-  audio.addEventListener("loadeddata", start);
-  return () => audio.removeEventListener("loadeddata", start);
-}, [slideIndex, voice, captions, slides, isPaused, isQuizMode]);
 
 /* ------------------------------------------------------
    PROGRESS UPDATERS (copy/paste exactly)
@@ -990,28 +954,22 @@ if (!contentReady) {
 {/* MAIN -------------------------------------------------- */}
 <div
   className="relative flex-1 w-screen h-screen overflow-hidden pt-0 md:pt-10 pb-[160px] z-0"
-onClick={(e) => {
-  const a = audioRef.current;
-  if (!a) return;
+  onClick={(e) => {
+    const a = audioRef.current;
+    if (!a) return;
 
-  const tgt = e.target as HTMLElement;
-  if (
-    tgt.closest("button") ||
-    tgt.closest("input") ||
-    tgt.closest("select") ||
-    tgt.closest("a")
-  ) return;
+    const tgt = e.target as HTMLElement;
+    if (
+      tgt.closest("button") ||
+      tgt.closest("input") ||
+      tgt.closest("select") ||
+      tgt.closest("a")
+    ) return;
 
-  if (isPaused) {
-    setIsPaused(false);
-    requestAnimationFrame(() => {
-      a.play().catch(() => {});
-    });
-  } else {
-    setIsPaused(true);
-    a.pause();
-  }
-}}
+    // toggle the paused state ONLY
+    setIsPaused(prev => !prev);
+  }}
+
 >
 
   {!isQuizMode ? (
