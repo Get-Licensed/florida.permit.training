@@ -42,22 +42,6 @@ type CaptionRow = {
   published_audio_url_o: string | null;
 };
 
-type QuizOptionRow = {
-  id: string;
-  quiz_id: string;
-  option_text: string;
-  is_correct: boolean;
-  order_index: number;
-};
-
-type QuizState = {
-  id: string;
-  question: string;
-  options: QuizOptionRow[];
-  selected: string | null;
-  submitted: boolean;
-};
-
 /* ------------------------------------------------------
    IMAGE RESOLVER
 ------------------------------------------------------ */
@@ -115,8 +99,6 @@ export default function CoursePlayerClient() {
   const [captions, setCaptions] = useState<Record<string, CaptionRow[]>>({});
 
   const [promoOpen, setPromoOpen] = useState(false);
-  const [quizQuestions, setQuizQuestions] = useState<QuizState[]>([]);
-  const [quizIndex, setQuizIndex] = useState(0);
 
   const [slideIndex, setSlideIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -126,6 +108,9 @@ export default function CoursePlayerClient() {
 
   const [audioTime, setAudioTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [restoredReady, setRestoredReady] = useState(false)
+
+  const cancelAutoplay = useRef(false);
 
 //--------------------------------------------------------------------
 // VOICE URL RESOLVER (UPDATED)
@@ -220,6 +205,7 @@ for (let i = 0; i < slideIndex; i++) {
   return sec;
 })();
 
+  /* ------------------------------------------------------
 
 useEffect(() => {
   const audio = audioRef.current;
@@ -241,6 +227,7 @@ useEffect(() => {
     audio.removeEventListener("canplaythrough", safePlay);
   };
 }, [isPaused]);
+  ------------------------------------------------------ */
 
   /* ------------------------------------------------------
      checks backend status and redirects
@@ -316,13 +303,16 @@ function applyProgress(
   slideRows: any[] = []
 ) {
   if (didApplyProgress.current) {
+    // already applied → but wait for restoredReady rather than completing UI now
     setProgressReady(true);
+    setRestoredReady(true);
     return;
   }
   didApplyProgress.current = true;
 
   if (!Array.isArray(modRows) || !Array.isArray(slideRows)) {
     setProgressReady(true);
+    setRestoredReady(true);
     return;
   }
 
@@ -348,6 +338,7 @@ function applyProgress(
 
   if (!slidesInModule.length) {
     setProgressReady(true);
+    setRestoredReady(true);
     return;
   }
 
@@ -359,8 +350,12 @@ function applyProgress(
   setSlideIndex(last.slide_index ?? 0);
 
   setCanProceed(true);
+
+  // mark BOTH now, but contentReady must wait for loading that slide
   setProgressReady(true);
+  setRestoredReady(true);
 }
+
 /* ------------------------------------------------------
      LOAD LESSONS (without resetting lesson index)
   ------------------------------------------------------ */
@@ -397,7 +392,6 @@ async function loadLessonContent(lessonId: number) {
   // clear existing content
   setSlides([]);
   setCaptions({});
-  setQuizQuestions([]);
 
   // ---- SLIDES ----
   const { data: slideRows } = await supabase
@@ -434,48 +428,30 @@ async function loadLessonContent(lessonId: number) {
 
   setCaptions(grouped);
 
-  // ---- QUIZ QUESTIONS ----
-  const { data: quizRows } = await supabase
-    .from("quizzes")
-    .select("*")
-    .eq("lesson_id", lessonId)
-    .order("order_index", { ascending: true });
+// finished loading this lesson’s data
+setLoading(false);
 
-  if (quizRows?.length) {
-    const quizIds = quizRows.map((q) => q.id);
-
-    const { data: optionRows } = await supabase
-      .from("quiz_options")
-      .select("*")
-      .in("quiz_id", quizIds)
-      .order("order_index", { ascending: true });
-
-    const qList: QuizState[] = quizRows.map((q) => ({
-      id: q.id,
-      question: q.question,
-      options: optionRows?.filter((o) => o.quiz_id === q.id) || [],
-      selected: null,
-      submitted: false,
-    }));
-
-    setQuizQuestions(qList);
-  }
-
-  // finished loading this lesson’s data
-  setLoading(false);
-
-  // mark content fully ready so UI can render without flashing slide 1
+// allow UI only when progress + restoration are done
+if (restoredReady) {
   setContentReady(true);
-
-  // DO NOT reset slideIndex / captionIndex / canProceed here
 }
+// finished loading this lesson’s data
+setLoading(false);
+
+// allow UI only when progress + restoration are done
+if (restoredReady) {
+  setContentReady(true);
+}
+}
+// DO NOT reset slideIndex / captionIndex / canProceed here
+
+// DO NOT reset slideIndex / captionIndex / canProceed here
+
 
 /* ------------------------------------------------------
    NAV / QUIZ STATE
 ------------------------------------------------------ */
 const totalSlides = slides.length;
-const totalQuiz = quizQuestions.length;
-const isQuizMode = slideIndex === totalSlides && totalQuiz > 0;
 
 const isFinalSlideOfModule =
   currentLessonIndex === lessons.length - 1 &&
@@ -483,14 +459,7 @@ const isFinalSlideOfModule =
 
 const showContinueInstruction =
   isFinalSlideOfModule &&
-  canProceed &&
-  !isQuizMode;
-
-// STEP3: auto-unpause when slide changes
-useEffect(() => {
-  if (isQuizMode) return;
-  setIsPaused(false);
-}, [slideIndex, isQuizMode]);
+  canProceed;
 
 
 /* ------------------------------------------------------
@@ -519,19 +488,18 @@ useEffect(() => {
 
   audio.pause();
   audio.currentTime = 0;
+  audio.src = "";
   setCurrentCaptionIndex(0);
   setCanProceed(false);
 }, [slideIndex]);
 
 /* ------------------------------------------------------
    SAFE AUTOPLAY (Slide changed)
-   - Only reacts to slide/voice/captions changes
-   - Pause/resume never reloads or resets time
 ------------------------------------------------------ */
 useEffect(() => {
   const audio = audioRef.current;
   if (!audio) return;
-  if (isQuizMode) return;
+  if (!contentReady) return;
 
   const slide = slides[slideIndex];
   if (!slide) return;
@@ -544,23 +512,47 @@ useEffect(() => {
   }
 
   const nextUrl = urls[currentCaptionIndex];
-if (!nextUrl) {
-  setCanProceed(true);
-  return;
-}
-if (audio.src !== nextUrl) {
-  audio.src = nextUrl;
-  audio.load();
-  audio.currentTime = 0;
-}
+  if (!nextUrl) {
+    setCanProceed(true);
+    return;
+  }
 
+  if (audio.src !== nextUrl) {
+    audio.src = nextUrl;
 
-if (!isPaused) {
-  audio.play().catch(() => {});
-}
+    try {
+      audio.load();
+      audio.currentTime = 0;      // pre-seek so play starts from frame 0
+    } catch {}
 
+    // wait for ready state before playing
+    audio.oncanplay = () => {
+      audio.oncanplay = null;
+      if (!isPaused && !cancelAutoplay.current) {
+        audio.play().catch(() => {});
+      }
+    };
 
-}, [slideIndex, currentCaptionIndex, isQuizMode, captions, voice, slides]);
+    return;   // do not fall through
+  }
+
+  // if src already matches, only play if not paused
+  if (!isPaused && !cancelAutoplay.current) {
+    // small delay prevents cutting first words
+    setTimeout(() => {
+      audio.play().catch(() => {});
+    }, 40);
+  }
+
+}, [
+  slideIndex,
+  currentCaptionIndex,
+  captions,
+  voice,
+  slides,
+  contentReady
+]);
+
 
 /* ------------------------------------------------------
    PAUSE
@@ -578,9 +570,12 @@ useEffect(() => {
   const a = audioRef.current;
   if (!a) return;
   if (isPaused) return;
-  if (isQuizMode) return;
-  requestAnimationFrame(() => a.play().catch(()=>{}));
-}, [isPaused])
+
+  setTimeout(() => {
+    a.play().catch(()=>{});
+  }, 50);
+}, [isPaused]);
+
 
 /* ------------------------------------------------------
    PROGRESS UPDATERS (copy/paste exactly)
@@ -681,94 +676,44 @@ const captionText = currentSlide
 /* ------------------------------------------------------
    NAVIGATION  (FULL REPLACEMENT)
 ------------------------------------------------------ */
-const goNext = useCallback(async (manual?: boolean) => {
-  
-  // only block auto if narration not done AND this is final slide of module
-  if (!manual && !canProceed && isFinalSlideOfModule) return;
+const goNext = useCallback(async () => {
 
   const record = async (modI: number, lesI: number, sliI: number) => {
     await recordSlideComplete(modI, lesI, sliI);
     await updateModuleProgress(modI);
   };
 
-  // normal (not quiz)
-  if (!isQuizMode) {
-
-    // next slide
-    if (slideIndex < totalSlides - 1) {
-      const nextSlide = slideIndex + 1;
-      setSlideIndex(nextSlide);
-      record(currentModuleIndex, currentLessonIndex, nextSlide);
-      return;
-    }
-
-    // enter quiz
-    if (totalQuiz > 0) {
-      setSlideIndex(totalSlides);
-      setQuizIndex(0);
-      record(currentModuleIndex, currentLessonIndex, totalSlides);
-      return;
-    }
-
-    // next lesson
-    if (currentLessonIndex < lessons.length - 1) {
-      const nextLesson = currentLessonIndex + 1;
-      setCurrentLessonIndex(nextLesson);
-      setSlideIndex(0);
-      setQuizIndex(0);
-      record(currentModuleIndex, nextLesson, 0);
-      return;
-    }
-
-    // next module
-    if (currentModuleIndex < modules.length - 1) {
-      const nextModule = currentModuleIndex + 1;
-      setCurrentModuleIndex(nextModule);
-      setSmoothProgress(0)
-      setCurrentLessonIndex(0);
-      setSlideIndex(0);
-      setQuizIndex(0);
-      record(nextModule, 0, 0);
-      return;
-    }
-
+  // next slide in same lesson
+  if (slideIndex < totalSlides - 1) {
+    const nextSlide = slideIndex + 1;
+    setSlideIndex(nextSlide);
+    record(currentModuleIndex, currentLessonIndex, nextSlide);
     return;
   }
 
-  // QUIZ MODE
-  if (quizIndex < totalQuiz - 1) {
-    const nextQuiz = quizIndex + 1;
-    setQuizIndex(nextQuiz);
-    return;
-  }
-
-  // exit quiz → next lesson
+  // next lesson in same module
   if (currentLessonIndex < lessons.length - 1) {
     const nextLesson = currentLessonIndex + 1;
     setCurrentLessonIndex(nextLesson);
     setSlideIndex(0);
-    setQuizIndex(0);
     record(currentModuleIndex, nextLesson, 0);
     return;
   }
 
-  // exit quiz → next module
+  // next module
   if (currentModuleIndex < modules.length - 1) {
     const nextModule = currentModuleIndex + 1;
     setCurrentModuleIndex(nextModule);
     setCurrentLessonIndex(0);
     setSlideIndex(0);
-    setQuizIndex(0);
     record(nextModule, 0, 0);
     return;
   }
+
+  // end of all modules — no op
 }, [
-  isQuizMode,
-  canProceed,
   slideIndex,
   totalSlides,
-  totalQuiz,
-  quizIndex,
   currentLessonIndex,
   lessons.length,
   currentModuleIndex,
@@ -783,63 +728,63 @@ const progressPercentage =
     ? (elapsedSeconds / totalModuleSeconds) * 100
     : 0;
 
-const [smoothProgress, setSmoothProgress] = useState(progressPercentage);
-
-useEffect(() => {
-  if (!progressReady || !contentReady) return;
-
-  let raf: number;
-  const tick = () => {
-    setSmoothProgress(prev => {
-      const diff = progressPercentage - prev;
-      return prev + diff * 0.1;
-    });
-    raf = requestAnimationFrame(tick);
-  };
-  raf = requestAnimationFrame(tick);
-  return () => cancelAnimationFrame(raf);
-}, [progressReady, contentReady, progressPercentage]);
 
 
 //--------------------------------------------------------------------
-// backward navigation
+// backward navigation  (NO QUIZ)
 //--------------------------------------------------------------------
 const goPrev = () => {
-  if (isQuizMode) {
-    if (quizIndex > 0) return setQuizIndex(i => i - 1);
-    return setSlideIndex(totalSlides - 1);
-  }
-  if (slideIndex > 0) return setSlideIndex(i => i - 1);
 
-  if (currentLessonIndex > 0) {
-    const newLessonIndex = currentLessonIndex - 1;
-    setCurrentLessonIndex(newLessonIndex);
-    setSlideIndex(0);
-    setQuizIndex(0);
+  // previous slide in same lesson
+  if (slideIndex > 0) {
+    setSlideIndex(slideIndex - 1);
     return;
   }
 
+  // go to last slide of previous lesson
+  if (currentLessonIndex > 0) {
+    const newLessonIndex = currentLessonIndex - 1;
+    setCurrentLessonIndex(newLessonIndex);
+    setSlideIndex(0); // will update after lesson loads
+    return;
+  }
+
+  // go to previous module (start at lesson 0, slide 0)
   if (currentModuleIndex > 0) {
     const newModuleIndex = currentModuleIndex - 1;
-    return setCurrentModuleIndex(newModuleIndex);
+    setCurrentModuleIndex(newModuleIndex);
+    setCurrentLessonIndex(0);
+    setSlideIndex(0);
+    return;
   }
 };
 //--------------------------------------------------------------------
 // jump to module only if user has unlocked it
 //--------------------------------------------------------------------
 function goToModule(i: number) {
+  // block locked modules first
   if (i > maxCompletedIndex + 1) return;
+
+  // hard-reset any current audio
+  if (audioRef.current) {
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    audioRef.current.src = "";
+  }
+
+  // reset navigation state
   setCurrentModuleIndex(i);
   setCurrentLessonIndex(0);
   setSlideIndex(0);
   setCurrentCaptionIndex(0);
-  setCanProceed(true);
+
+  // entering a new module → require narration/timer again
+  setCanProceed(false);
   setIsPaused(false);
 }
 
-
-// BLOCK UI until DB resume is applied
-if (!contentReady) {
+// page loader only BEFORE progress + first content load
+if (!progressReady || !contentReady) {
   return (
     <div className="w-screen h-screen flex items-center justify-center bg-white">
       <img
@@ -849,7 +794,6 @@ if (!contentReady) {
     </div>
   );
 }
-
 
   /* ------------------------------------------------------
      RENDER
@@ -862,7 +806,7 @@ if (!contentReady) {
       <div className="fixed top-0 left-0 right-0 z-40 h-2 bg-gray-200">
         <div
           className="h-full bg-[#ca5608] transition-[width] duration-700 ease-linear"
-          style={{ width: `${smoothProgress}%` }}
+          style={{ width: `${progressPercentage}%` }}
         />
       </div>
 
@@ -962,23 +906,12 @@ if (!contentReady) {
       tgt.closest("a")
     ) return;
 
-    // only toggles state – actual play/pause handled in effects
     togglePlay();
   }}
 >
-
-  {!isQuizMode ? (
-    <SlideView currentImage={currentImage} />
-  ) : (
-    <QuizView
-      quizQuestions={quizQuestions}
-      quizIndex={quizIndex}
-      setQuizQuestions={setQuizQuestions}
-      goNext={goNext}
-    />
-  )}
-
+  <SlideView currentImage={currentImage} />
 </div>
+
 
 
 {/* NARRATION AUDIO ELEMENT -------------------------------- */}
@@ -1013,7 +946,6 @@ if (!contentReady) {
   }}
   onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration)}
   onEnded={async () => {
-  if (isQuizMode) return;
   if (isPaused) return;
 
   const slide = slides[slideIndex];
@@ -1061,11 +993,15 @@ if (!contentReady) {
   <div className="fixed bottom-[250px] left-0 right-0 flex justify-center z-40">
     <button
       onClick={() => {
-        if (audioRef?.current) {
-          audioRef.current.play().catch(()=>{});
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+          audioRef.current.src = "";     // hard reset source
         }
-        goNext(true);
+        setIsPaused(false);               // ensure resumed state is known
+        goNext();
       }}
+
       className="
         px-12 py-5
         rounded-xl
@@ -1080,13 +1016,11 @@ if (!contentReady) {
     </button>
   </div>
 )}
+
 {/* FOOTER NAV --------------------------------------------- */}
 <FooterNav
   goPrev={goPrev}
   goNext={goNext}
-  isQuizMode={isQuizMode}
-  quizIndex={quizIndex}
-  totalQuiz={totalQuiz}
   slideIndex={slideIndex}
   totalSlides={totalSlides}
   audioTime={audioTime}
@@ -1104,9 +1038,6 @@ if (!contentReady) {
   goToModule={goToModule}
   promoOpen={promoOpen}
   setPromoOpen={setPromoOpen}
-  isQuizMode={isQuizMode}
-  quizIndex={quizIndex}
-  totalQuiz={totalQuiz}
   slideIndex={slideIndex}
   totalSlides={totalSlides}
   currentLessonIndex={currentLessonIndex}
@@ -1136,8 +1067,8 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
 
   useEffect(() => {
     setLoaded(false)
-
     if (!currentImage) return
+
     const img = new Image()
     img.onload = () => setLoaded(true)
     img.src = currentImage
@@ -1145,119 +1076,38 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
 
   return (
     <div className="absolute inset-0 flex items-start md:items-center justify-center z-10">
-      {loaded ? (
+
+      {/* Skeleton shimmer while loading */}
+      {!loaded && (
+        <div className="w-[100vw] h-[100vh] animate-pulse bg-gradient-to-br from-gray-100 to-gray-200" />
+      )}
+
+      {/* Main image */}
+      {currentImage && (
         <img
-          src={currentImage!}
+          src={currentImage}
           draggable={false}
           decoding="async"
           loading="eager"
+          style={{ opacity: loaded ? 1 : 0 }}
           className="
             w-[100vw]
             h-[100vh]
             object-cover
             object-center
             select-none
+            transition-opacity duration-700
           "
         />
-      ) : (
+      )}
+
+      {/* NA fallback */}
+      {!currentImage && (
         <div className="text-gray-400 italic">Loading image…</div>
       )}
     </div>
   )
 }
-
-
-
-function QuizView({ quizQuestions, quizIndex, setQuizQuestions, goNext }: any) {
-  const q = quizQuestions[quizIndex];
-
-  return (
-    <div className="absolute inset-0 flex items-start justify-center pt-24 px-6 overflow-y-auto">
-      <div className="w-full max-w-2xl">
-        <h2 className="text-xl font-bold text-[#001f40] text-center mb-6">
-          {q.question}
-        </h2>
-
-        <div className="flex flex-col gap-3 mb-6">
-          {q.options.map((opt: any) => {
-            const isSelected = q.selected === opt.id;
-            let bg = "bg-white border";
-
-            if (q.submitted) {
-              if (opt.is_correct) bg = "bg-green-100 border-green-600";
-              else if (isSelected) bg = "bg-red-100 border-red-600";
-            } else if (isSelected) {
-              bg = "bg-[#ca5608]/20 border-[#ca5608]";
-            }
-
-            return (
-              <div
-                key={opt.id}
-                onClick={() => {
-                  if (!q.submitted) {
-                    setQuizQuestions((prev: any) => {
-                      const updated = [...prev];
-                      updated[quizIndex].selected = opt.id;
-                      return updated;
-                    });
-                  }
-                }}
-                className={`${bg} p-3 rounded-lg cursor-pointer text-[#001f40]`}
-              >
-                {opt.option_text}
-              </div>
-            );
-          })}
-        </div>
-
-        {!q.submitted ? (
-          <div className="flex gap-4 justify-center">
-            <button
-              onClick={() => {
-                if (!q.selected) return;
-                setQuizQuestions((prev: any) => {
-                  const updated = [...prev];
-                  updated[quizIndex].submitted = true;
-                  return updated;
-                });
-              }}
-              disabled={!q.selected}
-              className={`px-5 py-2 rounded text-white ${
-                q.selected ? "bg-[#ca5608]" : "bg-gray-400"
-              }`}
-            >
-              Submit
-            </button>
-
-            <button
-              onClick={() => {
-                setQuizQuestions((prev: any) => {
-                  const updated = [...prev];
-                  updated[quizIndex].submitted = true;
-                  return updated;
-                });
-              }}
-              className="px-5 py-2 rounded border border-gray-400 text-gray-600"
-            >
-              Skip
-            </button>
-          </div>
-        ) : (
-          <div className="flex justify-center mt-6">
-            <button
-              onClick={goNext}
-              className="px-6 py-2 bg-[#ca5608] text-white rounded-lg"
-            >
-              Next Question
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
 
 
 /* -----------------------------------------------------------
@@ -1266,9 +1116,6 @@ function QuizView({ quizQuestions, quizIndex, setQuizQuestions, goNext }: any) {
 function FooterNav({
   goPrev,
   goNext,
-  isQuizMode,
-  quizIndex,
-  totalQuiz,
   slideIndex,
   totalSlides,
   audioTime,
@@ -1278,29 +1125,20 @@ function FooterNav({
   currentLessonIndex,
 }: any) {
 
- function statusText() {
-  if (isQuizMode) {
+  function statusText() {
+    const at = Number(audioTime ?? 0).toFixed(1);
+    const ad = Number(audioDuration ?? 0).toFixed(1);
+
     return `Module ${currentModuleIndex + 1} → Lesson ${
       currentLessonIndex + 1
-    } | Question ${quizIndex + 1} of ${totalQuiz}`;
+    } | Slide ${slideIndex + 1} of ${totalSlides} | ${at}s / ${ad}s`;
   }
 
-  const at = Number(audioTime ?? 0).toFixed(1);
-  const ad = Number(audioDuration ?? 0).toFixed(1);
+  return (
+    <div className="fixed bottom-[40px] left-0 right-0 bg-white border-t shadow-inner h-[180px] z-30">
+      <div className="h-full max-w-6xl mx-auto px-6 flex items-start justify-between relative pt-4 text-[#001f40]">
 
-  return `Module ${currentModuleIndex + 1} → Lesson ${
-    currentLessonIndex + 1
-  } | Slide ${slideIndex + 1} of ${totalSlides} | ${at}s / ${ad}s`;
-}
-
-return (
-  <div className="fixed bottom-[40px] left-0 right-0 bg-white border-t shadow-inner h-[180px] z-30">
-    <div className="h-full max-w-6xl mx-auto px-6 flex items-start justify-between relative pt-4 text-[#001f40]">
-
-      {isQuizMode ? (
-        <span className="text-sm">{statusText()}</span>
-      ) : (
-        captionText && (
+        {captionText && (
           <p
             className="
               text-lg
@@ -1314,12 +1152,11 @@ return (
           >
             {captionText}
           </p>
-        )
-      )}
+        )}
 
+      </div>
     </div>
-  </div>
-);
+  );
 }
 
 
@@ -1335,10 +1172,6 @@ function TimelineWithPromo(props: any) {
     goToModule = () => {},
     promoOpen = false,
     setPromoOpen = () => {},
-
-    isQuizMode = false,
-    quizIndex = 0,
-    totalQuiz = 0,
     slideIndex = 0,
     totalSlides = 1,
     audioTime = 0,
@@ -1350,14 +1183,8 @@ function TimelineWithPromo(props: any) {
 
   const segmentWidth = modules.length > 0 ? 100 / modules.length : 100;
 
-  // build shared info text like FooterNav:
+ // build shared info text like FooterNav:
 function statusText() {
-  if (isQuizMode) {
-    return `Module ${currentModuleIndex + 1} → Lesson ${
-      currentLessonIndex + 1
-    } | Q${quizIndex + 1}/${totalQuiz}`;
-  }
-
   const elapsed = safeTime(elapsedSeconds);
   const total   = safeTime(totalModuleSeconds);
 
