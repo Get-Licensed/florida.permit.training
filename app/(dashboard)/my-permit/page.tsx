@@ -129,7 +129,7 @@ export default function MyPermitPage() {
 
           <div className="mt-6 border-t pt-4">
             <a
-              href="/course/player"
+              href="/course"
               className="inline-block bg-[#001f40] text-white px-4 py-2 rounded hover:bg-[#00356e] transition"
             >
               Go to Course

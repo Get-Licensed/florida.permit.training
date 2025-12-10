@@ -105,7 +105,8 @@ export default function CoursePlayerClient() {
   const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
   // track highest DB-completed module
   const [maxCompletedIndex, setMaxCompletedIndex] = useState(0);
-
+  const [progressReady, setProgressReady] = useState(false);
+  const [contentReady, setContentReady] = useState(false);
 
   const [lessons, setLessons] = useState<LessonRow[]>([]);
   const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
@@ -172,22 +173,14 @@ const audioRef = useRef<HTMLAudioElement | null>(null);
 // UNLOCK AUTOPLAY ON FIRST USER GESTURE
 //--------------------------------------------------------------------
 useEffect(() => {
-  function unlock() {
+  const unlock = () => {
     if (!audioRef.current) return;
     audioRef.current.play().catch(() => {});
     window.removeEventListener("click", unlock);
-    window.removeEventListener("touchstart", unlock);
-  }
-
-  window.addEventListener("click", unlock);
-  window.addEventListener("touchstart", unlock);
-
-  return () => {
-    window.removeEventListener("click", unlock);
-    window.removeEventListener("touchstart", unlock);
   };
+  window.addEventListener("click", unlock);
+  return () => window.removeEventListener("click", unlock);
 }, []);
-
 
 //-----------------------------------
 // TIME-BASED PROGRESS CALCULATIONS
@@ -246,6 +239,22 @@ useEffect(() => {
   };
 }, [isPaused]);
 
+  /* ------------------------------------------------------
+     checks backend status and redirects
+  ------------------------------------------------------ */
+    async function refreshStatusAndRedirect() {
+      const res = await fetch("/api/course/status");
+      const data = await res.json();
+
+      if (data.status === "completed_unpaid") {
+        window.location.href = "/finish-pay";
+      } else if (
+        data.status === "completed_paid" ||
+        data.status === "dmv_submitted"
+      ) {
+        window.location.href = "/finish";
+      }
+    }
 
   /* ------------------------------------------------------
      LOAD MODULES
@@ -267,13 +276,16 @@ useEffect(() => {
     }
   }
 
-  /* ------------------------------------------------------
-     APPLY PROGRESS (runs only after modules + lessons)
-  ------------------------------------------------------ */
+// ------------------------
+// PROGRESS LOADING + APPLY
+// ------------------------
 useEffect(() => {
   async function loadProgress() {
     const user = await supabase.auth.getUser();
-    if (!user.data.user) return;
+    if (!user?.data?.user) {
+      setProgressReady(true); // nothing to resume
+      return;
+    }
 
     const { data: modRows } = await supabase
       .from("course_progress_modules")
@@ -287,7 +299,6 @@ useEffect(() => {
       .eq("user_id", user.data.user.id)
       .eq("course_id", "FL_PERMIT_TRAINING");
 
-    // coerce null → []
     applyProgress(modRows ?? [], slideRows ?? []);
   }
 
@@ -301,54 +312,52 @@ function applyProgress(
   modRows: any[] = [],
   slideRows: any[] = []
 ) {
-  // only run once per session
-  if (didApplyProgress.current) return;
+  if (didApplyProgress.current) {
+    setProgressReady(true);
+    return;
+  }
   didApplyProgress.current = true;
 
-  // safety
-  if (!Array.isArray(modRows) || !Array.isArray(slideRows)) return;
+  if (!Array.isArray(modRows) || !Array.isArray(slideRows)) {
+    setProgressReady(true);
+    return;
+  }
 
-  // find highest fully-completed module
   const completedModules = modRows.filter(m => m?.completed);
   const maxCompletedModule = completedModules.length
     ? completedModules.reduce((a, b) =>
         (a?.module_index ?? 0) > (b?.module_index ?? 0) ? a : b
       ).module_index
     : 0;
+
   setMaxCompletedIndex(maxCompletedModule);
 
-  // highest module where progress exists (even if not completed)
   const highestModule = modRows.length
     ? Math.max(...modRows.map(m => m?.module_index ?? 0))
     : 0;
 
-  // resume most advanced module
   const targetModule = Math.max(maxCompletedModule, highestModule);
   setCurrentModuleIndex(targetModule);
 
-  // find progress inside that module
   const slidesInModule = slideRows.filter(
     s => (s?.module_index ?? -1) === targetModule
   );
 
-  // if no slides saved, start fresh
   if (!slidesInModule.length) {
+    setProgressReady(true);
     return;
   }
 
-  // pick the furthest slide
   const last = slidesInModule.reduce((a, b) =>
     (a?.slide_index ?? 0) > (b?.slide_index ?? 0) ? a : b
   );
 
-  // restore lesson + slide
   setCurrentLessonIndex(last.lesson_index ?? 0);
   setSlideIndex(last.slide_index ?? 0);
 
-  // allow immediate manual nav + autoplay
   setCanProceed(true);
+  setProgressReady(true);
 }
-
 /* ------------------------------------------------------
      LOAD LESSONS (without resetting lesson index)
   ------------------------------------------------------ */
@@ -368,82 +377,95 @@ function applyProgress(
     // DO NOT reset currentLessonIndex here
   }
 
-  /* ------------------------------------------------------
-     LOAD LESSON CONTENT (remove index resets)
-  ------------------------------------------------------ */
-  async function loadLessonContent(lessonId: number) {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current.src = "";
-    }
+ /* ------------------------------------------------------
+   LOAD LESSON CONTENT  (with contentReady gates)
+------------------------------------------------------ */
+async function loadLessonContent(lessonId: number) {
+  // reset content-ready for this lesson load
+  setContentReady(false);
 
-    setSlides([]);
-    setCaptions({});
-    setQuizQuestions([]);
-
-    const { data: slideRows } = await supabase
-      .from("lesson_slides")
-      .select("*")
-      .eq("lesson_id", lessonId)
-      .order("order_index", { ascending: true });
-
-    setSlides(slideRows || []);
-
-    const slideIds = slideRows?.map((s) => s.id) ?? [];
-    const { data: captionRows } = await supabase
-      .from("slide_captions")
-      .select(`
-        id,
-        slide_id,
-        caption,
-        seconds,
-        line_index,
-        published_audio_url_d,
-        published_audio_url_a,
-        published_audio_url_j,
-        published_audio_url_o
-      `)
-      .in("slide_id", slideIds)
-      .order("line_index", { ascending: true });
-
-    const grouped: Record<string, CaptionRow[]> = {};
-    slideRows?.forEach((s) => {
-      grouped[s.id] =
-        captionRows?.filter((c) => String(c.slide_id) === String(s.id)) ?? [];
-    });
-
-    setCaptions(grouped);
-
-    const { data: quizRows } = await supabase
-      .from("quizzes")
-      .select("*")
-      .eq("lesson_id", lessonId)
-      .order("order_index", { ascending: true });
-
-    if (quizRows?.length) {
-      const quizIds = quizRows.map((q) => q.id);
-
-      const { data: optionRows } = await supabase
-        .from("quiz_options")
-        .select("*")
-        .in("quiz_id", quizIds)
-        .order("order_index", { ascending: true });
-
-      const qList: QuizState[] = quizRows.map((q) => ({
-        id: q.id,
-        question: q.question,
-        options: optionRows?.filter((o) => o.quiz_id === q.id) || [],
-        selected: null,
-        submitted: false,
-      }));
-
-      setQuizQuestions(qList);
-    }
-
-    setLoading(false);
-    // DO NOT reset slideIndex / captionIndex / canProceed here
+  // stop any audio in progress
+  if (audioRef.current) {
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    audioRef.current.src = "";
   }
+
+  // clear existing content
+  setSlides([]);
+  setCaptions({});
+  setQuizQuestions([]);
+
+  // ---- SLIDES ----
+  const { data: slideRows } = await supabase
+    .from("lesson_slides")
+    .select("*")
+    .eq("lesson_id", lessonId)
+    .order("order_index", { ascending: true });
+
+  setSlides(slideRows || []);
+
+  // ---- CAPTIONS ----
+  const slideIds = slideRows?.map((s) => s.id) ?? [];
+  const { data: captionRows } = await supabase
+    .from("slide_captions")
+    .select(`
+      id,
+      slide_id,
+      caption,
+      seconds,
+      line_index,
+      published_audio_url_d,
+      published_audio_url_a,
+      published_audio_url_j,
+      published_audio_url_o
+    `)
+    .in("slide_id", slideIds)
+    .order("line_index", { ascending: true });
+
+  const grouped: Record<string, CaptionRow[]> = {};
+  slideRows?.forEach((s) => {
+    grouped[s.id] =
+      captionRows?.filter((c) => String(c.slide_id) === String(s.id)) ?? [];
+  });
+
+  setCaptions(grouped);
+
+  // ---- QUIZ QUESTIONS ----
+  const { data: quizRows } = await supabase
+    .from("quizzes")
+    .select("*")
+    .eq("lesson_id", lessonId)
+    .order("order_index", { ascending: true });
+
+  if (quizRows?.length) {
+    const quizIds = quizRows.map((q) => q.id);
+
+    const { data: optionRows } = await supabase
+      .from("quiz_options")
+      .select("*")
+      .in("quiz_id", quizIds)
+      .order("order_index", { ascending: true });
+
+    const qList: QuizState[] = quizRows.map((q) => ({
+      id: q.id,
+      question: q.question,
+      options: optionRows?.filter((o) => o.quiz_id === q.id) || [],
+      selected: null,
+      submitted: false,
+    }));
+
+    setQuizQuestions(qList);
+  }
+
+  // finished loading this lesson’s data
+  setLoading(false);
+
+  // mark content fully ready so UI can render without flashing slide 1
+  setContentReady(true);
+
+  // DO NOT reset slideIndex / captionIndex / canProceed here
+}
 
 /* ------------------------------------------------------
    NAV / QUIZ STATE
@@ -493,14 +515,18 @@ useEffect(() => {
   const audio = audioRef.current;
   if (!audio) return;
 
+  if (isPaused) return; // stop here!
+
   audio.pause();
   audio.currentTime = 0;
   setCurrentCaptionIndex(0);
   setCanProceed(false);
-}, [slideIndex]);
+}, [slideIndex, isPaused]);
 
 /* ------------------------------------------------------
    SAFE AUTOPLAY (Slide changed)
+   - Only reacts to slide/voice/captions changes
+   - Pause/resume never reloads or resets time
 ------------------------------------------------------ */
 useEffect(() => {
   const audio = audioRef.current;
@@ -510,15 +536,15 @@ useEffect(() => {
   const slide = slides[slideIndex];
   if (!slide) return;
 
-  const caps = slide ? (captions[slide.id] || []) : [];
+  const caps = captions[slide.id] || [];
   if (!caps.length) {
     setCanProceed(true);
     return;
   }
 
-  const urls = caps.map(c =>
-    resolveVoiceUrl(c, voice)
-  ).filter(Boolean);
+  const urls = caps
+    .map(c => resolveVoiceUrl(c, voice))
+    .filter(Boolean) as string[];
 
   if (!urls.length) {
     setCanProceed(true);
@@ -527,81 +553,73 @@ useEffect(() => {
 
   const url = urls[0];
 
+  // New slide (or new voice) → reset to start of that audio
   audio.pause();
   audio.currentTime = 0;
-  audio.src = url!;
-  audio.load();
+  audio.src = url;
+
+  const handleLoaded = () => {
+    // Only auto-play if user is not paused
+    if (!isPaused) {
+      audio.play().catch(() => {});
+    }
+  };
+
+  audio.addEventListener("loadeddata", handleLoaded);
+
+  return () => {
+    audio.removeEventListener("loadeddata", handleLoaded);
+  };
+}, [slideIndex, voice, captions, slides, isQuizMode]); // NOTE: no isPaused here
+
+/* ------------------------------------------------------
+   ONLY reset audio if NOT paused
+------------------------------------------------------ */
+useEffect(() => {
+  const audio = audioRef.current;
+  if (!audio) return;
+  if (isQuizMode) return;
+
+  const slide = slides[slideIndex];
+  if (!slide) return;
+
+  const caps = captions[slide.id] || [];
+  if (!caps.length) {
+    setCanProceed(true);
+    return;
+  }
+
+  const urls = caps.map(c => resolveVoiceUrl(c, voice)).filter(Boolean);
+  if (!urls.length) {
+    setCanProceed(true);
+    return;
+  }
+
+  const url = urls[0];
+
+  // reset only when NOT paused
+  if (!isPaused) {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.src = url!;
+    // audio.load();  // remove this load for same-slide
+    requestAnimationFrame(() => audio.load());
+  }
+
 
   const start = async () => {
     try {
-      audio.currentTime = 0;
+      // on resume, continue from same pos (no reset here)
       if (!isPaused && audio.src === url) {
-        await audio.play().catch(()=>{});
+        await audio.play().catch(() => {});
       }
     } catch {}
   };
 
   audio.addEventListener("loadeddata", start);
-
-  return () => {
-    audio.removeEventListener("loadeddata", start);
-  };
-
+  return () => audio.removeEventListener("loadeddata", start);
 }, [slideIndex, voice, captions, slides, isPaused, isQuizMode]);
 
-/* ------------------------------------------------------
-   SAFETY → NO AUDIO = AUTO NEXT
------------------------------------------------------- */
-useEffect(() => {
-  const slide = slides[slideIndex];
-  if (!slide) return;
-
-  const caps = captions[slide.id] || [];
-  const urls = caps.map(c => resolveVoiceUrl(c, voice)).filter(Boolean);
-
-  if (!urls.length) {
-    setCanProceed(true);
-    setTimeout(() => {
-      if (!isQuizMode && !isPaused) goNext();
-    }, 300);
-  }
-}, [currentCaptionIndex, slideIndex]);
-
-//-------------------------------------------------------------------------//
-
-useEffect(() => {
-  if (!audioRef.current) return;
-
-  const audio = audioRef.current;
-
-  const handleCanPlay = () => {
-    console.log("AUDIO canplay", { src: audio.src, t: audio.currentTime });
-  };
-  const handleCanPlayThrough = () => {
-    console.log("AUDIO canplaythrough", { src: audio.src, dur: audio.duration });
-  };
-  const handlePlay = () => {
-    console.log("AUDIO play started", { src: audio.src, t: audio.currentTime });
-  };
-
-  audio.addEventListener("canplay", handleCanPlay);
-  audio.addEventListener("canplaythrough", handleCanPlayThrough);
-  audio.addEventListener("play", handlePlay);
-
-  // Force reload so events actually fire after listeners attached
-  if (audio.src) {
-    const cur = audio.src;
-    audio.src = "";
-    audio.src = cur;
-    audio.load();
-  }
-
-  return () => {
-    audio.removeEventListener("canplay", handleCanPlay);
-    audio.removeEventListener("canplaythrough", handleCanPlayThrough);
-    audio.removeEventListener("play", handlePlay);
-  };
-}, [currentCaptionIndex, slideIndex, voice]);
 /* ------------------------------------------------------
    PROGRESS UPDATERS (copy/paste exactly)
 ------------------------------------------------------ */
@@ -799,11 +817,15 @@ const goNext = useCallback(async (manual?: boolean) => {
 // PROGRESS BAR SMOOTHING
 //--------------------------------------------------------------------
 const progressPercentage =
-  totalModuleSeconds > 0 ? (elapsedSeconds / totalModuleSeconds) * 100 : 0;
+  progressReady && contentReady && totalModuleSeconds > 0
+    ? (elapsedSeconds / totalModuleSeconds) * 100
+    : 0;
 
 const [smoothProgress, setSmoothProgress] = useState(progressPercentage);
 
 useEffect(() => {
+  if (!progressReady || !contentReady) return;
+
   let raf: number;
   const tick = () => {
     setSmoothProgress(prev => {
@@ -814,10 +836,8 @@ useEffect(() => {
   };
   raf = requestAnimationFrame(tick);
   return () => cancelAnimationFrame(raf);
-}, [progressPercentage]);
+}, [progressReady, contentReady, progressPercentage]);
 
-console.log('progressPercentage =', progressPercentage);
-console.log('elapsedSeconds =', elapsedSeconds);
 
 //--------------------------------------------------------------------
 // backward navigation
@@ -851,6 +871,20 @@ function goToModule(i: number) {
   setCanProceed(true);
   setIsPaused(false);
 }
+
+
+// BLOCK UI until DB resume is applied
+if (!contentReady) {
+  return (
+    <div className="w-screen h-screen flex items-center justify-center bg-white">
+      <img
+        src="/steering-wheel.png"
+        className="w-24 h-24 steering-animation"
+      />
+    </div>
+  );
+}
+
 
   /* ------------------------------------------------------
      RENDER
@@ -955,18 +989,31 @@ function goToModule(i: number) {
   
 {/* MAIN -------------------------------------------------- */}
 <div
-  className="relative flex-1 w-screen h-screen overflow-hidden cursor-pointer pt-0 md:pt-10 pb-[160px] z-0"
-  onClick={(e) => {
-    const target = e.target as HTMLElement;
-    if (
-      target.closest("button") ||
-      target.closest("input")  ||
-      target.closest("select") ||
-      target.closest("a")
-    ) return;
-    goNext(true); // manual
-  }}
+  className="relative flex-1 w-screen h-screen overflow-hidden pt-0 md:pt-10 pb-[160px] z-0"
+onClick={(e) => {
+  const a = audioRef.current;
+  if (!a) return;
+
+  const tgt = e.target as HTMLElement;
+  if (
+    tgt.closest("button") ||
+    tgt.closest("input") ||
+    tgt.closest("select") ||
+    tgt.closest("a")
+  ) return;
+
+  if (isPaused) {
+    setIsPaused(false);
+    requestAnimationFrame(() => {
+      a.play().catch(() => {});
+    });
+  } else {
+    setIsPaused(true);
+    a.pause();
+  }
+}}
 >
+
   {!isQuizMode ? (
     <SlideView currentImage={currentImage} />
   ) : (

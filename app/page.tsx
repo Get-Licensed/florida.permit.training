@@ -25,14 +25,14 @@ export default function SignUpPage() {
   const finalSegmentRef = useRef<HTMLDivElement>(null);
 
 
-  /* ───────── CHECK IF LOGGED IN ───────── 
+  /* ───────── CHECK IF LOGGED IN ───────── */
   useEffect(() => {
     async function checkSession() {
       const { data } = await supabase.auth.getSession();
       if (data?.session) router.replace("/course");
     }
     checkSession();
-  }, [router]);*/
+  }, [router]);
 
   /* ───────── VIEWPORT DETECTION ───────── */
   useEffect(() => {

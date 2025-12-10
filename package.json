@@ -13,6 +13,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.80.0",
     "axios": "^1.13.2",
@@ -24,7 +25,9 @@
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "react-sortablejs": "^6.1.4",
+    "resend": "^6.6.0",
     "sortablejs": "^1.15.6",
+    "stripe": "^20.0.0",
     "uuid": "^13.0.0",
     "zustand": "^5.0.9"
   },

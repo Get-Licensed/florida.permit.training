@@ -10,6 +10,40 @@ export default function AuthCallback() {
 
   useEffect(() => {
     async function run() {
+      /* ----------------------------------------------------------
+         1. AUTO-ENTER if the session already exists
+      ----------------------------------------------------------- */
+      const existing = await supabase.auth.getSession();
+      const session0 = existing.data?.session;
+
+      if (session0) {
+        const { data: profile0 } = await supabase
+          .from("profiles")
+          .select("is_admin")
+          .eq("id", session0.user.id)
+          .single();
+
+        const redirectTo = profile0?.is_admin ? "/admin" : "/course";
+
+        // ***** REQUIRED FOR POPUP FLOW *****
+        if (window.opener) {
+          try {
+            window.opener.postMessage(
+              { type: "authSuccess", redirectTo },
+              window.location.origin
+            );
+          } catch {}
+          setTimeout(() => window.close(), 120);
+          return;
+        }
+
+        router.replace(redirectTo);
+        return;
+      }
+
+      /* ----------------------------------------------------------
+         2. NORMAL OAUTH PROCESS (if session missing)
+      ----------------------------------------------------------- */
       const url = new URL(window.location.href);
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
@@ -22,30 +56,30 @@ export default function AuthCallback() {
 
       let session = null;
 
-      // Only try exchange if code exists AND a PKCE verifier exists
+      // Try PKCE exchange
       if (code && localStorage.getItem("supabase.auth.token")) {
         const { data, error: exchangeError } =
           await supabase.auth.exchangeCodeForSession(code);
 
-        if (exchangeError) {
-          console.error("PKCE Exchange Error:", exchangeError);
-        } else {
+        if (!exchangeError) {
           session = data?.session;
         }
       }
 
-      // Fallback: get session if already exchanged
+      // fallback
       if (!session) {
         const { data } = await supabase.auth.getSession();
         session = data?.session;
       }
 
       if (!session) {
-        console.error("No session found after callback.");
+        console.error("No session after callback");
         return;
       }
 
-      // Upsert profile
+      /* ----------------------------------------------------------
+         3. UPSERT PROFILE
+      ----------------------------------------------------------- */
       const user = session.user;
       await supabase.from("profiles").upsert(
         {
@@ -62,7 +96,9 @@ export default function AuthCallback() {
         { onConflict: "id" }
       );
 
-      // Check admin
+      /* ----------------------------------------------------------
+         4. CHECK ADMIN FLAG
+      ----------------------------------------------------------- */
       const { data: profile } = await supabase
         .from("profiles")
         .select("is_admin")
@@ -71,21 +107,23 @@ export default function AuthCallback() {
 
       const redirectTo = profile?.is_admin ? "/admin" : "/course";
 
-      // Popup → send to opener and close
+      /* ----------------------------------------------------------
+         5. POPUP PATH (MOST IMPORTANT)
+      ----------------------------------------------------------- */
       if (window.opener) {
         try {
           window.opener.postMessage(
             { type: "authSuccess", redirectTo },
             window.location.origin
           );
-        } catch (err) {
-          console.warn("Unable to notify opener:", err);
-        }
-        setTimeout(() => window.close(), 100);
+        } catch {}
+        setTimeout(() => window.close(), 120);
         return;
       }
 
-      // Full page login → direct redirect
+      /* ----------------------------------------------------------
+         6. NORMAL FULL PAGE
+      ----------------------------------------------------------- */
       router.replace(redirectTo);
     }
 

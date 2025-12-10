@@ -21,7 +21,7 @@ export default function HeaderClient({
 
   const navItems = [
     { name: "Dashboard", href: "/dashboard" },
-    { name: "My Course", href: "/course/player" },
+    { name: "My Course", href: "/course" },
     { name: "My Permit", href: "/my-permit" },
     { name: "My Profile", href: "/profile" },
     { name: "Support", href: "/support" },
