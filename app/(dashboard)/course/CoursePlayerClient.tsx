@@ -1048,7 +1048,7 @@ if (slideK) {
 
     const map = mapTimingIndexToDisplayIndex(timingWords, displayWords);
 
-    const lead = 0.10;
+    const lead = 0.08;
     const shifted = t + lead;
 
     let wi = timings.findIndex(w => shifted >= w.start && shifted < w.end);
@@ -1288,7 +1288,6 @@ function FooterNav({
         <KaraokeCaption
           captions={captions}
           currentSlide={currentSlide}
-          currentCaptionIndex={currentCaptionIndex}
           currentWordIndex={currentWordIndex}
         />
 
@@ -1403,45 +1402,45 @@ function TimelineWithPromo(props: any) {
 function KaraokeCaption({
   captions,
   currentSlide,
-  currentCaptionIndex,
   currentWordIndex
 }: any) {
 
   if (!currentSlide) return null;
 
-  const lines = captions[currentSlide.id] || [];
+  const fullText = (captions[currentSlide.id] || [])
+    .map((c: any) => c.caption.trim())
+    .join(" ")
+    .replace(/\s+/g, " ");
+
+  const words = tokenizeCaption(fullText);
 
   return (
     <div
       className="
-        text-lg leading-[32px]
-        whitespace-pre-wrap text-center
-        text-[#001f40] w-full px-6
+        text-xl leading-[28px]
+        whitespace-normal
+        text-center
+        text-[#001f40]
+        w-full px-5 mx-auto
       "
+      style={{
+        minWidth: 0,          
+        maxWidth: "100%",
+        overflow: "visible",
+        wordBreak: "normal",
+        overflowWrap: "break-word",
+        hyphens: "none"
+      }}
     >
-      {lines.map((line: any, li: number) => {
-        const words = tokenizeCaption(line.caption);
-
-        return (
-          <div key={line.id} className="mb-1">
-            {words.map((word: string, wi: number) => {
-              const active = li === currentCaptionIndex && wi === currentWordIndex;
-
-              return (
-                <span
-                  key={wi}
-                  className={`
-                    mx-1 transition-all
-                    ${active ? "text-[#ca5608]" : "opacity-80"}
-                  `}
-                >
-                  {word}
-                </span>
-              );
-            })}
-          </div>
-        );
-      })}
+      {words.map((word: string, wi: number) => (
+<span
+  key={wi}
+  style={{ display: "inline" }}    // <-- critical
+  className={wi === currentWordIndex ? "text-[#ca5608]" : "opacity-80"}
+>
+  {word + " "}
+</span>
+      ))}
     </div>
   );
 }
