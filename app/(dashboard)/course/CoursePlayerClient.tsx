@@ -6,6 +6,91 @@ import { useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef } from "react";
 
+/* ------------------------------------------------------
+   KARAOKE HELPERS  (MOVE THESE OUTSIDE THE COMPONENT)
+------------------------------------------------------ */
+
+function tokenizeCaption(text: string): string[] {
+  if (!text) return [];
+
+  // Split words but KEEP punctuation attached
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function tokenizeForTiming(text: string): string[] {
+  if (!text) return [];
+
+  // separate punctuation *only for timing*
+  return text
+    .trim()
+    .replace(/([.,!?;:])/g, " $1 ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function computeWordTimings(totalSeconds: number, words: string[]) {
+  if (!words.length) return [];
+
+  const SPEED = 0.95;
+
+  const weights = words.map((w) => {
+    const isPunct = /[.,!?;:]/.test(w);
+
+    if (isPunct) {
+      if (w === ".") return 14; // long pause
+      if (w === ",") return 6;  // medium pause
+      return 4;                 // other punctuation
+    }
+
+    // normal words: weight proportional to length
+    return Math.max(2, Math.min(w.length * 1.1, 8));
+  });
+
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const scaledTotal = totalSeconds * SPEED;
+
+  let cursor = 0;
+
+  return weights.map((wt) => {
+    const dur = (wt / totalWeight) * scaledTotal;
+    const start = cursor;
+    cursor += dur;
+    return { start, end: cursor };
+  });
+}
+
+function mapTimingIndexToDisplayIndex(
+  timingWords: string[],
+  displayWords: string[]
+) {
+  let dIndex = 0;
+  let result: number[] = [];
+
+  for (let i = 0; i < timingWords.length; i++) {
+    const tw = timingWords[i];
+    const dw = displayWords[dIndex] ?? "";
+
+    // timing word belongs to current display word
+    if (dw.startsWith(tw) || dw.includes(tw)) {
+      result.push(dIndex);
+    }
+    // punctuation belongs to displayWords[dIndex]
+    else if (/[.,!?;:]/.test(tw)) {
+      result.push(dIndex);
+      continue; // do not advance dIndex
+    }
+    // next display word
+    else {
+      dIndex++;
+      result.push(dIndex);
+    }
+  }
+
+  return result;
+}
 
 /* ------------------------------------------------------
    TYPES
@@ -109,6 +194,13 @@ export default function CoursePlayerClient() {
   const [audioTime, setAudioTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [restoredReady, setRestoredReady] = useState(false)
+  const [initialHydrationDone, setInitialHydrationDone] = useState(false);
+
+  useEffect(() => {
+    if (progressReady && contentReady && !initialHydrationDone) {
+      setInitialHydrationDone(true);
+    }
+  }, [progressReady, contentReady]);
 
   const cancelAutoplay = useRef(false);
   const resetAudioElement = useCallback(() => {
@@ -123,7 +215,11 @@ export default function CoursePlayerClient() {
   // do NOT touch cancelAutoplay here
 }, []);
 
-
+function preloadAudio(url: string) {
+  const a = new Audio();
+  a.src = url;
+  a.preload = "auto";  // Tells browser to decode early
+}
 
 //--------------------------------------------------------------------
 // VOICE URL RESOLVER (UPDATED)
@@ -163,6 +259,9 @@ useEffect(() => {
 const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
 const [canProceed, setCanProceed] = useState(false);
 const [isPaused, setIsPaused] = useState(false);
+// NEW — for karaoke word highlighting
+const [currentWordIndex, setCurrentWordIndex] = useState(0);
+
 
 const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -231,29 +330,6 @@ for (let i = 0; i < slideIndex; i++) {
   return sec;
 })();
 
-  /* ------------------------------------------------------
-
-useEffect(() => {
-  const audio = audioRef.current;
-  if (!audio) return;
-
-  function safePlay() {
-    const a = audioRef.current;
-    if (!a) return;
-    if (!isPaused) {
-      a.play().catch(() => {});
-    }
-  }
-
-  audio.addEventListener("loadedmetadata", safePlay);
-  audio.addEventListener("canplaythrough", safePlay);
-
-  return () => {
-    audio.removeEventListener("loadedmetadata", safePlay);
-    audio.removeEventListener("canplaythrough", safePlay);
-  };
-}, [isPaused]);
-  ------------------------------------------------------ */
 
   /* ------------------------------------------------------
      checks backend status and redirects
@@ -299,7 +375,7 @@ useEffect(() => {
   async function loadProgress() {
     const user = await supabase.auth.getUser();
     if (!user?.data?.user) {
-      setProgressReady(true); // nothing to resume
+      setProgressReady(true);
       return;
     }
 
@@ -318,11 +394,16 @@ useEffect(() => {
     applyProgress(modRows ?? [], slideRows ?? []);
   }
 
-  if (modules.length && lessons.length) {
-    loadProgress();
-  }
-}, [modules, lessons]);
+  // ----------------------------
+  // Correct guard
+  // ----------------------------
+  if (!modules.length || !lessons.length) return;
 
+  // DO NOT set didApplyProgress here — let applyProgress handle it
+  if (didApplyProgress.current) return;
+
+  loadProgress();
+}, [modules, lessons]);
 
 function applyProgress(
   modRows: any[] = [],
@@ -471,11 +552,8 @@ if (restoredReady) {
 }
 // DO NOT reset slideIndex / captionIndex / canProceed here
 
-// DO NOT reset slideIndex / captionIndex / canProceed here
-
-
 /* ------------------------------------------------------
-   NAV / QUIZ STATE
+   NAV STATE
 ------------------------------------------------------ */
 const totalSlides = slides.length;
 
@@ -520,8 +598,7 @@ useEffect(() => {
 ------------------------------------------------------ */
 useEffect(() => {
   const audio = audioRef.current;
-  if (!audio) return;
-  if (!contentReady) return;
+  if (!audio || !contentReady) return;
 
   const slide = slides[slideIndex];
   if (!slide) return;
@@ -539,30 +616,32 @@ useEffect(() => {
     return;
   }
 
-  // during a hard reset (module jump, Continue click), don't touch src
-  if (cancelAutoplay.current) {
-    return;
+  // Prefetch next caption audio for smoother transition
+  if (currentCaptionIndex + 1 < urls.length) {
+    preloadAudio(urls[currentCaptionIndex + 1]!);
   }
 
+  // During hard reset, skip autoplay
+  if (cancelAutoplay.current) return;
+
+  // Only load if URL changed
   if (audio.src !== nextUrl) {
+    audio.pause();
+    audio.currentTime = 0;
     audio.src = nextUrl;
 
-    try {
-      audio.load();
-      audio.currentTime = 0; // ensure start at 0
-    } catch {}
-
-    audio.oncanplay = () => {
-      audio.oncanplay = null;
+    audio.oncanplaythrough = () => {
+      audio.oncanplaythrough = null;
       if (!isPaused && !cancelAutoplay.current) {
         audio.play().catch(() => {});
       }
     };
 
+    audio.load();
     return;
   }
 
-  // same src; resume only if user hasn’t paused and we’re not in a reset
+  // Same src → just resume immediately
   if (!isPaused && !cancelAutoplay.current) {
     audio.play().catch(() => {});
   }
@@ -803,17 +882,22 @@ function goToModule(i: number) {
 }
 
 
-// page loader only BEFORE progress + first content load
-if (!progressReady || !contentReady) {
-  return (
-    <div className="w-screen h-screen flex items-center justify-center bg-white">
-      <img
-        src="/steering-wheel.png"
-        className="w-24 h-24 steering-animation"
-      />
-    </div>
-  );
+// Show steering wheel ONLY during very first load
+if (!initialHydrationDone) {
+  if (!progressReady || !contentReady) {
+    return (
+      <div className="w-screen h-screen flex items-center justify-center bg-white">
+        <img
+          src="/steering-wheel.png"
+          className="w-24 h-24 steering-animation"
+        />
+      </div>
+    );
+  }
 }
+
+// AFTER initial hydration → do NOT block the UI with the loader
+
 
 
 function togglePlay() {
@@ -949,6 +1033,33 @@ function togglePlay() {
     const t = e.currentTarget.currentTime;
     setAudioTime(t);
 
+// --- KARAOKE WORD TRACKING ---
+const slideK = slides[slideIndex];
+if (slideK) {
+  const capsK = captions[slideK.id] || [];
+  const activeLine = capsK[currentCaptionIndex];
+
+  if (activeLine) {
+
+    const displayWords = tokenizeCaption(activeLine.caption);
+    const timingWords  = tokenizeForTiming(activeLine.caption);
+
+    const timings = computeWordTimings(activeLine.seconds ?? 0, timingWords);
+
+    const map = mapTimingIndexToDisplayIndex(timingWords, displayWords);
+
+    const lead = 0.10;
+    const shifted = t + lead;
+
+    let wi = timings.findIndex(w => shifted >= w.start && shifted < w.end);
+    if (wi === -1) wi = timingWords.length - 1;
+
+    const displayIndex = map[wi];
+
+    setCurrentWordIndex(displayIndex);
+  }
+}
+
     // EARLY UNLOCK FOR FINAL SLIDE OF MODULE
     const slide = slides[slideIndex];
     if (!slide) return;
@@ -1038,6 +1149,7 @@ function togglePlay() {
   </div>
 )}
 
+
 {/* FOOTER NAV --------------------------------------------- */}
 <FooterNav
   goPrev={goPrev}
@@ -1049,6 +1161,10 @@ function togglePlay() {
   captionText={captionText}
   currentModuleIndex={currentModuleIndex}
   currentLessonIndex={currentLessonIndex}
+  captions={captions}
+  slides={slides}
+  currentCaptionIndex={currentCaptionIndex}
+  currentWordIndex={currentWordIndex}
 />
 
 {/* TIMELINE + PROMO ---------------------------------------- */}
@@ -1084,52 +1200,55 @@ function safeTime(v: any) {
 ============================================================ */
 
 function SlideView({ currentImage }: { currentImage: string | null }) {
-  const [loaded, setLoaded] = useState(false)
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    setLoaded(false)
-    if (!currentImage) return
+    setLoaded(false);
+    if (!currentImage) return;
 
-    const img = new Image()
-    img.onload = () => setLoaded(true)
-    img.src = currentImage
-  }, [currentImage])
+    const img = new Image();
+    img.onload = () => setLoaded(true);
+    img.src = currentImage;
+  }, [currentImage]);
 
   return (
-    <div className="absolute inset-0 flex items-start md:items-center justify-center z-10">
+    <div className="absolute inset-0 flex items-center justify-center z-10 bg-white">
 
-      {/* Skeleton shimmer while loading */}
-      {!loaded && (
-        <div className="w-[100vw] h-[100vh] animate-pulse bg-gradient-to-br from-gray-100 to-gray-200" />
-      )}
+      {/* RADIAL GRADIENT SKELETON */}
+      <div
+        className={`
+          absolute inset-0
+          animate-pulse
+          transition-opacity duration-500
+          ${loaded ? "opacity-0" : "opacity-100"}
+        `}
+        style={{
+          background: "linear-gradient(to bottom, #909090ff 0%, #ffffffff 45%, #ffffff 100%)",
+        }}
+      />
 
-      {/* Main image */}
+      {/* FADE-IN IMAGE */}
       {currentImage && (
         <img
           src={currentImage}
           draggable={false}
           decoding="async"
           loading="eager"
-          style={{ opacity: loaded ? 1 : 0 }}
-          className="
-            w-[100vw]
-            h-[100vh]
-            object-cover
-            object-center
-            select-none
-            transition-opacity duration-700
-          "
+          className={`
+            absolute inset-0
+            w-full h-full object-cover object-center
+            transition-opacity duration-500
+            ${loaded ? "opacity-100" : "opacity-0"}
+          `}
         />
       )}
 
-      {/* NA fallback */}
       {!currentImage && (
-        <div className="text-gray-400 italic">Loading image…</div>
+        <div className="text-gray-400 italic"></div>
       )}
     </div>
-  )
+  );
 }
-
 
 /* -----------------------------------------------------------
    FOOTER NAV  (Module → Lesson → Slide/Question)
@@ -1144,6 +1263,10 @@ function FooterNav({
   captionText,
   currentModuleIndex,
   currentLessonIndex,
+  captions,
+  slides,
+  currentCaptionIndex,
+  currentWordIndex
 }: any) {
 
   function statusText() {
@@ -1155,25 +1278,19 @@ function FooterNav({
     } | Slide ${slideIndex + 1} of ${totalSlides} | ${at}s / ${ad}s`;
   }
 
+  const currentSlide = slides?.[slideIndex] || null;
+
   return (
     <div className="fixed bottom-[40px] left-0 right-0 bg-white border-t shadow-inner h-[180px] z-30">
       <div className="h-full max-w-6xl mx-auto px-6 flex items-start justify-between relative pt-4 text-[#001f40]">
 
-        {captionText && (
-          <p
-            className="
-              text-lg
-              leading-[32px]
-              whitespace-pre-wrap
-              text-center
-              text-[#001f40]
-              w-full
-              px-6
-            "
-          >
-            {captionText}
-          </p>
-        )}
+        {/* KARAOKE CAPTIONS */}
+        <KaraokeCaption
+          captions={captions}
+          currentSlide={currentSlide}
+          currentCaptionIndex={currentCaptionIndex}
+          currentWordIndex={currentWordIndex}
+        />
 
       </div>
     </div>
@@ -1204,20 +1321,18 @@ function TimelineWithPromo(props: any) {
 
   const segmentWidth = modules.length > 0 ? 100 / modules.length : 100;
 
- // build shared info text like FooterNav:
-function statusText() {
-  const elapsed = safeTime(elapsedSeconds);
-  const total   = safeTime(totalModuleSeconds);
-
-  return `Module ${currentModuleIndex + 1} → Lesson ${
-    currentLessonIndex + 1
-  } | ${elapsed}s / ${total}s`;
-}
+  function statusText() {
+    const elapsed = safeTime(elapsedSeconds);
+    const total = safeTime(totalModuleSeconds);
+    return `Module ${currentModuleIndex + 1} → Lesson ${
+      currentLessonIndex + 1
+    } | ${elapsed}s / ${total}s`;
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white z-40 py-3 border-t shadow-inner">
 
-      {/* *** FIXED META ON THE RIGHT *** */}
+      {/* FIXED META (RIGHT) */}
       <div className="absolute right-6 bottom-[48px] text-xs md:text-sm text-[#001f40] opacity-80 pointer-events-none">
         {statusText()}
       </div>
@@ -1232,65 +1347,101 @@ function statusText() {
 
             <div className="relative w-full h-6 flex items-center">
 
+              {modules.map((m: ModuleRow, i: number) => {
+                const isCompleted = i < currentModuleIndex;
+                const isActive = i === currentModuleIndex;
+                const isUnlocked = i <= maxCompletedIndex + 1;
+                const isLast = i === modules.length - 1;
 
-          {modules.map((m: ModuleRow, i: number) => {
-            const isCompleted = i < currentModuleIndex
-            const isActive = i === currentModuleIndex
+                const cursor = isUnlocked ? "cursor-pointer" : "cursor-not-allowed";
 
-            // Allow only completed and immediate next
-          const isUnlocked = i <= maxCompletedIndex + 1
+                let bg;
+                if (isCompleted) bg = "#ca5608";
+                else if (isActive) bg = "#ca5608";
+                else if (isLast) bg = "#001f40";
+                else bg = "#4B1E1E";
 
-            const isLast = i === modules.length - 1
+                return (
+                  <div
+                    key={m.id}
+                    style={{ width: `${segmentWidth}%` }}
+                    className={`relative h-full flex items-center justify-center ${cursor}`}
+                    onClick={() => { if (isUnlocked) goToModule(i); }}
+                  >
 
-            // cursor
-            const cursor = isUnlocked ? "cursor-pointer" : "cursor-not-allowed"
+                    <div
+                      className={`flex-1 h-2 ${cursor}`}
+                      style={{
+                        backgroundColor: bg,
+                        boxShadow: isActive ? `0 0 6px ${bg}` : "none",
+                        opacity: isUnlocked ? 1 : 0.4,
+                        borderTopLeftRadius: i === 0 ? 999 : 0,
+                        borderBottomLeftRadius: i === 0 ? 999 : 0,
+                        borderTopRightRadius: isLast ? 999 : 0,
+                        borderBottomRightRadius: isLast ? 999 : 0,
+                      }}
+                    />
 
-            let bg;
-            if (isCompleted) {
-              bg = "#ca5608"; // completed orange
-            } else if (isActive) {
-              bg = "#ca5608"; // active (same color or change if desired)
-            } else if (isLast) {
-              bg = "#001f40"; // keep last special
-            } else {
-              bg = "#4B1E1E"; // future
-            }
-
-    return (
-      <div
-          key={m.id}
-          style={{ width: `${segmentWidth}%` }}
-          className={`relative h-full flex items-center justify-center ${cursor}`}
-          onClick={() => {
-            if (!isUnlocked) return
-            goToModule(i)
-          }}
-        >
-
-      <div
-        className={`flex-1 h-2 ${cursor}`}
-        style={{
-          backgroundColor: bg,
-          boxShadow: isActive ? `0 0 6px ${bg}` : "none",
-          opacity: isUnlocked ? 1 : 0.4,
-          borderTopLeftRadius: i === 0 ? 999 : 0,
-          borderBottomLeftRadius: i === 0 ? 999 : 0,
-          borderTopRightRadius:    i === modules.length - 1 ? 999 : 0,
-          borderBottomRightRadius: i === modules.length - 1 ? 999 : 0,
-         }}
-      />
-
-      {!isLast && <div className="w-[3px] h-full bg-white" />}
-    </div>
-  );
-})}
+                    {!isLast && <div className="w-[3px] h-full bg-white" />}
+                  </div>
+                );
+              })}
 
             </div>
-
           </div>
 
         </div>
       </div>
+    </div>
+  );
+}
+
+
+/* -----------------------------------------------------------
+   KARAOKE CAPTION RENDERER
+----------------------------------------------------------- */
+function KaraokeCaption({
+  captions,
+  currentSlide,
+  currentCaptionIndex,
+  currentWordIndex
+}: any) {
+
+  if (!currentSlide) return null;
+
+  const lines = captions[currentSlide.id] || [];
+
+  return (
+    <div
+      className="
+        text-lg leading-[32px]
+        whitespace-pre-wrap text-center
+        text-[#001f40] w-full px-6
+      "
+    >
+      {lines.map((line: any, li: number) => {
+        const words = tokenizeCaption(line.caption);
+
+        return (
+          <div key={line.id} className="mb-1">
+            {words.map((word: string, wi: number) => {
+              const active = li === currentCaptionIndex && wi === currentWordIndex;
+
+              return (
+                <span
+                  key={wi}
+                  className={`
+                    mx-1 transition-all
+                    ${active ? "text-[#ca5608]" : "opacity-80"}
+                  `}
+                >
+                  {word}
+                </span>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
