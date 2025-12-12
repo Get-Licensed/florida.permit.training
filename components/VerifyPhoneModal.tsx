@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "@/utils/supabaseClient";
+
 
 type Props = {
   userId: string;
@@ -30,41 +32,57 @@ async function sendCode() {
 
   const res = await fetch("/api/2fa/send", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone: normalized }),
   });
 
+  const text = await res.text();
+  const json = text ? JSON.parse(text) : {};
+
+  if (!res.ok) {
+    setError(json.error || "Failed to send code");
+    setLoading(false);
+    return;
+  }
+
+  setStep("enter-code");
+  setLoading(false);
+}
+
+/* ---------------------------------------------------------
+   VERIFY SMS CODE
+--------------------------------------------------------- */
+async function verifyCode() {
+  if (code.length !== 6) {
+    setError("Enter the 6-digit code");
+    return;
+  }
+
+  setLoading(true);
+  setError(null);
+
+  const normalized = normalizePhone(phone);
+
+  const res = await fetch("/api/2fa/verify", {
+    method: "POST",
+    body: JSON.stringify({ phone: normalized, code, user_id: userId }),
+  });
+
   const json = await res.json();
-  if (json.error) setError(json.error);
-  else setStep("enter-code");
+
+  if (json.success) {
+    // ✅ MARK THIS SESSION AS VERIFIED
+    await supabase.auth.updateUser({
+      data: { session_2fa_verified: true },
+    });
+
+    onComplete();
+  } else {
+    setError("Invalid verification code");
+  }
 
   setLoading(false);
 }
-  /* ---------------------------------------------------------
-     VERIFY SMS CODE
-  --------------------------------------------------------- */
-  async function verifyCode() {
-    if (code.length !== 6) {
-      setError("Enter the 6-digit code");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    const normalized = normalizePhone(phone);
-
-    const res = await fetch("/api/2fa/verify", {
-      method: "POST",
-      body: JSON.stringify({ phone: normalized, code, user_id: userId }),
-    });
-
-    const json = await res.json();
-
-    if (json.success) onComplete();
-    else setError("Invalid verification code");
-
-    setLoading(false);
-  }
 
   /* ---------------------------------------------------------
      UI
@@ -81,8 +99,8 @@ async function sendCode() {
           <>
            <input
                 type="tel"
-                placeholder="Enter Your Phone"
-                className="w-full border px-3 py-2 rounded mb-3 text-[#001f40] placeholder-[#001f40]/50"
+                placeholder="Phone Number"
+                className="w-full border px-3 py-2 rounded mb-3 text-[#001f40] placeholder:text-gray-400"
                 value={phone}
                 onChange={(e) => setPhone(formatPhone(e.target.value))}
                 maxLength={14} // (xxx) xxx-xxxx
@@ -106,9 +124,9 @@ async function sendCode() {
             <input
               type="text"
               maxLength={6}
-              placeholder="6-digit code"
+              placeholder="••••••"
               inputMode="numeric"
-              className="w-full border text-#001f40 px-3 py-2 rounded mb-3 text-center text-xl tracking-widest"
+              className="w-full border px-3 py-2 rounded mb-3 text-[#001f40] placeholder:text-gray-400 text-center text-xl tracking-widest"
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
             />

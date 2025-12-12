@@ -3,37 +3,52 @@ import process from "node:process";
 
 export async function POST(req: Request) {
   try {
-    const { phone } = await req.json();
+    const body = await req.json();
+    const phone: string | undefined = body?.phone;
 
     if (!phone) {
       return new Response(
         JSON.stringify({ error: "Phone required" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID!;
-    const authToken = process.env.TWILIO_AUTH_TOKEN!;
-    const client = twilio(accountSid, authToken);
+    console.log("TWILIO VERIFY SID:", process.env.TWILIO_VERIFY_SID);
 
-    // Twilio Tokens API using correct lowercase method
-    await client.request({
-      method: "post",
-      uri: "/v2/Verify/Tokens",
-      data: {
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID!,
+      process.env.TWILIO_AUTH_TOKEN!
+    );
+
+    await client.verify.v2
+      .services(process.env.TWILIO_VERIFY_SID!)
+      .verifications.create({
         to: phone,
         channel: "sms",
-      },
-    });
+      });
 
     return new Response(
-      JSON.stringify({ status: "sent" }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ sent: true }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   } catch (err) {
+    const errorMessage =
+      err instanceof Error ? err.message : "Unknown error";
+
+    console.error("2FA SEND ERROR:", err);
+
     return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ error: errorMessage }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   }
 }

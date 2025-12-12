@@ -42,8 +42,12 @@ export async function POST(req: NextRequest) {
     // update payments
     await client
       .from("payments")
-      .update({ status: "succeeded" })
+      .update({
+        status: "succeeded",
+        completed_at: new Date().toISOString(),
+      })
       .eq("stripe_payment_intent_id", pi.id);
+
 
     // update course_status: paid_at
     const now = new Date().toISOString();
@@ -79,10 +83,3 @@ export async function POST(req: NextRequest) {
 
   return new Response("Unhandled event", { status: 200 });
 }
-
-// Keep raw body behavior for Stripe
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};

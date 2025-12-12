@@ -241,6 +241,54 @@ function preloadAudio(url: string) {
   a.src = url;
   a.preload = "auto";  // Tells browser to decode early
 }
+// ------------------------------------------------------
+// AUDIO FADE HELPERS (HTMLAudioElement ONLY)
+// ------------------------------------------------------
+const fadeFrameRef = useRef<number | null>(null);
+const targetVolumeRef = useRef(volume);
+
+const cancelFade = useCallback(() => {
+  if (fadeFrameRef.current !== null) {
+    cancelAnimationFrame(fadeFrameRef.current);
+    fadeFrameRef.current = null;
+  }
+}, []);
+
+const fadeToVolume = useCallback(
+  (audio: HTMLAudioElement, target: number, duration = 140) => {
+    cancelFade();
+
+    const start = performance.now();
+    const initial = audio.volume;
+
+    if (duration <= 0) {
+      audio.volume = target;
+      return;
+    }
+
+    const step = (now: number) => {
+      const p = Math.min((now - start) / duration, 1);
+      audio.volume = initial + (target - initial) * p;
+
+      if (p < 1) {
+        fadeFrameRef.current = requestAnimationFrame(step);
+      } else {
+        fadeFrameRef.current = null;
+      }
+    };
+
+    fadeFrameRef.current = requestAnimationFrame(step);
+  },
+  [cancelFade]
+);
+
+// keep ref in sync with slider
+useEffect(() => {
+  targetVolumeRef.current = volume;
+}, [volume]);
+
+// cleanup on unmount
+useEffect(() => cancelFade, [cancelFade]);
 
 //--------------------------------------------------------------------
 // VOICE URL RESOLVER (UPDATED)
@@ -287,20 +335,21 @@ const [currentWordIndex, setCurrentWordIndex] = useState(0);
 const audioRef = useRef<HTMLAudioElement | null>(null);
 
 const hardResetAudio = useCallback(() => {
+  cancelFade();
+
   const audio = audioRef.current;
   if (!audio) return;
 
-  // stop immediately
   audio.pause();
   audio.currentTime = 0;
 
-  // clear the source so nothing buffered plays
+  // clear buffer completely
   audio.src = "";
-  audio.load();        // force the empty src to take effect
+  audio.load();
 
-  // drop any pending canplay from previous track
+  audio.volume = targetVolumeRef.current;
   audio.oncanplay = null;
-}, []);
+}, [cancelFade]);
 
 
 //--------------------------------------------------------------------
@@ -656,9 +705,6 @@ useEffect(() => {
 }, [slideIndex, resetAudioElement]);
 
 
-/* ------------------------------------------------------
-   SAFE AUTOPLAY (Slide changed)
------------------------------------------------------- */
 useEffect(() => {
   const audio = audioRef.current;
   if (!audio || !contentReady) return;
@@ -668,6 +714,7 @@ useEffect(() => {
 
   const caps = captions[slide.id] || [];
   const urls = caps.map(c => resolveVoiceUrl(c, voice)).filter(Boolean);
+
   if (!urls.length) {
     setCanProceed(true);
     return;
@@ -679,24 +726,31 @@ useEffect(() => {
     return;
   }
 
-  // Prefetch next caption audio for smoother transition
+  // preload next caption
   if (currentCaptionIndex + 1 < urls.length) {
     preloadAudio(urls[currentCaptionIndex + 1]!);
   }
 
-  // During hard reset, skip autoplay
   if (cancelAutoplay.current) return;
 
-  // Only load if URL changed
+  // SRC CHANGE
   if (audio.src !== nextUrl) {
+    cancelFade();
+
     audio.pause();
     audio.currentTime = 0;
     audio.src = nextUrl;
 
+    audio.volume = 0; // HARD SILENCE BEFORE PLAY
+
     audio.oncanplaythrough = () => {
       audio.oncanplaythrough = null;
+
       if (!isPaused && !cancelAutoplay.current) {
-        audio.play().catch(() => {});
+        audio
+          .play()
+          .then(() => fadeToVolume(audio, targetVolumeRef.current))
+          .catch(() => {});
       }
     };
 
@@ -704,9 +758,12 @@ useEffect(() => {
     return;
   }
 
-  // Same src → just resume immediately
+  // SAME SRC → RESUME
   if (!isPaused && !cancelAutoplay.current) {
-    audio.play().catch(() => {});
+    audio
+      .play()
+      .then(() => fadeToVolume(audio, targetVolumeRef.current, 120))
+      .catch(() => {});
   }
 }, [
   slideIndex,
@@ -716,6 +773,8 @@ useEffect(() => {
   slides,
   contentReady,
   isPaused,
+  fadeToVolume,
+  cancelFade
 ]);
 
 /* ------------------------------------------------------
@@ -1161,14 +1220,19 @@ if (slideK) {
     const lead = 0.08;
     const shifted = t + lead;
 
-    let wi = timings.findIndex(w => shifted >= w.start && shifted < w.end);
-    if (wi === -1) wi = timingWords.length - 1;
+    let wi = timings.findIndex(w => shifted < w.end);
 
-    const displayIndex = map[wi];
+    // guarantee last word highlights
+    if (wi === -1) {
+      wi = timings.length - 1;
+    }
 
-    setCurrentWordIndex(displayIndex);
-  }
-}
+
+        const displayIndex = map[wi];
+
+        setCurrentWordIndex(displayIndex);
+      }
+    }
 
     // EARLY UNLOCK FOR FINAL SLIDE OF MODULE
     const slide = slides[slideIndex];

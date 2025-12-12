@@ -161,42 +161,28 @@ export default function SignUpPage() {
 
 /* ───────── OAUTH POPUP LOGIN MESSAGE HANDLER ───────── */
 useEffect(() => {
-  function handlePopupMessage(event: MessageEvent) {
-    if (!event.origin || !event.origin.startsWith(window.location.origin)) return;
-if (event.data?.type !== "authSuccess") return;
+  async function handlePopupMessage(event: MessageEvent) {
+    if (!event.origin.startsWith(window.location.origin)) return;
+    if (event.data?.type !== "authSuccess") return;
 
-// After Google login, check user profile
-(async () => {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const user = sessionData?.session?.user;
-  if (!user) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData?.session?.user;
+    if (!user) return;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("phone_verified, phone")
-    .eq("id", user.id)
-    .single();
+    // 🔑 ALWAYS reset per-session 2FA flag on login
+    await supabase.auth.updateUser({
+      data: { session_2fa_verified: false },
+    });
 
-  if (!profile?.phone_verified) {
-    // open 2FA modal
-    setShowVerifyModal(true);
+    // 🔐 Always require OTP (even if phone already verified)
     setUserId(user.id);
-    return;
-  }
-
-  // otherwise normal redirect
-  const redirectTo =
-    typeof event.data.redirectTo === "string"
-      ? event.data.redirectTo
-      : "/course";
-
-  router.replace(redirectTo);
-})();
+    setShowVerifyModal(true);
   }
 
   window.addEventListener("message", handlePopupMessage);
   return () => window.removeEventListener("message", handlePopupMessage);
-}, [router]);
+}, []);
+
 
   /* ───────────────────────────────────────────────────────────── */
   return (

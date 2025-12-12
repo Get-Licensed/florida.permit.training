@@ -1,80 +1,55 @@
-import { createServerClient } from "@supabase/ssr";
 import twilio from "twilio";
-import process from "node:process";
+import { createClient } from "@/utils/supabaseServer";
 
 export async function POST(req: Request) {
   try {
     const { phone, code, user_id } = await req.json();
 
-    if (!phone || !code) {
+    if (!phone || !code || !user_id) {
       return new Response(
-        JSON.stringify({ error: "Phone and code required" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" }
-        }
+        JSON.stringify({ error: "Missing data" }),
+        { status: 400 }
       );
     }
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID!;
-    const authToken = process.env.TWILIO_AUTH_TOKEN!;
-    const client = twilio(accountSid, authToken);
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID!,
+      process.env.TWILIO_AUTH_TOKEN!
+    );
 
-    // Verify token using Twilio Tokens API (TS-safe)
-    const check = await client.request({
-      method: "post",
-      uri: "/v2/Verify/Tokens/Check",
-      data: {
+    const check = await client.verify.v2
+      .services(process.env.TWILIO_VERIFY_SID!)
+      .verificationChecks.create({
         to: phone,
         code,
-      },
-    });
+      });
 
-    const valid = check?.data?.valid === true;
-
-    if (!valid) {
+    if (!check.valid) {
       return new Response(
         JSON.stringify({ success: false }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" }
-        }
+        { status: 200 }
       );
     }
 
-    // Server-side Supabase client (correct for Next.js API routes)
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        cookies: {
-          get() {
-            return "";
-          },
-        },
-      }
-    );
+    const supabase = await createClient();
 
     await supabase
       .from("profiles")
-      .update({ phone_verified: true })
+      .update({
+        phone_verified: true,
+        home_phone: phone,
+      })
       .eq("id", user_id);
 
     return new Response(
       JSON.stringify({ success: true }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      }
+      { status: 200 }
     );
 
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: String(err) }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      }
+      JSON.stringify({ error: "Verification failed" }),
+      { status: 500 }
     );
   }
 }
