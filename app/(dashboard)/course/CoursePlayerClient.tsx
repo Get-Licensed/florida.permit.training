@@ -176,6 +176,7 @@ export default function CoursePlayerClient() {
   const [maxCompletedIndex, setMaxCompletedIndex] = useState(0);
   const [progressReady, setProgressReady] = useState(false);
   const [contentReady, setContentReady] = useState(false);
+  const [progressResolved, setProgressResolved] = useState(false);
 
   const [lessons, setLessons] = useState<LessonRow[]>([]);
   const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
@@ -379,12 +380,6 @@ for (let i = 0; i < slideIndex; i++) {
 
     if (data) {
       setModules(data);
-
-      const index = initialModuleId
-        ? data.findIndex((m) => m.id === initialModuleId)
-        : 0;
-
-      setCurrentModuleIndex(Math.max(index, 0));
     }
   }
 
@@ -395,7 +390,7 @@ useEffect(() => {
   async function loadProgress() {
     const user = await supabase.auth.getUser();
     if (!user?.data?.user) {
-      setProgressReady(true);
+      applyProgress([], []);
       return;
     }
 
@@ -417,13 +412,12 @@ useEffect(() => {
   // ----------------------------
   // Correct guard
   // ----------------------------
-  if (!modules.length || !lessons.length) return;
-
+  if (!modules.length) return;
   // DO NOT set didApplyProgress here — let applyProgress handle it
   if (didApplyProgress.current) return;
 
   loadProgress();
-}, [modules, lessons]);
+}, [modules]);
 
 function applyProgress(
   modRows: any[] = [],
@@ -444,6 +438,7 @@ function applyProgress(
     // already applied → but wait for restoredReady rather than completing UI now
     setProgressReady(true);
     setRestoredReady(true);
+    setProgressResolved(true);
     return;
   }
   didApplyProgress.current = true;
@@ -451,6 +446,7 @@ function applyProgress(
   if (!Array.isArray(modRows) || !Array.isArray(slideRows)) {
     setProgressReady(true);
     setRestoredReady(true);
+    setProgressResolved(true);
     return;
   }
 
@@ -468,8 +464,11 @@ function applyProgress(
     : 0;
 
   const targetModule = Math.max(maxCompletedModule, highestModule);
-  setCurrentModuleIndex(targetModule);
+  const initialModuleIndex = modules.findIndex((m) => m.id === initialModuleId);
+  const resolvedModuleIndex =
+    initialModuleIndex >= 0 ? initialModuleIndex : targetModule;
 
+  setCurrentModuleIndex(Math.max(resolvedModuleIndex, 0));
   const slidesInModule = slideRows.filter(
     s => (s?.module_index ?? -1) === targetModule
   );
@@ -478,6 +477,9 @@ function applyProgress(
   console.log("NEW USER or EMPTY MODULE → No slidesInModule. Unlocking gates.");
   setProgressReady(true);
   setRestoredReady(true);
+  setProgressResolved(true);
+  setCurrentLessonIndex(0);
+  setSlideIndex(0);
   return;
 }
 
@@ -494,6 +496,7 @@ function applyProgress(
   // mark BOTH now, but contentReady must wait for loading that slide
   setProgressReady(true);
   setRestoredReady(true);
+  setProgressResolved(true);
 }
 
 /* ------------------------------------------------------
@@ -621,14 +624,18 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  if (modules.length) loadLessons(modules[currentModuleIndex].id);
-}, [modules, currentModuleIndex]);
+  if (!progressResolved) return;
+  const module = modules[currentModuleIndex];
+  if (!module) return;
+  loadLessons(module.id);
+}, [modules, currentModuleIndex, progressResolved]);
 
 useEffect(() => {
+  if (!progressResolved) return;
   const l = lessons[currentLessonIndex];
   if (!l) return;
   loadLessonContent(l.id);
-}, [lessons, currentLessonIndex]);
+}, [lessons, currentLessonIndex, progressResolved]);
 
 useEffect(() => {
   // If restoredReady turned true AFTER lesson content loaded,
