@@ -196,6 +196,26 @@ export default function CoursePlayerClient() {
   const [restoredReady, setRestoredReady] = useState(false)
   const [initialHydrationDone, setInitialHydrationDone] = useState(false);
 
+
+  // -------------------------------------------------------------
+// DEBUG: Core gate values (helps detect infinite steering wheel)
+// -------------------------------------------------------------
+useEffect(() => {
+  console.log("GATES:", {
+    progressReady,
+    contentReady,
+    restoredReady,
+    initialHydrationDone
+  });
+  console.log("INDICES:", {
+    currentModuleIndex,
+    currentLessonIndex,
+    slideIndex
+  });
+}, [progressReady, contentReady, restoredReady, initialHydrationDone,
+    currentModuleIndex, currentLessonIndex, slideIndex]);
+
+
   useEffect(() => {
     if (progressReady && contentReady && !initialHydrationDone) {
       setInitialHydrationDone(true);
@@ -409,6 +429,17 @@ function applyProgress(
   modRows: any[] = [],
   slideRows: any[] = []
 ) {
+
+
+    console.log("APPLY_PROGRESS INPUT:", {
+    modRows,
+    slideRows,
+    modCount: modRows?.length ?? 0,
+    slideCount: slideRows?.length ?? 0
+  });
+
+
+
   if (didApplyProgress.current) {
     // already applied → but wait for restoredReady rather than completing UI now
     setProgressReady(true);
@@ -443,11 +474,13 @@ function applyProgress(
     s => (s?.module_index ?? -1) === targetModule
   );
 
-  if (!slidesInModule.length) {
-    setProgressReady(true);
-    setRestoredReady(true);
-    return;
-  }
+ if (!slidesInModule.length) {
+  console.log("NEW USER or EMPTY MODULE → No slidesInModule. Unlocking gates.");
+  setProgressReady(true);
+  setRestoredReady(true);
+  return;
+}
+
 
   const last = slidesInModule.reduce((a, b) =>
     (a?.slide_index ?? 0) > (b?.slide_index ?? 0) ? a : b
@@ -486,6 +519,8 @@ function applyProgress(
    LOAD LESSON CONTENT  (with contentReady gates)
 ------------------------------------------------------ */
 async function loadLessonContent(lessonId: number) {
+  console.log("LOAD_LESSON_CONTENT: start", { lessonId });
+
   // reset content-ready for this lesson load
   setContentReady(false);
 
@@ -535,22 +570,34 @@ async function loadLessonContent(lessonId: number) {
 
   setCaptions(grouped);
 
-// finished loading this lesson’s data
-setLoading(false);
+  console.log("LESSON CONTENT LOADED:", {
+    lessonId,
+    slidesLoaded: slideRows?.length ?? 0,
+    captionsLoaded: captionRows?.length ?? 0,
+    restoredReady,
+    contentReadyPending: true
+  });
 
-// allow UI only when progress + restoration are done
-if (restoredReady) {
-  setContentReady(true);
-}
-// finished loading this lesson’s data
-setLoading(false);
+  // ------------------------------------------------------
+  // PATCH: Unlock autoplay for *fresh module loads* 
+  // (restoredReady = false means NEW USER or NEW MODULE)
+  // ------------------------------------------------------
+  if (!restoredReady) {
+    console.log("FRESH MODULE LOAD → enabling contentReady immediately");
+    setContentReady(true);
+  }
 
-// allow UI only when progress + restoration are done
-if (restoredReady) {
-  setContentReady(true);
+  // finished loading lesson data
+  setLoading(false);
+
+  // ------------------------------------------------------
+  // If restoring from saved progress, wait and then unlock.
+  // ------------------------------------------------------
+  if (restoredReady) {
+    console.log("RESTORED PROGRESS → enabling contentReady");
+    setContentReady(true);
+  }
 }
-}
-// DO NOT reset slideIndex / captionIndex / canProceed here
 
 /* ------------------------------------------------------
    NAV STATE
@@ -582,6 +629,15 @@ useEffect(() => {
   if (!l) return;
   loadLessonContent(l.id);
 }, [lessons, currentLessonIndex]);
+
+useEffect(() => {
+  // If restoredReady turned true AFTER lesson content loaded,
+  // we must unlock contentReady manually.
+  if (restoredReady && slides.length > 0 && Object.keys(captions).length > 0) {
+    console.log("LATE RESTORE → Unlocking contentReady now");
+    setContentReady(true);
+  }
+}, [restoredReady, slides, captions]);
 
 /* ------------------------------------------------------
    SLIDE RESET (very important)
@@ -804,11 +860,25 @@ const goNext = useCallback(async () => {
 // next module
 if (currentModuleIndex < modules.length - 1) {
   const nextModule = currentModuleIndex + 1;
+
   resetAudioElement();
+  cancelAutoplay.current = false;
+
+  // ---------------------------------------------
+  // NEW: Hard clear stale slide/caption data BEFORE render
+  // ---------------------------------------------
+  setSlides([]);
+  setCaptions({});
+  setCurrentCaptionIndex(0);
+  setCurrentWordIndex(0);
+
   setContentReady(false);
+  setRestoredReady(false); // force fresh load
+
   setCurrentModuleIndex(nextModule);
   setCurrentLessonIndex(0);
   setSlideIndex(0);
+
   record(nextModule, 0, 0);
   return;
 }
@@ -866,9 +936,37 @@ const goPrev = () => {
 // jump to module only if user has unlocked it
 //--------------------------------------------------------------------
 function goToModule(i: number) {
-  // block locked modules first
   if (i > maxCompletedIndex + 1) return;
 
+  // ------------------------------
+  // NEW: If clicking current module
+  // ------------------------------
+  if (i === currentModuleIndex) {
+    console.log("HARD MODULE RELOAD");
+
+    resetAudioElement();
+    cancelAutoplay.current = false;
+
+    setContentReady(false);
+    setRestoredReady(true);   // <-- allow content to unlock immediately
+
+    // Force FULL reset
+    setCurrentLessonIndex(0);
+    setSlideIndex(0);
+    setCurrentCaptionIndex(0);
+    setCanProceed(false);
+    setIsPaused(false);
+
+    // Force re-fetch of lessons/slides
+    loadLessons(modules[i].id)
+      .then(() => loadLessonContent(lessons[0]?.id));
+
+    return;
+  }
+
+  // ------------------------------
+  // ORIGINAL LOGIC FOR REAL MODULE SWITCH
+  // ------------------------------
   resetAudioElement();
   setContentReady(false);
 
@@ -880,7 +978,6 @@ function goToModule(i: number) {
   setCanProceed(false);
   setIsPaused(false);
 }
-
 
 // Show steering wheel ONLY during very first load
 if (!initialHydrationDone) {
@@ -903,6 +1000,12 @@ if (!initialHydrationDone) {
 function togglePlay() {
   setIsPaused(prev => !prev);
 }
+console.log("LOADER BLOCKED:", {
+  progressReady,
+  contentReady,
+  restoredReady,
+  initialHydrationDone
+});
 
   /* ------------------------------------------------------
      RENDER
@@ -1417,7 +1520,7 @@ function KaraokeCaption({
   return (
     <div
       className="
-        text-xl leading-[28px]
+        text-xl leading-[32px]
         whitespace-normal
         text-center
         text-[#001f40]

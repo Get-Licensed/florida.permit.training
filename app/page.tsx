@@ -7,6 +7,8 @@ import Image from "next/image";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
+import VerifyPhoneModal from "@/components/VerifyPhoneModal";
+
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -23,6 +25,10 @@ export default function SignUpPage() {
   const mobileSheetRef = useRef<HTMLDivElement>(null);
   const [lastPromoX, setLastPromoX] = useState<number | null>(null);
   const finalSegmentRef = useRef<HTMLDivElement>(null);
+
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [userId, setUserId] = useState<string>("");
+
 
 
   /* ───────── CHECK IF LOGGED IN ───────── */
@@ -157,13 +163,35 @@ export default function SignUpPage() {
 useEffect(() => {
   function handlePopupMessage(event: MessageEvent) {
     if (!event.origin || !event.origin.startsWith(window.location.origin)) return;
-    if (event.data?.type !== "authSuccess") return;
+if (event.data?.type !== "authSuccess") return;
 
-    const redirectTo = typeof event.data.redirectTo === "string"
+// After Google login, check user profile
+(async () => {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const user = sessionData?.session?.user;
+  if (!user) return;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("phone_verified, phone")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile?.phone_verified) {
+    // open 2FA modal
+    setShowVerifyModal(true);
+    setUserId(user.id);
+    return;
+  }
+
+  // otherwise normal redirect
+  const redirectTo =
+    typeof event.data.redirectTo === "string"
       ? event.data.redirectTo
       : "/course";
 
-    router.replace(redirectTo);
+  router.replace(redirectTo);
+})();
   }
 
   window.addEventListener("message", handlePopupMessage);
@@ -227,6 +255,17 @@ useEffect(() => {
       {vw < 768 && <MobilePromo mobileSheetRef={mobileSheetRef} mobilePromoOpen={mobilePromoOpen} setMobilePromoOpen={setMobilePromoOpen} />}
 
       {hoverItem && hoverItem.id !== "finalActions" && <Tooltip hoverItem={hoverItem} vw={vw} mouseX={mouseX} />}
+   
+      {/* 2FA POPUP MODAL */}
+      {showVerifyModal && (
+        <VerifyPhoneModal
+          userId={userId}
+          onComplete={() => {
+            setShowVerifyModal(false);
+            router.replace("/course");
+          }}
+        />
+      )}
 
     </main>
   );
