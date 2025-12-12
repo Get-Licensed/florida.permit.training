@@ -1,14 +1,16 @@
 import { redirect } from "next/navigation";
-import { getServerSupabase } from "./supabaseServer";
+import { createClient } from "./supabaseServer";
 
 export async function requireUser() {
-  const supabase = await getServerSupabase(); // FIX: add await
+  const supabase = await createClient();
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/");
+  if (!user || !user.user_metadata?.session_2fa_verified) {
+    redirect("/");
+  }
 
   return user;
 }

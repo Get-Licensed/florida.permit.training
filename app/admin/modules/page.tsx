@@ -6,7 +6,6 @@ export default async function ModulesPage() {
   // Redirects to /admin/not-authorized if not admin
   const user = await requireAdmin();
 
-  // 🔑 FIX: createClient() RETURNS A PROMISE
   const supabase = await createClient();
 
   const { data: modules } = await supabase

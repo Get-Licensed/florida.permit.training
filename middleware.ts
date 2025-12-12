@@ -9,11 +9,11 @@ export async function middleware(req: NextRequest) {
     },
   });
 
-    // ✅ Skip Stripe webhooks entirely
+  // ✅ Skip Stripe webhooks entirely
   if (req.nextUrl.pathname.startsWith("/api/webhooks")) {
     return res;
   }
-  
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -39,12 +39,10 @@ export async function middleware(req: NextRequest) {
 
   // 🔒 PROTECT COURSE ROUTES
   if (req.nextUrl.pathname.startsWith("/course")) {
-    // Not logged in
     if (!user) {
       return NextResponse.redirect(new URL("/", req.url));
     }
 
-    // Logged in but OTP not completed this session
     if (!user.user_metadata?.session_2fa_verified) {
       return NextResponse.redirect(new URL("/", req.url));
     }
@@ -55,7 +53,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // Skip static assets
     "/((?!_next/static|_next/image|favicon.ico).*)",
   ],
 };

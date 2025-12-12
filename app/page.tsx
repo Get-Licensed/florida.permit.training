@@ -169,12 +169,12 @@ useEffect(() => {
     const user = sessionData?.session?.user;
     if (!user) return;
 
-    // 🔑 ALWAYS reset per-session 2FA flag on login
+    // 🔑 ALWAYS reset session 2FA on login
     await supabase.auth.updateUser({
       data: { session_2fa_verified: false },
     });
 
-    // 🔐 Always require OTP (even if phone already verified)
+    // Require OTP every login
     setUserId(user.id);
     setShowVerifyModal(true);
   }
@@ -182,7 +182,6 @@ useEffect(() => {
   window.addEventListener("message", handlePopupMessage);
   return () => window.removeEventListener("message", handlePopupMessage);
 }, []);
-
 
   /* ───────────────────────────────────────────────────────────── */
   return (

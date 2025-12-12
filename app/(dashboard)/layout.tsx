@@ -39,6 +39,7 @@ export default function DashboardLayout({
     };
   }, [router]);
 
+  /* ───────── GLOBAL COURSE STATE ───────── */
   const audioRef = useRef<HTMLAudioElement>(null);
   const [volume, setVolume] = useState(1);
 

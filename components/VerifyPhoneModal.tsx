@@ -71,18 +71,13 @@ async function verifyCode() {
   const json = await res.json();
 
   if (json.success) {
-    // ✅ MARK THIS SESSION AS VERIFIED
     await supabase.auth.updateUser({
       data: { session_2fa_verified: true },
     });
 
     onComplete();
-  } else {
-    setError("Invalid verification code");
-  }
+  }}
 
-  setLoading(false);
-}
 
   /* ---------------------------------------------------------
      UI
