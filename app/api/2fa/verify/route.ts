@@ -1,6 +1,6 @@
 import twilio from "twilio";
 import process from "node:process";
-import { createClient } from "@/utils/supabaseServer";
+import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
 export async function POST(req: Request) {
   try {
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = await createClient();
+  const supabase = await createSupabaseServerClient();
 
     await supabase
       .from("profiles")

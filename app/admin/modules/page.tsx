@@ -1,12 +1,12 @@
 import { requireAdmin } from "@/utils/requireAdmin";
-import { createClient } from "@/utils/supabaseServer";
+import { createSupabaseServerClient } from "@/utils/supabaseServer";
 import ModuleList from "./_ModuleList";
 
 export default async function ModulesPage() {
   // Redirects to /admin/not-authorized if not admin
   const user = await requireAdmin();
 
-  const supabase = await createClient();
+  const supabase = await createSupabaseServerClient();
 
   const { data: modules } = await supabase
     .from("modules")

@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
-import { createClient } from "./supabaseServer";
+import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
 export async function requireUser() {
-  const supabase = await createClient();
+  const supabase = await createSupabaseServerClient();
 
   const {
     data: { user },
