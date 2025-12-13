@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -10,9 +12,8 @@ export default function ExamFailedPage() {
 
   useEffect(() => {
     const t = setTimeout(() => {
-      router.replace("/exam"); 
-      // or "/dashboard/exam" if you kept it there
-    }, 2500); // 2.5s pause
+      router.replace("/exam");
+    }, 5000);
 
     return () => clearTimeout(t);
   }, [router]);
@@ -26,7 +27,7 @@ export default function ExamFailedPage() {
 
         {score && (
           <p className="text-[#001f40] mb-4">
-            Your score: <strong>{score}%</strong>  
+            Your score: <strong>{score}%</strong>
             <br />
             A score of 80% is required to pass.
           </p>

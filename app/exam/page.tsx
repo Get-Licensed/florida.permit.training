@@ -97,7 +97,7 @@ export default function ExamPage() {
       if (result?.passed) {
         router.replace("/my-permit");
       } else {
-        router.replace(`/dashboard/exam/failed?score=${result?.score ?? 0}`);
+        router.replace(`/api/exam/failed?score=${result?.score ?? 0}`);
       }
     } catch (err: any) {
       setError(err.message || "Submission failed");
@@ -157,8 +157,8 @@ export default function ExamPage() {
 
         <div className="space-y-3 text-[#001f40] leading-6 mb-6">
           <p>
-            This exam consists of <strong>40 multiple-choice questions</strong>.
-            You must score <strong>80% or higher</strong> to pass.
+            This exam consists of <span className="font-semibold text-[#ca5608]">40 multiple-choice questions</span>.
+            You must score  <span className="font-semibold text-[#ca5608]">80% or higher</span> to pass.
           </p>
 
           <p>
@@ -241,7 +241,7 @@ export default function ExamPage() {
           disabled={submitting}
           className="
             w-full
-            bg-[#001f40]
+            bg-[#ca5608]
             text-white
             px-6
             py-3
