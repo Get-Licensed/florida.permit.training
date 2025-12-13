@@ -197,8 +197,7 @@ export default function CoursePlayerClient() {
   const [restoredReady, setRestoredReady] = useState(false)
   const [initialHydrationDone, setInitialHydrationDone] = useState(false);
 
-
-  // -------------------------------------------------------------
+// -------------------------------------------------------------
 // DEBUG: Core gate values (helps detect infinite steering wheel)
 // -------------------------------------------------------------
 useEffect(() => {
@@ -241,6 +240,24 @@ function preloadAudio(url: string) {
   a.src = url;
   a.preload = "auto";  // Tells browser to decode early
 }
+
+
+// ------------------------------------------------------
+// COURSE COMPLETION
+// ------------------------------------------------------
+const courseCompletionSentRef = useRef(false);
+
+async function markCourseCompletedOnce() {
+  if (courseCompletionSentRef.current) return;
+  courseCompletionSentRef.current = true;
+
+  try {
+    await fetch("/api/course/complete", { method: "POST" });
+  } catch (e) {
+    console.error("Failed to mark course complete", e);
+  }
+}
+
 // ------------------------------------------------------
 // AUDIO FADE HELPERS (HTMLAudioElement ONLY)
 // ------------------------------------------------------
@@ -261,14 +278,18 @@ const fadeToVolume = useCallback(
     const start = performance.now();
     const initial = audio.volume;
 
+    const clamp = (v: number) => Math.min(1, Math.max(0, v));
+
     if (duration <= 0) {
-      audio.volume = target;
+      audio.volume = clamp(target);
       return;
     }
 
     const step = (now: number) => {
       const p = Math.min((now - start) / duration, 1);
-      audio.volume = initial + (target - initial) * p;
+
+      const raw = initial + (target - initial) * p;
+      audio.volume = clamp(raw);
 
       if (p < 1) {
         fadeFrameRef.current = requestAnimationFrame(step);
@@ -364,6 +385,26 @@ useEffect(() => {
   window.addEventListener("click", unlock);
   return () => window.removeEventListener("click", unlock);
 }, []);
+
+
+//--------------------------------------------------------------------
+// RESUME ON PAUSE - RESETS SOUND
+//--------------------------------------------------------------------
+const isPausedRef = useRef(false);
+
+useEffect(() => {
+  isPausedRef.current = isPaused;
+}, [isPaused]);
+
+//--------------------------------------------------------------------
+// RESTORE AUTOPLAY AFTER PROGRESS RESTORE
+//--------------------------------------------------------------------
+useEffect(() => {
+  if (restoredReady && contentReady) {
+    cancelAutoplay.current = false;
+  }
+}, [restoredReady, contentReady]);
+
 
 //-----------------------------------
 // TIME-BASED PROGRESS CALCULATIONS
@@ -540,7 +581,15 @@ function applyProgress(
   setCurrentLessonIndex(last.lesson_index ?? 0);
   setSlideIndex(last.slide_index ?? 0);
 
-  setCanProceed(true);
+  // 🚫 NEVER auto-unlock Continue on final slide
+  const isFinalSlide =
+    last.lesson_index === lessons.length - 1 &&
+    last.slide_index === slides.length - 1;
+
+  if (!isFinalSlide) {
+    setCanProceed(true);
+  }
+
 
   // mark BOTH now, but contentReady must wait for loading that slide
   setProgressReady(true);
@@ -664,6 +713,9 @@ const showContinueInstruction =
   isFinalSlideOfModule &&
   canProceed;
 
+const isFinalCourseSlide =
+  isFinalSlideOfModule &&
+  currentModuleIndex === modules.length - 1;
 
 /* ------------------------------------------------------
    LOAD SEQUENCE
@@ -699,11 +751,13 @@ useEffect(() => {
    SLIDE RESET (very important)
 ------------------------------------------------------ */
 useEffect(() => {
+  // 🚫 terminal state — do not reset anything
+  if (isFinalCourseSlide) return;
+
   resetAudioElement();
   setCurrentCaptionIndex(0);
   setCanProceed(false);
-}, [slideIndex, resetAudioElement]);
-
+}, [slideIndex, isFinalCourseSlide, resetAudioElement]);
 
 useEffect(() => {
   const audio = audioRef.current;
@@ -715,14 +769,19 @@ useEffect(() => {
   const caps = captions[slide.id] || [];
   const urls = caps.map(c => resolveVoiceUrl(c, voice)).filter(Boolean);
 
-  if (!urls.length) {
+if (!urls.length) {
+  if (!isFinalSlideOfModule) {
     setCanProceed(true);
-    return;
   }
+  return;
+}
+
 
   const nextUrl = urls[currentCaptionIndex];
   if (!nextUrl) {
-    setCanProceed(true);
+    if (!isFinalSlideOfModule) {
+      setCanProceed(true);
+    }
     return;
   }
 
@@ -746,12 +805,16 @@ useEffect(() => {
     audio.oncanplaythrough = () => {
       audio.oncanplaythrough = null;
 
-      if (!isPaused && !cancelAutoplay.current) {
-        audio
-          .play()
-          .then(() => fadeToVolume(audio, targetVolumeRef.current))
-          .catch(() => {});
+      // If user paused during transition, do NOT start silent playback
+      if (isPausedRef.current || cancelAutoplay.current) {
+        audio.volume = targetVolumeRef.current;
+        return;
       }
+
+      audio
+        .play()
+        .then(() => fadeToVolume(audio, targetVolumeRef.current))
+        .catch(() => {});
     };
 
     audio.load();
@@ -773,6 +836,7 @@ useEffect(() => {
   slides,
   contentReady,
   isPaused,
+  isFinalSlideOfModule,
   fadeToVolume,
   cancelFade
 ]);
@@ -783,8 +847,41 @@ useEffect(() => {
 useEffect(() => {
   const a = audioRef.current;
   if (!a) return;
-  if (isPaused) a.pause();
-}, [isPaused]);
+
+  if (isPaused) {
+    cancelAutoplay.current = true; // stop any in-flight transition play
+    cancelFade();                  // stop fade animations
+    a.pause();
+
+    // If we paused while volume was forced to 0 for a transition,
+    // restore it so resume can't be silent.
+    if (a.volume === 0) a.volume = targetVolumeRef.current;
+  }
+}, [isPaused, cancelFade]);
+
+
+/* ------------------------------------------------------
+   AUTO-PAUSE WHEN PAGE IS NOT ACTIVE
+------------------------------------------------------ */
+useEffect(() => {
+  function handleVisibility() {
+    if (document.hidden) {
+      setIsPaused(true);
+    }
+  }
+
+  function handleBlur() {
+    setIsPaused(true);
+  }
+
+  document.addEventListener("visibilitychange", handleVisibility);
+  window.addEventListener("blur", handleBlur);
+
+  return () => {
+    document.removeEventListener("visibilitychange", handleVisibility);
+    window.removeEventListener("blur", handleBlur);
+  };
+}, []);
 
 /* ------------------------------------------------------
    RESUME
@@ -794,10 +891,17 @@ useEffect(() => {
   if (!a) return;
   if (isPaused) return;
 
+  cancelAutoplay.current = false;
+
+  // If we were stuck at 0 volume, bring it back with a fade.
+  if (a.volume === 0) a.volume = 0.001;
+
   setTimeout(() => {
-    a.play().catch(()=>{});
+    a.play()
+      .then(() => fadeToVolume(a, targetVolumeRef.current, 120))
+      .catch(() => {});
   }, 50);
-}, [isPaused]);
+}, [isPaused, fadeToVolume]);
 
 
 /* ------------------------------------------------------
@@ -897,16 +1001,25 @@ const captionText = currentSlide
   : "";
 
 /* ------------------------------------------------------
-   NAVIGATION  (FULL REPLACEMENT)
+   NAVIGATION  (FULL REPLACEMENT — FINAL SAFE VERSION)
 ------------------------------------------------------ */
 const goNext = useCallback(async () => {
+
+  // 🚨 FINAL COURSE TERMINAL STATE (ABSOLUTE STOP)
+  if (isFinalCourseSlide) {
+    await markCourseCompletedOnce();
+
+    // HARD EXIT — prevents ANY restore / reset logic
+    window.location.href = "/my-permit";
+    return;
+  }
 
   const record = async (modI: number, lesI: number, sliI: number) => {
     await recordSlideComplete(modI, lesI, sliI);
     await updateModuleProgress(modI);
   };
 
-  // next slide in same lesson
+  // ▶️ NEXT SLIDE (same lesson)
   if (slideIndex < totalSlides - 1) {
     const nextSlide = slideIndex + 1;
     setSlideIndex(nextSlide);
@@ -914,7 +1027,7 @@ const goNext = useCallback(async () => {
     return;
   }
 
-  // next lesson in same module
+  // ▶️ NEXT LESSON (same module)
   if (currentLessonIndex < lessons.length - 1) {
     const nextLesson = currentLessonIndex + 1;
     setCurrentLessonIndex(nextLesson);
@@ -923,35 +1036,33 @@ const goNext = useCallback(async () => {
     return;
   }
 
-// next module
-if (currentModuleIndex < modules.length - 1) {
-  const nextModule = currentModuleIndex + 1;
+  // ▶️ NEXT MODULE
+  if (currentModuleIndex < modules.length - 1) {
+    const nextModule = currentModuleIndex + 1;
 
-  resetAudioElement();
-  cancelAutoplay.current = false;
+    resetAudioElement();
+    cancelAutoplay.current = false;
 
-  // ---------------------------------------------
-  // NEW: Hard clear stale slide/caption data BEFORE render
-  // ---------------------------------------------
-  setSlides([]);
-  setCaptions({});
-  setCurrentCaptionIndex(0);
-  setCurrentWordIndex(0);
+    // HARD CLEAR — prevents stale audio / captions
+    setSlides([]);
+    setCaptions({});
+    setCurrentCaptionIndex(0);
+    setCurrentWordIndex(0);
 
-  setContentReady(false);
-  setRestoredReady(false); // force fresh load
+    setContentReady(false);
+    setRestoredReady(false);
 
-  setCurrentModuleIndex(nextModule);
-  setCurrentLessonIndex(0);
-  setSlideIndex(0);
+    setCurrentModuleIndex(nextModule);
+    setCurrentLessonIndex(0);
+    setSlideIndex(0);
 
-  record(nextModule, 0, 0);
-  return;
-}
+    record(nextModule, 0, 0);
+    return;
+  }
 
-
-  // end of all modules — no op
+  // 🚫 NO FALLTHROUGH — terminal paths handled above
 }, [
+  isFinalCourseSlide,
   slideIndex,
   totalSlides,
   currentLessonIndex,
@@ -963,8 +1074,14 @@ if (currentModuleIndex < modules.length - 1) {
 //--------------------------------------------------------------------
 // PROGRESS BAR SMOOTHING
 //--------------------------------------------------------------------
+
+const courseFinished =
+  isFinalCourseSlide && canProceed;
+
 const progressPercentage =
-  progressReady && contentReady && totalModuleSeconds > 0
+  courseFinished
+    ? 100
+    : progressReady && contentReady && totalModuleSeconds > 0
     ? (elapsedSeconds / totalModuleSeconds) * 100
     : 0;
 
@@ -1061,11 +1178,11 @@ if (!initialHydrationDone) {
 
 // AFTER initial hydration → do NOT block the UI with the loader
 
-
-
 function togglePlay() {
+  cancelAutoplay.current = false;   
   setIsPaused(prev => !prev);
 }
+
 console.log("LOADER BLOCKED:", {
   progressReady,
   contentReady,
@@ -1198,62 +1315,53 @@ console.log("LOADER BLOCKED:", {
   autoPlay
   preload="auto"
   controls={false}
+
   onTimeUpdate={(e) => {
     const t = e.currentTarget.currentTime;
     setAudioTime(t);
 
-// --- KARAOKE WORD TRACKING ---
-const slideK = slides[slideIndex];
-if (slideK) {
-  const capsK = captions[slideK.id] || [];
-  const activeLine = capsK[currentCaptionIndex];
+    /* ---------- KARAOKE WORD TRACKING ---------- */
+    const slideK = slides[slideIndex];
+    if (slideK) {
+      const capsK = captions[slideK.id] || [];
+      const activeLine = capsK[currentCaptionIndex];
 
-  if (activeLine) {
+      if (activeLine) {
+        const displayWords = tokenizeCaption(activeLine.caption);
+        const timingWords  = tokenizeForTiming(activeLine.caption);
 
-    const displayWords = tokenizeCaption(activeLine.caption);
-    const timingWords  = tokenizeForTiming(activeLine.caption);
+        const timings = computeWordTimings(activeLine.seconds ?? 0, timingWords);
+        const map = mapTimingIndexToDisplayIndex(timingWords, displayWords);
 
-    const timings = computeWordTimings(activeLine.seconds ?? 0, timingWords);
+        const lead = 0.08;
+        const shifted = t + lead;
 
-    const map = mapTimingIndexToDisplayIndex(timingWords, displayWords);
+        let wi = timings.findIndex(w => shifted < w.end);
+        if (wi === -1) wi = timings.length - 1;
 
-    const lead = 0.08;
-    const shifted = t + lead;
-
-    let wi = timings.findIndex(w => shifted < w.end);
-
-    // guarantee last word highlights
-    if (wi === -1) {
-      wi = timings.length - 1;
-    }
-
-
-        const displayIndex = map[wi];
-
-        setCurrentWordIndex(displayIndex);
+        setCurrentWordIndex(map[wi]);
       }
     }
 
-    // EARLY UNLOCK FOR FINAL SLIDE OF MODULE
-    const slide = slides[slideIndex];
-    if (!slide) return;
+ /* ---------- EARLY UNLOCK (NON-FINAL COURSE SLIDES ONLY) ---------- */
+const slide = slides[slideIndex];
+const caps = slide ? captions[slide.id] || [] : [];
+const cur = caps[currentCaptionIndex];
 
-    const caps = captions[slide.id] || [];
-    const cur = caps[currentCaptionIndex];
-    if (!cur) return;
+// 🚫 NEVER early-unlock the final slide of a module
+if (
+  cur &&
+  !canProceed &&
+  !isFinalSlideOfModule &&   // 👈 THIS is the key fix
+  (cur.seconds ?? 0) > 0 &&
+  t >= (cur.seconds ?? 0) - 0.75
+) {
+  setCanProceed(true);
+}
 
-    const target = cur.seconds ?? 0;
-    const epsilon = 0.25; // unlock ~250ms before metadata end
-
-    if (
-      !canProceed &&
-      isFinalSlideOfModule &&   // from outer scope
-      target > 0 &&
-      t >= target - epsilon
-    ) {
-      setCanProceed(true);
-    }
   }}
+
+
   onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration)}
   onEnded={async () => {
   if (isPaused) return;
@@ -1270,16 +1378,14 @@ if (slideK) {
   await recordSlideComplete(currentModuleIndex, currentLessonIndex, slideIndex);
   await updateModuleProgress(currentModuleIndex);
 
-  // no narration → immediately allow & advance
-  if (!urls.length) {
+// no narration
+if (!urls.length) {
+  if (!isFinalSlideOfModule) {
     setCanProceed(true);
-
-    // avoid double-locking on final slide
-    if (!isFinalSlideOfModule && !isPaused) {
-      goNext();
-    }
-    return;
   }
+  return;
+}
+
 
   // more captions?
   if (currentCaptionIndex < urls.length - 1) {
@@ -1299,29 +1405,35 @@ if (slideK) {
 />
 
 {/* CONTINUE BTN (intro slides) ---------------------------- */}
-{showContinueInstruction && (
-  <div className="fixed bottom-[250px] left-0 right-0 flex justify-center z-40">
-    <button
-     onClick={() => {
+<div
+  className={`
+    fixed bottom-[250px] left-0 right-0
+    flex justify-center z-40
+    transition-all duration-500 ease-out
+    ${showContinueInstruction
+      ? "opacity-100 translate-y-0 pointer-events-auto"
+      : "opacity-0 translate-y-4 pointer-events-none"}
+  `}
+>
+  <button
+    onClick={() => {
       resetAudioElement();
       setIsPaused(false);
       goNext();
     }}
-
-      className="
-        px-12 py-5
-        rounded-xl
-        bg-[#000]/30
-        border-[5px] border-[#fff]
-        text-[#fff] font-semibold text-xl
-        shadow-md
-        cursor-pointer
-      "
-    >
-      Continue
-    </button>
-  </div>
-)}
+    className="
+      px-12 py-5
+      rounded-xl
+      bg-[#000]/30
+      border-[5px] border-[#fff]
+      text-[#fff] font-semibold text-xl
+      shadow-md
+      cursor-pointer
+    "
+  >
+    Continue
+  </button>
+</div>
 
 
 {/* FOOTER NAV --------------------------------------------- */}

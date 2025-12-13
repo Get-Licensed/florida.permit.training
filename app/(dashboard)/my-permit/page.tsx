@@ -6,7 +6,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import { requireAuth } from "@/utils/requireAuth";
 
-// Loader Component
+/* -------------------- Loader -------------------- */
 function Loader() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-white fade-in">
@@ -22,11 +22,18 @@ function Loader() {
 export default function MyPermitPage() {
   const router = useRouter();
 
-  /* -------------------- ALL HOOKS (top, fixed order) -------------------- */
+  /* -------------------- STATE -------------------- */
   const [authChecked, setAuthChecked] = useState(false);
+  const [statusReady, setStatusReady] = useState(false);
+
+  const [courseComplete, setCourseComplete] = useState(false);
+  const [examPassed, setExamPassed] = useState(false);
   const [paid, setPaid] = useState(false);
 
-  /* -------------------- AUTH CHECK (ALWAYS RUNS, ALWAYS DECLARED) -------------------- */
+  // ✅ NEW: terminal completion flag
+  const fullyComplete = courseComplete && examPassed && paid;
+
+  /* -------------------- AUTH CHECK -------------------- */
   useEffect(() => {
     async function run() {
       const user = await requireAuth(router);
@@ -35,135 +42,174 @@ export default function MyPermitPage() {
     run();
   }, [router]);
 
-  /* -------------------- PAYMENT FETCH (ALWAYS DECLARED) -------------------- */
+  /* -------------------- LOAD ALL STATUSES -------------------- */
   useEffect(() => {
-    if (!authChecked) return; // prevents running early, but keeps hook in order
+    if (!authChecked) return;
 
-    async function fetchPaymentStatus() {
-      const { data: { user } } = await supabase.auth.getUser();
+    async function loadStatuses() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from("payments")
-        .select("status")
-        .eq("user_id", user.id)
-        .single();
+      const [courseRes, examRes, paymentRes] = await Promise.all([
+        supabase
+          .from("course_status")
+          .select("completed_at")
+          .eq("user_id", user.id)
+          .eq("course_id", "FL_PERMIT_TRAINING")
+          .single(),
 
-      if (!error && data?.status === "paid") {
-        setPaid(true);
-      }
+        supabase
+          .from("course_status")
+          .select("exam_passed")
+          .eq("user_id", user.id)
+          .eq("course_id", "FL_PERMIT_TRAINING")
+          .single(),
+
+        supabase
+          .from("payments")
+          .select("status")
+          .eq("user_id", user.id)
+          .single(),
+      ]);
+
+      setCourseComplete(!!courseRes.data?.completed_at);
+      setExamPassed(!!examRes.data?.exam_passed);
+      setPaid(paymentRes.data?.status === "paid");
+
+      setStatusReady(true);
     }
 
-    fetchPaymentStatus();
+    loadStatuses();
   }, [authChecked]);
 
-  /* -------------------- CONDITIONAL UI BELOW HOOKS -------------------- */
-  if (!authChecked) return <Loader />;
+  /* -------------------- HARD GATE -------------------- */
+  if (!authChecked || !statusReady) {
+    return <Loader />;
+  }
 
-  /* -------------------- RENDER PAGE -------------------- */
+  /* -------------------- RENDER -------------------- */
   return (
     <main className="min-h-screen bg-white p-8 fade-in">
-      <h1 className="text-3xl font-bold text-[#001f40] mb-8 text-center">
-        Your Florida Learner’s Permit Progress
+      <h1 className="text-3xl font-bold text-[#001f40] mb-6 text-center">
+        Your Florida Learner’s Permit – Final Steps
       </h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+      {/* ✅ FINAL COMPLETION MESSAGE */}
+      {fullyComplete && (
+        <div className="max-w-4xl mx-auto mb-10 p-6 rounded-2xl border border-green-300 bg-green-50 text-center">
+          <h2 className="text-2xl font-bold text-green-800 mb-2">
+            🎉 Congratulations!
+          </h2>
 
+          <p className="text-green-900 leading-6">
+            You are now officially done with the Florida Learner’s Permit course.
+            <br />
+            Your information will be sent to the Florida DMV, and you may visit
+            the DMV to obtain your learner’s permit.
+          </p>
+
+          <p className="mt-3 text-sm text-green-800">
+            DMV submission typically occurs within 1 business day.
+          </p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
         {/* STEP 1 */}
-        <div className="p-6 rounded-2xl shadow-md border border-gray-200 bg-[#f9fafb] flex flex-col justify-between">
+        <div className="p-6 rounded-2xl shadow-md border border-gray-200 bg-white flex flex-col justify-between">
           <div>
             <h2 className="text-xl font-bold text-[#001f40] mb-3">
-              Step 1: Payment & Registration
+              Step 1: Complete the Course
             </h2>
 
             <p className="text-gray-700 mb-4">
-              Total cost: <strong>$59.95</strong>. This includes full course access and final exam.
+              You’ve completed the required Florida Permit Training course. Your
+              progress has been recorded successfully.
             </p>
-
-            {!paid ? (
-              <>
-                <a
-                  href="/payment"
-                  className="inline-block bg-[#ca5608] text-white font-semibold px-4 py-2 rounded hover:bg-[#b24b06] transition"
-                >
-                  Complete Payment
-                </a>
-
-                <p className="text-sm mt-3 text-gray-600">
-                  Payment required to unlock the exam.
-                </p>
-              </>
-            ) : (
-              <div className="p-4 bg-green-100 text-green-800 border border-green-300 rounded-lg font-semibold">
-                ✅ Paid — No Action Required
-              </div>
-            )}
           </div>
 
-          <div className="mt-6 border-t pt-4">
-            <a
-              href="/profile"
-              className="text-[#001f40] font-semibold underline hover:text-[#ca5608]"
-            >
-              Update your profile information
-            </a>
+          <div className="mt-6">
+            <div className="w-full p-3 bg-green-100 text-green-800 border border-green-300 rounded-lg font-semibold text-center">
+              ✅ Course Complete
+            </div>
           </div>
         </div>
 
         {/* STEP 2 */}
-        <div className="p-6 rounded-2xl shadow-md border border-gray-200 bg-[#f9fafb] flex flex-col justify-between">
+        <div className="p-6 rounded-2xl shadow-md border border-gray-200 bg-white flex flex-col justify-between">
           <div>
             <h2 className="text-xl font-bold text-[#001f40] mb-3">
-              Step 2: Complete the Course & Exam
+              Step 2: Take the Exam
             </h2>
 
             <p className="text-gray-700 mb-4">
-              After payment, unlock the narrated 6-hour course and then take the{" "}
-              <strong>40-question exam</strong>.
+              Take the final <strong>40-question exam</strong>. A minimum score
+              of <strong>80%</strong> is required to pass.
             </p>
 
-            <p className="text-gray-700 mb-4">
-              Required passing score: <strong>80%</strong>. Retakes allowed.
+            <p className="text-gray-700">
+              You may retake the exam as many times as needed.
             </p>
           </div>
 
-          <div className="mt-6 border-t pt-4">
-            <a
-              href="/course"
-              className="inline-block bg-[#001f40] text-white px-4 py-2 rounded hover:bg-[#00356e] transition"
-            >
-              Go to Course
-            </a>
+          <div className="mt-6">
+            {examPassed ? (
+              <div className="w-full p-3 bg-green-100 text-green-800 border border-green-300 rounded-lg font-semibold text-center">
+                ✅ Exam Passed
+              </div>
+            ) : (
+              <button
+                disabled={!courseComplete}
+                onClick={() => courseComplete && router.push("/exam")}
+                className={`
+                  w-full h-12 rounded-lg font-semibold transition
+                  ${
+                    courseComplete
+                      ? "bg-[#001f40] text-white hover:bg-[#00356e]"
+                      : "bg-gray-300 text-gray-600 cursor-not-allowed"
+                  }
+                `}
+              >
+                Start Exam
+              </button>
+            )}
           </div>
         </div>
 
         {/* STEP 3 */}
-        <div className="p-6 rounded-2xl shadow-md border border-gray-200 bg-[#f9fafb] flex flex-col justify-between">
+        <div className="p-6 rounded-2xl shadow-md border border-gray-200 bg-white flex flex-col justify-between">
           <div>
             <h2 className="text-xl font-bold text-[#001f40] mb-3">
-              Step 3: Receive Your Permit
+              Step 3: Pay & Visit the DMV
             </h2>
 
             <p className="text-gray-700 mb-4">
-              After passing the exam, we mail your official Florida Learner’s Permit —{" "}
-              <strong>free of charge</strong>.
+              After passing the exam, complete payment and visit your local
+              Florida DMV to pick up your learner’s permit.
             </p>
 
-            <p className="text-sm text-gray-600">
-              Estimated delivery: <strong>7–10 business days</strong>.
+            <p className="text-gray-600 mt-2">
+              * Payment is required for DMV submission.
             </p>
           </div>
 
-          <div className="mt-6 border-t pt-4">
-            <a
-              href="/support"
-              className="text-[#001f40] font-semibold underline hover:text-[#ca5608]"
-            >
-              Contact Support
-            </a>
+          <div className="mt-6">
+            {!paid ? (
+              <a
+                href="/payment"
+                className="w-full h-12 flex items-center justify-center bg-[#ca5608] text-white font-semibold rounded-lg hover:bg-[#b24b06]"
+              >
+                Complete Payment
+              </a>
+            ) : (
+              <div className="w-full p-3 bg-green-100 text-green-800 border border-green-300 rounded-lg font-semibold text-center">
+                ✅ Payment Complete
+              </div>
+            )}
           </div>
         </div>
-
       </div>
     </main>
   );

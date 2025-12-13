@@ -1,8 +1,11 @@
 "use client";
 
 import PaymentFAQs from "@/components/PaymentFAQs";
+import { useRouter } from "next/navigation";
 
 export default function CompletePage() {
+  const router = useRouter();
+
   return (
     <div className="px-6 py-12">
       {/* CENTERED CARD */}
@@ -44,12 +47,32 @@ export default function CompletePage() {
             </p>
 
             <p className="text-sm text-gray-600">
-              If you have not completed the course and exam, you must complete before we notify the Florida DMV.
+              If you have not completed the course and exam, you must complete them
+              before we notify the Florida DMV.
             </p>
 
             <p className="text-sm text-gray-600">
-              If you have already completed the course and exam, your record will be submitted to the Florida DMV within 1 business day.
+              If you have already completed the course and exam, your record will be
+              submitted to the Florida DMV within 1 business day.
             </p>
+
+            {/* ✅ RETURN TO MY PERMIT */}
+            <button
+              onClick={() => router.push("/my-permit")}
+              className="
+                mt-4
+                w-full
+                h-12
+                bg-[#001f40]
+                text-white
+                font-semibold
+                rounded-lg
+                hover:bg-[#00356e]
+                transition
+              "
+            >
+              Return to My Permit
+            </button>
           </div>
         </div>
       </div>

@@ -138,74 +138,99 @@ export default function DashboardPage() {
   /* ───────── CONDITIONAL RENDER ───────── */
   if (!pageReady) return <Loader />;
 
-  /* ───────── RENDER DASHBOARD ───────── */
-  return (
-    <main
-      className="min-h-screen bg-white text-[#001f40]"
-      style={{
-        opacity: pageReady ? 1 : 0,
-        transition: "opacity 0.45s ease",
-      }}
-    >
-      <div className="p-6 flex justify-center">
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-5xl">
+/* ───────── RENDER DASHBOARD ───────── */
+return (
+  <main
+    className="min-h-screen bg-white text-[#001f40]"
+    style={{
+      opacity: pageReady ? 1 : 0,
+      transition: "opacity 0.45s ease",
+    }}
+  >
+    <div className="p-6 flex justify-center">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-5xl">
 
-          {/* Progress Card */}
-          <div className="flex flex-col items-center gap-6 bg-white p-6 rounded-2xl shadow border border-gray-200">
-            <div className="relative w-72 h-72 flex items-center justify-center">
-              <svg viewBox="0 0 36 36" className="w-full h-full">
-                <path
-                  className="text-gray-300"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-                <path
-                  className="text-[#ca5608]"
-                  strokeDasharray={`${progress}, 100`}
-                  strokeLinecap="round"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-              </svg>
+        {/* SECTION 1 — YOUR COURSE */}
+        <div className="bg-white p-6 rounded-2xl shadow border border-gray-200 flex flex-col gap-6">
+          <h2 className="text-xl font-bold text-[#001f40]">
+            My Course
+          </h2>
 
-              <div className="absolute text-center">
-                <p className="text-4xl font-bold">{progress}%</p>
-                <p className="text-sm text-gray-600">
-                  {timeRemaining.toFixed(1)} hrs left
-                </p>
-              </div>
+          {/* Compact Progress */}
+          <div className="flex items-center gap-4 p-4 bg-[#f9fafb] border border-gray-200 rounded-lg">
+            <div className="text-3xl font-bold text-[#ca5608]">
+              {progress}%
             </div>
 
-            <button onClick={handleContinue} className={continueBtn}>
-              ▶ Continue My Course
-            </button>
-          </div>
-
-          {/* Profile / Permit */}
-          <div className="bg-white rounded-2xl shadow-lg w-full p-6 border border-gray-200 flex flex-col gap-6">
-            <h2 className="text-xl font-semibold">Driving Updates</h2>
-
-            <div className="flex flex-col gap-2">
-              <Link href="/profile" className={cardBtn}>
-                Update Profile
-              </Link>
-              <p className="text-sm text-gray-500">Your personal information is incomplete.</p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Link href="/my-permit" className={cardBtn}>
-                My Permit
-              </Link>
-              <p className="text-sm text-gray-500">Complete payment to unlock your final exam.</p>
+            <div className="text-sm text-gray-700">
+              <p className="font-semibold">Course Progress</p>
+              <p>{timeRemaining.toFixed(1)} hours remaining</p>
             </div>
           </div>
+         
+          <button onClick={handleContinue} className={continueBtn}>
+            Continue My Course
+          </button>
 
-        </section>
-      </div>
-    </main>
-  );
+          {/* Course Explanation */}
+          <div className="text-gray-700 space-y-3 text-sm leading-6">
+            <p>
+              This Florida Permit Training course must be completed in full
+              before taking the final exam.
+            </p>
+
+            <p>
+              Once you finish the course, you will take a
+              <strong> 40-question exam</strong>. A minimum score of
+              <strong> 80%</strong> is required to pass.
+            </p>
+
+            <p>
+              After passing the exam, you’ll be eligible to complete payment
+              and proceed with obtaining your learner’s permit.
+            </p>
+          </div>
+        </div>
+
+        {/* SECTION 2 — MY PERMIT */}
+        <div className="bg-white rounded-2xl shadow-lg w-full p-6 border border-gray-200 flex flex-col gap-6">
+          <h2 className="text-xl font-bold text-[#001f40]">
+            My Permit
+          </h2>
+
+          <div className="text-gray-700 text-sm leading-6 space-y-3">
+            <p>
+              Your permit page shows the remaining steps required to obtain
+              your Florida learner’s permit.
+            </p>
+
+            <p>
+              This includes taking the exam, completing payment, and preparing
+              for your DMV visit.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Link href="/my-permit" className={cardBtn}>
+              View My Permit Progress
+            </Link>
+            <p className="text-sm text-gray-500">
+              Track exam status, payment, and DMV readiness.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2 border-t">
+            <Link href="/profile" className={cardBtn}>
+              Update Profile
+            </Link>
+            <p className="text-sm text-gray-500">
+              Make sure your personal information is accurate before visiting the DMV.
+            </p>
+          </div>
+        </div>
+
+      </section>
+    </div>
+  </main>
+);
 }

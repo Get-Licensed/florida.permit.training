@@ -1,38 +1,64 @@
-// app/api/course/status/route.ts
+import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
-import { NextRequest } from "next/server";
-import { supabase } from "@/utils/supabaseClient";
+export async function GET() {
+  const supabase = await createSupabaseServerClient();
 
-export async function GET(req: NextRequest) {
-  const client = supabase;
-
-  // Auth
-  const { data: auth } = await client.auth.getUser();
+  /* -------------------- AUTH -------------------- */
+  const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
+
   const userId = auth.user.id;
 
-  // Course status
-  const { data: cs, error } = await client
+  /* -------------------- LOAD COURSE STATUS -------------------- */
+  const { data: cs, error } = await supabase
     .from("course_status")
-    .select("*")
+    .select(`
+      completed_at,
+      exam_passed,
+      passed_at,
+      paid_at,
+      dmv_submitted_at
+    `)
     .eq("user_id", userId)
     .eq("course_id", "FL_PERMIT_TRAINING")
     .single();
 
+  /* -------------------- NO ROW = NOT STARTED -------------------- */
   if (error || !cs) {
     return Response.json(
-      { error: "course_status_not_found" },
-      { status: 404 }
+      {
+        status: "not_started",
+        course_complete: false,
+        exam_passed: false,
+        paid: false,
+        dmv_submitted: false,
+      },
+      { status: 200 }
     );
   }
 
+  /* -------------------- DERIVE STATUS (SOURCE OF TRUTH) -------------------- */
+  let status = "in_progress";
+
+  if (cs.completed_at) status = "course_completed";
+  if (cs.exam_passed) status = "completed_unpaid";
+  if (cs.exam_passed && cs.paid_at) status = "completed_paid";
+  if (cs.dmv_submitted_at) status = "dmv_submitted";
+
+  /* -------------------- RESPONSE -------------------- */
   return Response.json(
     {
-      status: cs.status,
-      exam_passed: cs.exam_passed,
+      status,
+
+      course_complete: Boolean(cs.completed_at),
+      exam_passed: Boolean(cs.exam_passed),
+      paid: Boolean(cs.paid_at),
+      dmv_submitted: Boolean(cs.dmv_submitted_at),
+
       completed_at: cs.completed_at,
+      passed_at: cs.passed_at,
       paid_at: cs.paid_at,
       dmv_submitted_at: cs.dmv_submitted_at,
     },

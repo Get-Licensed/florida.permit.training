@@ -79,12 +79,16 @@ async function generateForVoice(
   // ---- Generate WAV ----
   const wavBytes = await synthesizeSpeech(cleaned, targetVoice);
 
-  // ---- Compute Duration ----
-  const rawSeconds = getWavDuration(wavBytes);
-  const finalSeconds = Math.round(rawSeconds);
-  console.log(
-    `Voice ${targetVoice} → Raw: ${rawSeconds}s → Final (padded): ${finalSeconds}s`
-  );
+// ---- Compute Duration (DO NOT ROUND UP) ----
+const rawSeconds = getWavDuration(wavBytes);
+
+// floor with small epsilon to avoid FP noise
+const finalSeconds = Math.max(1, Math.floor(rawSeconds + 0.05));
+
+console.log(
+  `Voice ${targetVoice} → Raw: ${rawSeconds.toFixed(3)}s → Stored: ${finalSeconds}s`
+);
+
 
   // ---- Upload WAV File ----
   const path = `${targetVoice}/${captionId}.wav`;

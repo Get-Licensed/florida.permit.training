@@ -1,118 +1,153 @@
 // app/api/exam/submit/route.ts
 
-import { NextRequest } from "next/server";
-import { supabase } from "@/utils/supabaseClient";
+import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
-export async function POST(req: NextRequest) {
-  const client = supabase;
+type ExamAnswers = Record<string, string>;
 
-  // 1) Auth
-  const { data: auth } = await client.auth.getUser();
-  if (!auth?.user) {
-    return Response.json({ error: "Not authenticated" }, { status: 401 });
-  }
-  const userId = auth.user.id;
-
-  // 2) Parse JSON
-  let body: any = {};
+export async function POST(req: Request) {
   try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-  const answers = body?.answers || {};
+    const client = await createSupabaseServerClient();
 
-  // 3) Load questions
-  const { data: questions, error: qErr } = await client
-    .from("exam_questions")
-    .select("*")
-    .order("order_index", { ascending: true });
-
-  if (!questions || qErr) {
-    return Response.json(
-      { error: "Could not load exam questions" },
-      { status: 500 }
-    );
-  }
-
-  // 4) Score
-  let correct = 0;
-  for (const q of questions) {
-    const given = answers[String(q.id)];
-    if (
-      given &&
-      typeof given === "string" &&
-      given.toUpperCase() === q.correct_option.toUpperCase()
-    ) {
-      correct++;
+    /* --------------------------------------------------
+       AUTH
+    -------------------------------------------------- */
+    const { data: auth } = await client.auth.getUser();
+    if (!auth?.user) {
+      return Response.json({ error: "Not authenticated" }, { status: 401 });
     }
-  }
+    const userId = auth.user.id;
 
-  const total = questions.length;
-  const score = Math.round((correct / total) * 100);
-  const passed = score >= 80; // >= 32 correct
+    /* --------------------------------------------------
+       PARSE BODY
+    -------------------------------------------------- */
+    let body: { answers?: ExamAnswers };
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: "Invalid JSON" }, { status: 400 });
+    }
 
-  // 5) Insert attempt
-  const { error: insertErr } = await client.from("exam_attempts").insert({
-    user_id: userId,
-    score,
-    passed,
-    answers,
-  });
+    const answers: ExamAnswers = body.answers ?? {};
 
-  if (insertErr) {
-    return Response.json(
-      { error: "Failed to record exam attempt" },
-      { status: 500 }
-    );
-  }
+/* --------------------------------------------------
+   LOAD QUESTIONS
+-------------------------------------------------- */
+const { data: questions, error: qErr } = await client
+  .from("exam_questions")
+  .select("id, correct_option")
+  .order("order_index", { ascending: true });
 
-  // default status
-  let finalStatus = "in_progress";
+if (qErr) {
+  console.error("EXAM QUESTIONS LOAD ERROR:", qErr);
+  return Response.json(
+    { error: "Could not load exam questions" },
+    { status: 500 }
+  );
+}
 
-  // 6) If passed -> mark in course_status
-  if (passed) {
-    const { data: statusRow, error: updErr } = await client
-      .from("course_status")
-      .update({
-        exam_passed: true,
-        passed_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId)
-      .eq("course_id", "FL_PERMIT_TRAINING")
-      .select()
-      .single();
+if (!questions || questions.length === 0) {
+  return Response.json(
+    { error: "No exam questions found" },
+    { status: 500 }
+  );
+}
 
-    if (!statusRow || updErr) {
+/* --------------------------------------------------
+       SCORE EXAM
+    -------------------------------------------------- */
+    let correct = 0;
+
+    for (const q of questions) {
+      const given = answers[String(q.id)];
+      if (
+        given &&
+        given.toUpperCase() === q.correct_option.toUpperCase()
+      ) {
+        correct++;
+      }
+    }
+
+    const total = questions.length;
+    const score = Math.round((correct / total) * 100);
+    const passed = score >= 80;
+
+    /* --------------------------------------------------
+       RECORD ATTEMPT
+    -------------------------------------------------- */
+    const { error: attemptErr } = await client
+      .from("exam_attempts")
+      .insert({
+        user_id: userId,
+        score,
+        passed,
+        answers,
+      });
+
+    if (attemptErr) {
       return Response.json(
-        { error: "Failed to update course status" },
+        { error: "Failed to record exam attempt" },
         { status: 500 }
       );
     }
 
-    const timeDone = !!statusRow.completed_at;
-    const paid = !!statusRow.paid_at;
-    const dmv = !!statusRow.dmv_submitted_at;
+    /* --------------------------------------------------
+       COURSE STATUS
+    -------------------------------------------------- */
+    let finalStatus = "in_progress";
 
-    if (!timeDone) {
-      finalStatus = "in_progress";
-    } else if (timeDone && !paid) {
-      finalStatus = "completed_unpaid";
-    } else if (timeDone && paid && !dmv) {
-      finalStatus = "completed_paid";
-    } else if (timeDone && paid && dmv) {
-      finalStatus = "dmv_submitted";
+    if (passed) {
+      const { data: statusRow, error: statusErr } = await client
+        .from("course_status")
+        .update({
+          exam_passed: true,
+          passed_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .eq("course_id", "FL_PERMIT_TRAINING")
+        .select()
+        .single();
+
+      if (!statusRow || statusErr) {
+        return Response.json(
+          { error: "Failed to update course status" },
+          { status: 500 }
+        );
+      }
+
+      const timeDone = !!statusRow.completed_at;
+      const paid = !!statusRow.paid_at;
+      const dmv = !!statusRow.dmv_submitted_at;
+
+      if (!timeDone) {
+        finalStatus = "in_progress";
+      } else if (timeDone && !paid) {
+        finalStatus = "completed_unpaid";
+      } else if (timeDone && paid && !dmv) {
+        finalStatus = "completed_paid";
+      } else {
+        finalStatus = "dmv_submitted";
+      }
     }
-  }
 
-  return Response.json(
-    {
-      passed,
-      score,
-      correct,
-      total,
-      status: finalStatus,
-    },
-    { status: 200 }
-  );
+    /* --------------------------------------------------
+       RESPONSE
+    -------------------------------------------------- */
+    return Response.json(
+      {
+        passed,
+        score,
+        correct,
+        total,
+        status: finalStatus,
+      },
+      { status: 200 }
+    );
+  } catch (err) {
+    console.error("EXAM SUBMIT ERROR:", err);
+
+    return Response.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
