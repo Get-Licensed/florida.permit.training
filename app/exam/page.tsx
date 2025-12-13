@@ -97,7 +97,7 @@ export default function ExamPage() {
       if (result?.passed) {
         router.replace("/my-permit");
       } else {
-        router.replace(`/api/exam/failed?score=${result?.score ?? 0}`);
+        router.replace(`/exam/failed?score=${result?.score ?? 0}`);
       }
     } catch (err: any) {
       setError(err.message || "Submission failed");
