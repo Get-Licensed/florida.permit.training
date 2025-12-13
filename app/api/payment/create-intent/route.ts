@@ -1,74 +1,103 @@
-// deno-lint-ignore-file no-sloppy-imports
-
-import { NextRequest } from "next/server";
-import { createSupabaseServerClient } from "@/utils/supabaseServer";
-import process from "node:process";
 import Stripe from "stripe";
+import process from "node:process";
+import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
-export async function POST(_req: NextRequest) {
-  const client = await createSupabaseServerClient(); // ✅ FIX
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
-  const secret = process.env.STRIPE_SECRET_KEY ?? "";
-  if (!secret || secret.includes("placeholder")) {
-    return Response.json(
-      { error: "Stripe not configured", clientSecret: null },
-      { status: 503 }
-    );
-  }
+export async function POST() {
+  try {
+    const supabase = await createSupabaseServerClient();
 
-  const { data: auth } = await client.auth.getUser();
-  if (!auth?.user) {
-    return Response.json({ error: "Not authenticated" }, { status: 401 });
-  }
+    /* ───────── AUTH ───────── */
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  const userId = auth.user.id;
+    if (!user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401 }
+      );
+    }
 
-  const stripe = new Stripe(secret);
+    const courseId = "FL_PERMIT_TRAINING";
+    const amountCents = 5995;
 
-  const { data: existing } = await client
-    .from("payments")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("course_id", "FL_PERMIT_TRAINING")
-    .in("status", ["requires_payment", "processing"])
-    .limit(1);
+    /* ───────── BLOCK IF ALREADY PAID ───────── */
+    const { data: paid } = await supabase
+      .from("payments")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("course_id", courseId)
+      .eq("status", "paid")
+      .maybeSingle();
 
-  if (existing?.length) {
-    return Response.json(
-      { clientSecret: existing[0].client_secret },
+    if (paid) {
+      return new Response(
+        JSON.stringify({ error: "Course already paid" }),
+        { status: 409 }
+      );
+    }
+
+    /* ───────── REUSE EXISTING INTENT ───────── */
+    const { data: existing } = await supabase
+      .from("payments")
+      .select("client_secret")
+      .eq("user_id", user.id)
+      .eq("course_id", courseId)
+      .eq("status", "requires_payment")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.client_secret) {
+      return new Response(
+        JSON.stringify({ clientSecret: existing.client_secret }),
+        { status: 200 }
+      );
+    }
+
+    /* ───────── CREATE STRIPE PAYMENT INTENT ───────── */
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency: "usd",
+      automatic_payment_methods: { enabled: true },
+      metadata: {
+        user_id: user.id,
+        course_id: courseId,
+      },
+    });
+
+    /* ───────── STORE IN DB ───────── */
+    const { error: insertError } = await supabase
+      .from("payments")
+      .insert({
+        user_id: user.id,
+        course_id: courseId,
+        stripe_payment_intent_id: paymentIntent.id,
+        amount_cents: amountCents,
+        status: "requires_payment",
+        client_secret: paymentIntent.client_secret!,
+      });
+
+    if (insertError) {
+      console.error(insertError);
+      return new Response(
+        JSON.stringify({ error: "Failed to store payment" }),
+        { status: 500 }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ clientSecret: paymentIntent.client_secret }),
       { status: 200 }
     );
-  }
 
-  const pi = await stripe.paymentIntents.create({
-    amount: 4900,
-    currency: "usd",
-    payment_method_types: ["card"], // ✅ REQUIRED
-    metadata: {
-      user_id: userId,
-      course_id: "FL_PERMIT_TRAINING",
-    },
-  });
-
-
-  const { error } = await client.from("payments").insert({
-    user_id: userId,
-    course_id: "FL_PERMIT_TRAINING",
-    stripe_payment_intent_id: pi.id,
-    amount_cents: 4900,
-    status: "requires_payment",
-    client_secret: pi.client_secret,
-  });
-
-  if (error) {
-    return Response.json(
-      { error: "Failed to store PaymentIntent" },
+  } catch (err) {
+    console.error(err);
+    return new Response(
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500 }
     );
   }
-
-  return Response.json(
-    { clientSecret: pi.client_secret },
-    { status: 200 }
-  );
 }
