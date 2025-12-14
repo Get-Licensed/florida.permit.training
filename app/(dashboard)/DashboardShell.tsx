@@ -3,7 +3,12 @@
 import HeaderClient from "./_HeaderClient";
 import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
-import { useEffect, useRef, useState, cloneElement, isValidElement } from "react";
+import {
+  useEffect,
+  useRef,
+  cloneElement,
+  isValidElement,
+} from "react";
 
 export default function DashboardShell({
   children,
@@ -15,14 +20,14 @@ export default function DashboardShell({
 
   /* ───────── AUTO LOGOUT ON INACTIVITY ───────── */
   useEffect(() => {
-    let timer: any;
+    let timer: ReturnType<typeof setTimeout>;
 
     const reset = () => {
       clearTimeout(timer);
       timer = setTimeout(async () => {
         await supabase.auth.signOut();
         router.replace("/");
-      }, 30 * 60 * 1000);
+      }, 30 * 60 * 1000); // 30 min
     };
 
     window.addEventListener("mousemove", reset);
@@ -38,15 +43,12 @@ export default function DashboardShell({
     };
   }, [router]);
 
-  /* ───────── GLOBAL COURSE STATE ───────── */
+  /* ───────── SHARED AUDIO REF ONLY ───────── */
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [volume, setVolume] = useState(1);
 
   const childWithProps = isValidElement(children)
     ? cloneElement(children as any, {
         audioRef,
-        volume,
-        setVolume,
       })
     : children;
 
@@ -63,7 +65,8 @@ export default function DashboardShell({
         allowScroll ? "" : "md:h-[100dvh] md:overflow-hidden",
       ].join(" ")}
     >
-      <HeaderClient volume={volume} setVolume={setVolume} />
+      {/* Header no longer receives volume props */}
+      <HeaderClient />
 
       <div
         className={[

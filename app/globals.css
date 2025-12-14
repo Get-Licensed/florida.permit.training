@@ -90,15 +90,37 @@ body {
 }
 
 /* -------------------------------------------------
- VOLUME KNOB
- --------------------------------------------------- */
+   VOLUME SLIDER (GLOBAL, STABLE)
+--------------------------------------------------- */
 
+.vol-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
 
+/* TRACK */
+.vol-range::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #001f40;
+  border-radius: 999px;
+}
+
+.vol-range::-moz-range-track {
+  height: 4px;
+  background: #001f40;
+  border-radius: 999px;
+}
+
+/* THUMB */
 .vol-range::-webkit-slider-thumb {
-  width: 10px;        /* smaller */
+  -webkit-appearance: none;
+  width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #001f40; /* brand color */
+  background: #001f40;
+  margin-top: -3px; /* centers thumb on track */
   cursor: pointer;
 }
 

@@ -34,7 +34,7 @@ function tokenizeForTiming(text: string): string[] {
 function computeWordTimings(totalSeconds: number, words: string[]) {
   if (!words.length) return [];
 
-  const SPEED = 0.95;
+  const SPEED = .98;
 
   const weights = words.map((w) => {
     const isPunct = /[.,!?;:]/.test(w);
@@ -196,6 +196,15 @@ export default function CoursePlayerClient() {
   const [audioDuration, setAudioDuration] = useState(0);
   const [restoredReady, setRestoredReady] = useState(false)
   const [initialHydrationDone, setInitialHydrationDone] = useState(false);
+
+  const [showPlayFlash, setShowPlayFlash] = useState(false);
+  const playFlashTimer = useRef<number | null>(null);
+
+  const [courseTotals, setCourseTotals] = useState<{
+  totalSeconds: number; }>({ totalSeconds: 0 });
+
+  const [moduleTotals, setModuleTotals] = useState<Record<string, number>>({});
+
 
 // -------------------------------------------------------------
 // DEBUG: Core gate values (helps detect infinite steering wheel)
@@ -441,6 +450,114 @@ for (let i = 0; i < slideIndex; i++) {
   return sec;
 })();
 
+  // -----------------------------------
+  // COURSE-LEVEL TOTAL TIME
+  // -----------------------------------
+  const totalCourseSeconds = (() => {
+    let total = 0;
+
+    modules.forEach((mod) => {
+      const modLessons = lessons.filter(
+        (l) => l.module_id === mod.id
+      );
+
+      modLessons.forEach((lesson) => {
+        const lessonSlides = slides.filter(
+          (s) => s.lesson_id === lesson.id
+        );
+
+        lessonSlides.forEach((slide) => {
+          const caps = captions[slide.id] || [];
+          total += caps.reduce(
+            (sum, c) => sum + (c.seconds ?? 0),
+            0
+          );
+        });
+      });
+    });
+
+    return total;
+  })();
+
+  // per-module totals
+  useEffect(() => {
+  async function loadCourseTotals() {
+    const { data: slideRows } = await supabase
+      .from("lesson_slides")
+      .select("id");
+
+    const slideIds = slideRows?.map(s => s.id) ?? [];
+
+    const { data: caps } = await supabase
+      .from("slide_captions")
+      .select("seconds")
+      .in("slide_id", slideIds);
+
+    const total = (caps ?? []).reduce(
+      (sum, c) => sum + (c.seconds ?? 0),
+      0
+    );
+
+    setCourseTotals({ totalSeconds: total });
+  }
+
+  loadCourseTotals();
+}, []);
+
+const completedModulesSeconds = modules
+  .slice(0, currentModuleIndex)
+  .reduce(
+    (sum, m) => sum + (moduleTotals[m.id] || 0),
+    0
+  );
+
+// -----------------------------------
+// COURSE-LEVEL ELAPSED TIME (FINAL)
+// -----------------------------------
+const elapsedCourseSeconds =
+  completedModulesSeconds + elapsedSeconds;
+
+
+
+useEffect(() => {
+  async function loadModuleTotals() {
+    const { data: slideRows } = await supabase
+      .from("lesson_slides")
+      .select("id, lesson_id");
+
+    const { data: lessonRows } = await supabase
+      .from("lessons")
+      .select("id, module_id");
+
+
+    const lessonToModule = Object.fromEntries(
+    (lessonRows ?? []).map(l => [l.id, l.module_id])
+  );
+
+    const { data: caps } = await supabase
+      .from("slide_captions")
+      .select("slide_id, seconds");
+
+    const slideToLesson = Object.fromEntries(
+      (slideRows ?? []).map(s => [s.id, s.lesson_id])
+    );
+
+
+    const totals: Record<string, number> = {};
+
+    caps?.forEach(c => {
+      const lessonId = slideToLesson[c.slide_id];
+      const moduleId = lessonToModule[lessonId];
+      if (!moduleId) return;
+
+      totals[moduleId] = (totals[moduleId] || 0) + (c.seconds ?? 0);
+    });
+
+    setModuleTotals(totals);
+  }
+
+  loadModuleTotals();
+}, []);
 
   /* ------------------------------------------------------
      checks backend status and redirects
@@ -477,121 +594,127 @@ for (let i = 0; i < slideIndex; i++) {
 // PROGRESS LOADING + APPLY
 // ------------------------
 useEffect(() => {
-  async function loadProgress() {
-    const user = await supabase.auth.getUser();
-    if (!user?.data?.user) {
-      applyProgress([], []);
-      return;
-    }
-
-    const { data: modRows } = await supabase
-      .from("course_progress_modules")
-      .select("*")
-      .eq("user_id", user.data.user.id)
-      .eq("course_id", "FL_PERMIT_TRAINING");
-
-    const { data: slideRows } = await supabase
-      .from("course_progress_slides")
-      .select("*")
-      .eq("user_id", user.data.user.id)
-      .eq("course_id", "FL_PERMIT_TRAINING");
-
-    applyProgress(modRows ?? [], slideRows ?? []);
-  }
-
-  // ----------------------------
-  // Correct guard
-  // ----------------------------
+  // Wait until modules are loaded
   if (!modules.length) return;
-  // DO NOT set didApplyProgress here — let applyProgress handle it
+
+  // Apply progress exactly once
   if (didApplyProgress.current) return;
 
   loadProgress();
 }, [modules]);
 
+async function loadProgress() {
+  const user = await supabase.auth.getUser();
+
+  if (!user?.data?.user) {
+    applyProgress([], []);
+    return;
+  }
+
+  const { data: modRows } = await supabase
+    .from("course_progress_modules")
+    .select("*")
+    .eq("user_id", user.data.user.id)
+    .eq("course_id", "FL_PERMIT_TRAINING");
+
+  const { data: slideRows } = await supabase
+    .from("course_progress_slides")
+    .select("*")
+    .eq("user_id", user.data.user.id)
+    .eq("course_id", "FL_PERMIT_TRAINING");
+
+  applyProgress(modRows ?? [], slideRows ?? []);
+}
+
 function applyProgress(
   modRows: any[] = [],
   slideRows: any[] = []
 ) {
-
-
-    console.log("APPLY_PROGRESS INPUT:", {
-    modRows,
-    slideRows,
-    modCount: modRows?.length ?? 0,
-    slideCount: slideRows?.length ?? 0
-  });
-
-
-
-  if (didApplyProgress.current) {
-    // already applied → but wait for restoredReady rather than completing UI now
-    setProgressReady(true);
-    setRestoredReady(true);
-    setProgressResolved(true);
-    return;
-  }
+  // ----------------------------------
+  // SINGLE ENTRY GUARD (ONLY PLACE)
+  // ----------------------------------
+  if (didApplyProgress.current) return;
   didApplyProgress.current = true;
 
+  console.log("APPLY_PROGRESS INPUT:", {
+    modCount: modRows.length,
+    slideCount: slideRows.length,
+  });
+
+  // ----------------------------------
+  // BASIC SANITY
+  // ----------------------------------
   if (!Array.isArray(modRows) || !Array.isArray(slideRows)) {
-    setProgressReady(true);
-    setRestoredReady(true);
-    setProgressResolved(true);
+    unlockProgressGates();
     return;
   }
 
+  // ----------------------------------
+  // MODULE COMPLETION
+  // ----------------------------------
   const completedModules = modRows.filter(m => m?.completed);
-  const maxCompletedModule = completedModules.length
-    ? completedModules.reduce((a, b) =>
-        (a?.module_index ?? 0) > (b?.module_index ?? 0) ? a : b
-      ).module_index
+  const maxCompletedModuleIndex = completedModules.length
+    ? Math.max(...completedModules.map(m => m.module_index ?? 0))
     : 0;
 
-  setMaxCompletedIndex(maxCompletedModule);
+  setMaxCompletedIndex(maxCompletedModuleIndex);
 
-  const highestModule = modRows.length
+  const highestSeenModule = modRows.length
     ? Math.max(...modRows.map(m => m?.module_index ?? 0))
     : 0;
 
-  const targetModule = Math.max(maxCompletedModule, highestModule);
-  const initialModuleIndex = modules.findIndex((m) => m.id === initialModuleId);
-  const resolvedModuleIndex =
-    initialModuleIndex >= 0 ? initialModuleIndex : targetModule;
-
-  setCurrentModuleIndex(Math.max(resolvedModuleIndex, 0));
-  const slidesInModule = slideRows.filter(
-    s => (s?.module_index ?? -1) === targetModule
+  const targetModuleIndex = Math.max(
+    maxCompletedModuleIndex,
+    highestSeenModule
   );
 
- if (!slidesInModule.length) {
-  console.log("NEW USER or EMPTY MODULE → No slidesInModule. Unlocking gates.");
-  setProgressReady(true);
-  setRestoredReady(true);
-  setProgressResolved(true);
-  setCurrentLessonIndex(0);
-  setSlideIndex(0);
-  return;
-}
+  const initialIdx = modules.findIndex(m => m.id === initialModuleId);
+  const resolvedModuleIndex =
+    initialIdx >= 0 ? initialIdx : targetModuleIndex;
 
+  setCurrentModuleIndex(Math.max(resolvedModuleIndex, 0));
+
+  // ----------------------------------
+  // SLIDE POSITION WITHIN MODULE
+  // ----------------------------------
+  const slidesInModule = slideRows.filter(
+    s => (s?.module_index ?? -1) === targetModuleIndex
+  );
+
+  if (!slidesInModule.length) {
+    // New user or empty module
+    setCurrentLessonIndex(0);
+    setSlideIndex(0);
+    unlockProgressGates();
+    return;
+  }
 
   const last = slidesInModule.reduce((a, b) =>
-    (a?.slide_index ?? 0) > (b?.slide_index ?? 0) ? a : b
+    (a.slide_index ?? 0) > (b.slide_index ?? 0) ? a : b
   );
 
   setCurrentLessonIndex(last.lesson_index ?? 0);
   setSlideIndex(last.slide_index ?? 0);
 
-  // 🚫 NEVER auto-unlock Continue on final slide
+  // ----------------------------------
+  // CONTINUE BUTTON RULE
+  // ----------------------------------
   const isFinalSlide =
-    last.lesson_index === lessons.length - 1 &&
-    last.slide_index === slides.length - 1;
+    last.lesson_index === (lessons?.length ?? 0) - 1 &&
+    last.slide_index === (slides?.length ?? 0) - 1;
+
 
   if (!isFinalSlide) {
     setCanProceed(true);
   }
 
+  unlockProgressGates();
+}
 
-  // mark BOTH now, but contentReady must wait for loading that slide
+// ----------------------------------
+// CENTRALIZED GATE UNLOCK
+// ----------------------------------
+function unlockProgressGates() {
   setProgressReady(true);
   setRestoredReady(true);
   setProgressResolved(true);
@@ -706,7 +829,7 @@ async function loadLessonContent(lessonId: number) {
 const totalSlides = slides.length;
 
 const isFinalSlideOfModule =
-  currentLessonIndex === lessons.length - 1 &&
+  currentLessonIndex === (lessons?.length ?? 0) - 1 &&
   slideIndex === totalSlides - 1;
 
 const showContinueInstruction =
@@ -715,7 +838,7 @@ const showContinueInstruction =
 
 const isFinalCourseSlide =
   isFinalSlideOfModule &&
-  currentModuleIndex === modules.length - 1;
+  currentModuleIndex === (modules?.length ?? 0) - 1;
 
 /* ------------------------------------------------------
    LOAD SEQUENCE
@@ -1066,9 +1189,9 @@ const goNext = useCallback(async () => {
   slideIndex,
   totalSlides,
   currentLessonIndex,
-  lessons.length,
   currentModuleIndex,
-  modules.length,
+  lessons?.length ?? 0,
+  modules?.length ?? 0,
 ]);
 
 //--------------------------------------------------------------------
@@ -1179,9 +1302,28 @@ if (!initialHydrationDone) {
 // AFTER initial hydration → do NOT block the UI with the loader
 
 function togglePlay() {
-  cancelAutoplay.current = false;   
-  setIsPaused(prev => !prev);
+  cancelAutoplay.current = false;
+
+  setIsPaused(prev => {
+    const next = !prev;
+
+    // Paused → Playing transition
+    if (prev && !next) {
+      setShowPlayFlash(true);
+
+      if (playFlashTimer.current) {
+        clearTimeout(playFlashTimer.current);
+      }
+
+      playFlashTimer.current = window.setTimeout(() => {
+        setShowPlayFlash(false);
+      }, 450); // YouTube-like flash duration
+    }
+
+    return next;
+  });
 }
+
 
 console.log("LOADER BLOCKED:", {
   progressReady,
@@ -1204,90 +1346,6 @@ console.log("LOADER BLOCKED:", {
           style={{ width: `${progressPercentage}%` }}
         />
       </div>
-
- {/* AUDIO CONTROLS (VOICE + VOLUME) */}
-<div className="absolute top-0 right-0 z-2 bg-white text-[#001f40] px-4 py-3 flex items-center gap-4 pointer-events-auto">
-
-  <div className="relative">  
-  <select
-    value={voice}
-    onChange={(e) => setVoice(e.target.value)}
-    className="
-      bg-[#001F40] text-white
-      text-xs 
-      px-2 py-1 
-      rounded-md 
-      outline-none 
-      border border-white/30
-      hover:bg-[#002a5f]
-    "
-  >
-    {/* Placeholder */}
-    <option value="" disabled>
-      Select Voice…
-    </option>
-
-    {VOICES.map((v) => (
-      <option
-        key={v.code}
-        value={v.code}
-        className="bg-[#001F40] text-white"
-      >
-        {v.label}
-      </option>
-    ))}
-  </select>
-</div>
-<div className="flex items-center gap-2">
-  <input
-    type="range"
-    min="0"
-    max="1"
-    step="0.05"
-    value={volume}
-    onChange={(e) => {
-      const v = Number(e.target.value);
-      setVolume(v);
-      if (audioRef.current) audioRef.current.volume = v;
-    }}
-    className="vol-range w-24 h-1 cursor-pointer appearance-none"
-  />
-
-  <style jsx>{`
-    .vol-range {
-      -webkit-appearance: none;
-      appearance: none;
-      background: transparent;
-    }
-    .vol-range::-webkit-slider-runnable-track {
-      height: 4px;
-      background: #001f40;
-      border-radius: 2px;
-    }
-    .vol-range::-moz-range-track {
-      height: 4px;
-      background: #001f40;
-      border-radius: 2px;
-    }
-    .vol-range::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #001f40;
-      margin-top: -2px;
-    }
-    .vol-range::-moz-range-thumb {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #001f40;
-    }
-  `}</style>
-</div>
-
-</div>
-
   
 {/* MAIN -------------------------------------------------- */}
 <div
@@ -1305,8 +1363,85 @@ console.log("LOADER BLOCKED:", {
   }}
 >
   <SlideView currentImage={currentImage} />
-</div>
 
+  {/* ▶️ PLAY / PAUSE OVERLAY */}
+  <div
+  className={`
+    absolute left-0 right-0 z-20
+    flex items-center justify-center
+    transition-opacity duration-300
+    ${isPaused ? "opacity-100" : "opacity-0 pointer-events-none"}
+  `}
+  style={{
+    top: "8px",                 // progress bar
+    bottom: "300px",             // footer + timeline + buffer
+  }}
+>
+
+   <button
+  onClick={(e) => {
+    e.stopPropagation();
+    togglePlay();
+  }}
+  className="
+    w-20 h-20
+    rounded-full
+    bg-black/50
+    flex items-center justify-center
+    backdrop-blur-sm
+    hover:bg-black/50
+    transition
+  "
+>
+{isPaused ? (
+  /* ▶ PLAY — visible when paused */
+  <svg
+    viewBox="0 0 24 24"
+    className="w-18 h-20 fill-white"
+    style={{ transform: "translateX(-1.5px)" }}
+  >
+    <path d="
+      M8.5 5
+      a1.5 1.5 0 0 0-1.5 1.5
+      v11
+      a1.5 1.5 0 0 0 1.5 1.5
+      L21.5 12
+      Z
+    " />
+  </svg>
+) : (
+  /* ❚❚ PAUSE — visible when playing */
+  <svg
+    viewBox="0 0 24 24"
+    className="w-15 h-15 fill-white"
+    style={{ transform: "translateX(-2.5px)" }}
+  >
+    <path d="
+      M6.8 5.5
+      a1.1 1.1 0 0 1 1.1-1.1
+      h2.2
+      a1.1 1.1 0 0 1 1.1 1.1
+      v13
+      a1.1 1.1 0 0 1-1.1 1.1
+      h-2.2
+      a1.1 1.1 0 0 1-1.1-1.1
+      z
+
+      M14.9 5.5
+      a1.1 1.1 0 0 1 1.1-1.1
+      h2.2
+      a1.1 1.1 0 0 1 1.1 1.1
+      v13
+      a1.1 1.1 0 0 1-1.1 1.1
+      h-2.2
+      a1.1 1.1 0 0 1-1.1-1.1
+      z
+    " />
+  </svg>
+)}
+</button>
+  </div>
+</div>
 
 
 {/* NARRATION AUDIO ELEMENT -------------------------------- */}
@@ -1468,9 +1603,141 @@ if (!urls.length) {
   elapsedSeconds={elapsedSeconds}
 />
 
-</div>
-);
+{/* MINI YOUTUBE-STYLE CONTROLS + META (PILL STYLE) -------- */}
+<div className="fixed bottom-[12px] left-0 right-0 z-40 pointer-events-auto">
+  <div className="md:max-w-6xl md:mx-auto px-4">
+    <div className="flex items-center gap-4 text-[#001f40]">
 
+      {/* PLAY / PAUSE — PILL */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          togglePlay();
+        }}
+        className="
+          h-10 px-4
+          flex items-center justify-center
+          rounded-full
+          border border-[#001f40]/30
+          hover:bg-[#001f40]/5
+          transition
+        "
+      >
+        {isPaused ? (
+          <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#001f40]">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#001f40]">
+            <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+          </svg>
+        )}
+      </button>
+
+      {/* VOLUME — ICON + SLIDER */}
+      <div
+        className="
+          h-10 px-4
+          flex items-center gap-3
+          rounded-full
+          border border-[#001f40]/30
+        "
+      >
+        <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#001f40]">
+          <path d="M5 9v6h4l5 4V5L9 9H5z" />
+        </svg>
+
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={volume}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setVolume(v);
+            if (audioRef.current) audioRef.current.volume = v;
+          }}
+          className="vol-range w-24 h-1 cursor-pointer appearance-none"
+        />
+      </div>
+
+     {/* TIME — COURSE-LEVEL */}
+      <div
+        className="
+          h-10 px-4
+          flex items-center
+          rounded-full
+          border border-[#001f40]/30
+          text-sm
+          tabular-nums
+          opacity-80
+          whitespace-nowrap
+        "
+      >
+        {formatTime(elapsedCourseSeconds)} / {formatTime(courseTotals.totalSeconds)}
+      </div>
+
+
+      {/* MODULE META — FIXED WIDTH PILL */}
+      <div
+        className="
+          h-10 w-[220px]
+          px-4
+          flex items-center
+          rounded-full
+          border border-[#001f40]/30
+          bg-[#001f40]/5
+          text-sm
+          font-medium
+          whitespace-nowrap
+          overflow-hidden
+          text-ellipsis
+        "
+        title={modules[currentModuleIndex]?.title}
+      >
+        {modules[currentModuleIndex]?.title ??
+          `Module ${currentModuleIndex + 1}`}
+      </div>
+
+      {/* VOICE SELECT — PILL */}
+      <div className="relative">
+        <select
+          value={voice}
+          onChange={(e) => setVoice(e.target.value)}
+          className="
+            h-10 px-4
+            rounded-full
+            bg-[#001f40]
+            text-white
+            text-xs
+            outline-none
+            border border-[#001f40]
+            hover:bg-[#002a5f]
+            cursor-pointer
+          "
+        >
+          <option value="" disabled>
+            Select Voice…
+          </option>
+
+          {VOICES.map((v) => (
+            <option
+              key={v.code}
+              value={v.code}
+              className="bg-[#001f40] text-white"
+            >
+              {v.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+  );
 }
 
 // safe numeric display used by FooterNav + Timeline
@@ -1479,6 +1746,20 @@ function safeTime(v: any) {
   return isFinite(n) ? n.toFixed(1) : "0.0";
 }
 
+function formatTime(seconds: number) {
+  if (!isFinite(seconds)) return "0:00";
+
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  }
+
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
 
 
 /* ============================================================
@@ -1615,22 +1896,14 @@ function TimelineWithPromo(props: any) {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white z-40 py-3 border-t shadow-inner">
-
-      {/* FIXED META (RIGHT) */}
-      <div className="absolute right-6 bottom-[48px] text-xs md:text-sm text-[#001f40] opacity-80 pointer-events-none">
-        {statusText()}
-      </div>
-
+    <div className="fixed bottom-0 left-0 right-0 bg-white z-40 py-6 border-t shadow-inner">
       <div className="w-full px-4 md:px-0">
         <div className="md:max-w-6xl md:mx-auto p-4">
-
-          <div className="relative w-full h-6 flex items-center">
+          <div className="relative w-full h-6 flex items-center -translate-y-[20px]">
 
             {/* dark rail */}
             <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full" />
-
-            <div className="relative w-full h-6 flex items-center">
+              <div className="relative w-full h-6 flex items-center">
 
               {modules.map((m: ModuleRow, i: number) => {
                 const isCompleted = i < currentModuleIndex;
@@ -1721,7 +1994,7 @@ function KaraokeCaption({
       {words.map((word: string, wi: number) => (
 <span
   key={wi}
-  style={{ display: "inline" }}    // <-- critical
+  style={{ display: "inline" }}
   className={wi === currentWordIndex ? "text-[#ca5608]" : "opacity-80"}
 >
   {word + " "}
