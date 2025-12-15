@@ -6,14 +6,20 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST() {
   try {
+    console.log("CREATE INTENT START");
+    console.log("STRIPE KEY EXISTS:", !!process.env.STRIPE_SECRET_KEY);
+
     const supabase = await createSupabaseServerClient();
 
-    /* ───────── AUTH ───────── */
+    /* ───────── AUTH (SINGLE, GUARDED CALL) ───────── */
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    console.log("AUTH USER:", user?.id, authError);
+
+    if (authError || !user) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401 }
@@ -22,7 +28,7 @@ export async function POST() {
 
     const courseId = "FL_PERMIT_TRAINING";
     const amountCents = 5995;
-
+    
     /* ───────── BLOCK IF ALREADY PAID ───────── */
     const { data: paid } = await supabase
       .from("payments")
