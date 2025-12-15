@@ -29,7 +29,7 @@ export async function POST() {
       .select("id")
       .eq("user_id", user.id)
       .eq("course_id", courseId)
-      .eq("status", "paid")
+      .eq("status", "succeeded")
       .maybeSingle();
 
     if (paid) {

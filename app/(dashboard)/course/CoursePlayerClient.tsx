@@ -198,6 +198,9 @@ export default function CoursePlayerClient() {
 
   const [courseTotals, setCourseTotals] = useState<{
   totalSeconds: number; }>({ totalSeconds: 0 });
+  const [examPassed, setExamPassed] = useState(false);
+  const [paymentPaid, setPaymentPaid] = useState(false);
+
 
   const [moduleTotals, setModuleTotals] = useState<Record<string, number>>({});
   const COURSE_ID = "FL_PERMIT_TRAINING";
@@ -577,6 +580,25 @@ useEffect(() => {
       }
     }
 
+    async function loadTerminalStatus() {
+      const res = await fetch("/api/course/status");
+      const data = await res.json();
+
+      // exam is passed once course is completed at all
+      const passed =
+        data.status === "completed_unpaid" ||
+        data.status === "completed_paid" ||
+        data.status === "dmv_submitted";
+
+      // payment is only passed once paid or submitted
+      const paid =
+        data.status === "completed_paid" ||
+        data.status === "dmv_submitted";
+
+      setExamPassed(passed);
+      setPaymentPaid(paid);
+    }
+
   /* ------------------------------------------------------
      LOAD MODULES
   ------------------------------------------------------ */
@@ -844,6 +866,11 @@ const isFinalCourseSlide =
 useEffect(() => {
   loadModules();
 }, []);
+
+useEffect(() => {
+  loadTerminalStatus();
+}, []);
+
 
 useEffect(() => {
   if (!progressResolved) return;
@@ -1599,6 +1626,8 @@ if (!urls.length) {
   currentLessonIndex={currentLessonIndex}
   totalModuleSeconds={totalModuleSeconds}
   elapsedSeconds={elapsedSeconds}
+  examPassed={examPassed}
+  paymentPaid={paymentPaid}
 />
 
 {/* MINI YOUTUBE-STYLE CONTROLS + META (PILL STYLE) -------- */}
@@ -1877,6 +1906,19 @@ function FooterNav({
   );
 }
 
+const TERMINAL_SEGMENTS = [
+  {
+    id: "exam",
+    label: "Final Exam",
+    href: "/exam",
+  },
+  {
+    id: "payment",
+    label: "Pay & Submit to FLHSMV.gov",
+    href: "/payment",
+  },
+];
+
 
 /* -----------------------------------------------------------
    TIMELINE WITH PROMO  + FIXED METADATA (CoursePlayer version)
@@ -1897,9 +1939,13 @@ function TimelineWithPromo(props: any) {
     currentLessonIndex = 0,
     totalModuleSeconds = 0,
     elapsedSeconds = 0,
+
+    examPassed = false,
+    paymentPaid = false,
   } = props;
 
-  const segmentWidth = modules.length > 0 ? 100 / modules.length : 100;
+  const totalSegments = modules.length + TERMINAL_SEGMENTS.length;
+  const segmentWidth = totalSegments > 0 ? 100 / totalSegments : 100;
 
   function statusText() {
     const elapsed = safeTime(elapsedSeconds);
@@ -1913,51 +1959,109 @@ function TimelineWithPromo(props: any) {
     <div className="fixed bottom-0 left-0 right-0 bg-white z-40 border-t shadow-inner min-h-[6rem]">
       <div className="w-full px-4 md:px-0">
         <div className="md:max-w-6xl md:mx-auto p-4">
-          <div className="relative w-full h-6 py-7 flex items-center -translate-y-[20px]">
+            <div className="relative w-full h-6 flex items-center">
 
             {/* dark rail */}
-            <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full" />
               <div className="relative w-full h-6 flex items-center">
 
-              {modules.map((m: ModuleRow, i: number) => {
-                const isCompleted = i < currentModuleIndex;
-                const isActive = i === currentModuleIndex;
-                const isUnlocked = i <= maxCompletedIndex + 1;
-                const isLast = i === modules.length - 1;
+               {modules.map((m: ModuleRow, i: number) => {
+                    const isCompleted = i < currentModuleIndex;
+                    const isActive = i === currentModuleIndex;
+                    const isUnlocked = i <= maxCompletedIndex + 1 || examPassed;
 
-                const cursor = isUnlocked ? "cursor-pointer" : "cursor-not-allowed";
+                    const cursor = isUnlocked
+                      ? "cursor-pointer"
+                      : "cursor-not-allowed";
 
-                let bg;
-                if (isCompleted) bg = "#ca5608";
-                else if (isActive) bg = "#ca5608";
-                else if (isLast) bg = "#001f40";
-                else bg = "#4B1E1E";
+                    let bg;
+                    if (isCompleted) bg = "#ca5608";
+                    else if (isActive) bg = "#ca5608";
+                    else bg = "#001f40";
 
-                return (
-                  <div
-                    key={m.id}
-                    style={{ width: `${segmentWidth}%` }}
-                    className={`relative h-full flex items-center justify-center ${cursor}`}
-                    onClick={() => { if (isUnlocked) goToModule(i); }}
-                  >
+                    return (
+                      <div
+                        key={m.id}
+                        style={{ width: `${segmentWidth}%` }}
+                        className={`relative h-full flex items-center justify-center ${cursor}`}
+                        onClick={() => {
+                          if (isUnlocked) goToModule(i);
+                        }}
+                      >
+                        <div
+                          className="flex-1 h-2"
+                          style={{
+                            backgroundColor: bg,
+                            opacity: isUnlocked ? 1 : 0.4,
+                            boxShadow: isActive ? `0 0 6px ${bg}` : "none",
+                            borderTopLeftRadius: i === 0 ? 999 : 0,
+                            borderBottomLeftRadius: i === 0 ? 999 : 0,
+                          }}
+                        />
+                        <div className="w-[3px] h-full bg-white" />
+                      </div>
+                    );
+                  })}
 
+
+              {TERMINAL_SEGMENTS.map((seg, i) => {
+                  const isLast = i === TERMINAL_SEGMENTS.length - 1;
+
+                  let bg = "#001f40";
+
+                    if (seg.id === "exam") {
+                      bg = examPassed ? "#ca5608" : "#001f40";
+                    }
+
+                    if (seg.id === "payment") {
+                      bg = paymentPaid ? "#ca5608" : "#001f40";
+                    }
+
+
+                  return (
                     <div
-                      className={`flex-1 h-2 ${cursor}`}
-                      style={{
+                      key={seg.id}
+                      style={{ width: `${segmentWidth}%` }}
+                      className="relative h-full flex flex-col items-center justify-start cursor-pointer"
+                      onClick={() => {
+                        window.location.href = seg.href;
+                      }}
+                    >
+                      {/* RAIL SEGMENT */}
+                      <div className="w-full flex items-center justify-center translate-x-[1px] translate-y-[8px] h-2">
+                        <div
+                          className="flex-1 h-2"
+                       style={{
                         backgroundColor: bg,
-                        boxShadow: isActive ? `0 0 6px ${bg}` : "none",
-                        opacity: isUnlocked ? 1 : 0.4,
-                        borderTopLeftRadius: i === 0 ? 999 : 0,
-                        borderBottomLeftRadius: i === 0 ? 999 : 0,
+
+                        // right rounding ONLY on last segment
                         borderTopRightRadius: isLast ? 999 : 0,
                         borderBottomRightRadius: isLast ? 999 : 0,
                       }}
-                    />
 
-                    {!isLast && <div className="w-[3px] h-full bg-white" />}
-                  </div>
-                );
-              })}
+
+                        />
+                        {!isLast && <div className="w-[3px] h-full bg-white" />}
+                      </div>
+
+                      {/* LABEL BELOW */}
+                      <div
+                        className="
+                          mt-3
+                          text-[9px]
+                          font-medium
+                          text-[#001f40]
+                          text-center
+                          leading-tight
+                          px-1
+                          max-w-[90px]
+                          opacity-80
+                        "
+                      >
+                        {seg.label}
+                      </div>
+                    </div>
+                  );
+                })}
 
             </div>
           </div>

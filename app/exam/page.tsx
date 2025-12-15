@@ -24,9 +24,12 @@ export default function ExamPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [courseComplete, setCourseComplete] = useState<boolean | null>(null); // ← null = unknown
   const [started, setStarted] = useState(false);
   const [index, setIndex] = useState(0);
+  
+  const [courseComplete, setCourseComplete] = useState<boolean | null>(null);
+  const [examPassed, setExamPassed] = useState<boolean | null>(null);
+
 
   /* -------------------- COURSE STATUS -------------------- */
   useEffect(() => {
@@ -34,11 +37,15 @@ export default function ExamPage() {
       try {
         const res = await fetch("/api/course/status");
         const data = await res.json();
+
         setCourseComplete(Boolean(data.completed_at));
+        setExamPassed(Boolean(data.exam_passed));
       } catch {
         setCourseComplete(false);
+        setExamPassed(false);
       }
     }
+
     checkCourseStatus();
   }, []);
 
@@ -60,8 +67,10 @@ export default function ExamPage() {
   }, []);
 
   /* -------------------- DERIVED -------------------- */
-  const isBooting =
-    courseComplete === null || loadingQuestions;
+   const isBooting =
+     courseComplete === null ||
+     examPassed === null ||
+     loadingQuestions;
 
   const total = questions.length;
 
@@ -121,24 +130,6 @@ export default function ExamPage() {
               Loading exam…
             </div>
           </div>
-        ) : !courseComplete ? (
-          /* ===== COURSE NOT COMPLETE ===== */
-          <main className="h-full flex items-center justify-center bg-white">
-            <div className="max-w-md p-6 rounded-xl border shadow text-center">
-              <h2 className="text-xl font-bold text-[#001f40] mb-3">
-                Course Not Completed
-              </h2>
-              <p className="text-gray-700 mb-5">
-                You must complete the course before taking the final exam.
-              </p>
-              <button
-                onClick={() => router.push("/course")}
-                className="w-full h-12 bg-[#001f40] text-white rounded-lg font-semibold"
-              >
-                Return to Course
-              </button>
-            </div>
-          </main>
         ) : (
           /* ===== EXAM ===== */
           <main className="h-full flex items-center justify-center px-6">
@@ -165,12 +156,30 @@ export default function ExamPage() {
                     </p>
                   </div>
 
-                  <button
-                    onClick={() => setStarted(true)}
-                    className="mt-6 w-full h-12 bg-[#ca5608] text-white rounded-lg font-semibold hover:bg-[#b24b06]"
-                  >
-                    Start Exam
-                  </button>
+                  <div className="mt-6 flex justify-center">
+                    {examPassed ? (
+                      <div className="w-[50%] p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
+                        ✅ Exam Passed
+                      </div>
+                    ) : (
+                      <button
+                        disabled={!courseComplete}
+                        onClick={() => courseComplete && setStarted(true)}
+                        className={`
+                          w-[50%] h-12 rounded-lg font-semibold transition
+                          ${
+                            courseComplete
+                              ? "bg-[#001f40] text-white hover:bg-[#00356e]"
+                              : "bg-gray-300 text-gray-600 cursor-not-allowed"
+                          }
+                        `}
+                      >
+                        {courseComplete
+                          ? "Start Exam"
+                          : "Exam Available After Completing Course"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 /* ===== QUESTION VIEW ===== */

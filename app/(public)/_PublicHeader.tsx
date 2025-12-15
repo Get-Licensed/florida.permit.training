@@ -53,7 +53,7 @@ export default function PublicMenuHeader({
         <img
           src="/logo.png"
           alt="Florida Permit Training"
-          className="h-20 w-20 absolute left-3 top-[14px] z-[80]"
+          className="h-20 w-20 absolute left-3 top-[22px] z-[80]"
           style={{
             filter: `
             drop-shadow(0 0 1px white)
@@ -67,9 +67,9 @@ export default function PublicMenuHeader({
         />
       </Link>
 
-      <header className="flex justify-end items-center pr-3 pl-[100px] py-3 bg-white border-b border-gray-200 relative z-[60]">
+    <header className="relative h-16 flex items-center bg-white border-b border-gray-200 z-[60]">
   
-  <div className="flex items-center gap-4 mr-4">
+      <div className="flex items-baseline w-full px-3 gap-4 pl-[100px] justify-end">
     <span className="text-[#001f40] text-sm font-semibold truncate max-w-[200px]">
       {fullName}
     </span>
@@ -86,71 +86,7 @@ export default function PublicMenuHeader({
       />
     )}
   </div>
-
-  <button
-    type="button"
-    onClick={() => setMenuOpen(true)}
-    className="text-3xl font-bold text-[#001f40]"
-  >
-    ☰
-  </button>
 </header>
-
-
-      {menuOpen && (
-        <div
-          ref={menuRef}
-          className="fixed top-0 right-0 w-64 h-[100dvh] bg-white text-[#001f40] p-6 shadow-xl z-[70] overflow-y-auto"
-        >
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold">Menu</h2>
-            <button
-              type="button"
-              onClick={() => setMenuOpen(false)}
-              className="text-2xl font-bold text-[#001f40]"
-            >
-              ✕
-            </button>
-          </div>
-
-          <nav className="flex flex-col gap-4 text-lg">
-            {[
-              { name: "Dashboard", href: "/dashboard" },
-              { name: "My Course", href: "/course" },
-              { name: "My Permit", href: "/my-permit" },
-              { name: "My Profile", href: "/profile" },
-              { name: "Support", href: "/support" },
-            ].map((item) => (
-              <span
-                key={item.name}
-                className={`transition-colors duration-200 select-none cursor-not-allowed
-              ${
-                pathname === item.href
-                  ? "text-[#001f40] font-semibold underline"
-                  : "text-gray-400"
-              }
-            `}
-              >
-                {item.name}
-              </span>
-            ))}
-          </nav>
-
-          <button
-            type="button"
-            onClick={handleLogin}
-            className="mt-6 flex items-center justify-center border border-[#001f40] bg-white text-[#001f40] text-[18px] font-bold px-4 py-2 rounded-md hover:shadow-lg transition-all"
-          >
-            <img
-              src="/Google-Icon.png"
-              alt="Google Icon"
-              className="w-[22px] h-[22px] mr-2"
-            />
-            Continue with Google
-          </button>
-        </div>
-      )}
-
       <style jsx>{`
         .vol-range {
           -webkit-appearance: none;

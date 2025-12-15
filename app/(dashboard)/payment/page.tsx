@@ -11,6 +11,11 @@ const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string
 );
 
+console.log(
+  "Stripe key present:",
+  !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+);
+
 /* ───────── LAYOUT WRAPPER ───────── */
 function Wrapper({ children }: { children: ReactNode }) {
   return (
