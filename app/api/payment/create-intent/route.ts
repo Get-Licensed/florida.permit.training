@@ -1,17 +1,24 @@
+// app/api/payment/create-intent/route.ts
+
 import Stripe from "stripe";
 import process from "node:process";
 import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2025-11-17.clover",
+});
 
 export async function POST() {
   try {
     console.log("CREATE INTENT START");
-    console.log("STRIPE KEY EXISTS:", !!process.env.STRIPE_SECRET_KEY);
+
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("Missing STRIPE_SECRET_KEY");
+    }
 
     const supabase = await createSupabaseServerClient();
 
-    /* ───────── AUTH (SINGLE, GUARDED CALL) ───────── */
+    /* ───────── AUTH ───────── */
     const {
       data: { user },
       error: authError,
@@ -28,7 +35,7 @@ export async function POST() {
 
     const courseId = "FL_PERMIT_TRAINING";
     const amountCents = 5995;
-    
+
     /* ───────── BLOCK IF ALREADY PAID ───────── */
     const { data: paid } = await supabase
       .from("payments")
@@ -45,25 +52,7 @@ export async function POST() {
       );
     }
 
-    /* ───────── REUSE EXISTING INTENT ───────── */
-    const { data: existing } = await supabase
-      .from("payments")
-      .select("client_secret")
-      .eq("user_id", user.id)
-      .eq("course_id", courseId)
-      .eq("status", "requires_payment")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existing?.client_secret) {
-      return new Response(
-        JSON.stringify({ clientSecret: existing.client_secret }),
-        { status: 200 }
-      );
-    }
-
-    /* ───────── CREATE STRIPE PAYMENT INTENT ───────── */
+    /* ───────── CREATE PAYMENT INTENT (ONCE) ───────── */
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountCents,
       currency: "usd",
@@ -74,7 +63,7 @@ export async function POST() {
       },
     });
 
-    /* ───────── STORE IN DB ───────── */
+    /* ───────── STORE PAYMENT ───────── */
     const { error: insertError } = await supabase
       .from("payments")
       .insert({
@@ -82,13 +71,12 @@ export async function POST() {
         course_id: courseId,
         stripe_payment_intent_id: paymentIntent.id,
         amount_cents: amountCents,
-        status: "requires_payment", // initial Stripe state
+        status: "requires_payment",
         client_secret: paymentIntent.client_secret!,
-        created_at: new Date().toISOString(),
       });
 
     if (insertError) {
-      console.error("Payment insert failed:", insertError);
+      console.error("PAYMENT INSERT ERROR:", insertError);
       return new Response(
         JSON.stringify({ error: "Failed to store payment" }),
         { status: 500 }
@@ -101,7 +89,7 @@ export async function POST() {
     );
 
   } catch (err) {
-    console.error(err);
+    console.error("CREATE INTENT ERROR:", err);
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
       { status: 500 }
