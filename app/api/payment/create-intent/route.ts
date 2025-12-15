@@ -76,12 +76,13 @@ export async function POST() {
         course_id: courseId,
         stripe_payment_intent_id: paymentIntent.id,
         amount_cents: amountCents,
-        status: "requires_payment",
+        status: "requires_payment", // initial Stripe state
         client_secret: paymentIntent.client_secret!,
+        created_at: new Date().toISOString(),
       });
 
     if (insertError) {
-      console.error(insertError);
+      console.error("Payment insert failed:", insertError);
       return new Response(
         JSON.stringify({ error: "Failed to store payment" }),
         { status: 500 }
