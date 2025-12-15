@@ -131,9 +131,6 @@ export default function PaymentPage() {
           </div>
         </Wrapper>
       </Elements>
-
-      {/* FAQ BELOW PAYMENT */}
-      <PaymentFAQs />
     </>
   );
 }

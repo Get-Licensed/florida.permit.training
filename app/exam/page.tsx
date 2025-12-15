@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import ExamShell from "./ExamShell";
+import { ExamProgressContext } from "./ExamProgressContext";
+// import SteeringWheelLoader from "@/components/SteeringWheelLoader"; // ← use if you have it
 
 type Question = {
   id: number;
@@ -16,30 +19,26 @@ export default function ExamPage() {
 
   /* -------------------- STATE -------------------- */
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [courseComplete, setCourseComplete] = useState(false);
-  const [statusLoaded, setStatusLoaded] = useState(false);
+  const [courseComplete, setCourseComplete] = useState<boolean | null>(null); // ← null = unknown
+  const [started, setStarted] = useState(false);
+  const [index, setIndex] = useState(0);
 
-  /* -------------------- COURSE STATUS CHECK -------------------- */
+  /* -------------------- COURSE STATUS -------------------- */
   useEffect(() => {
     async function checkCourseStatus() {
       try {
         const res = await fetch("/api/course/status");
         const data = await res.json();
-
         setCourseComplete(Boolean(data.completed_at));
-
       } catch {
         setCourseComplete(false);
-      } finally {
-        setStatusLoaded(true);
       }
     }
-
     checkCourseStatus();
   }, []);
 
@@ -49,31 +48,39 @@ export default function ExamPage() {
       try {
         const res = await fetch("/api/exam/questions");
         if (!res.ok) throw new Error();
-
         const json = await res.json();
         setQuestions(json.questions || []);
       } catch {
-        setError("Unable to load exam questions");
+        setError("Unable to load exam questions.");
       } finally {
-        setLoading(false);
+        setLoadingQuestions(false);
       }
     }
-
     loadQuestions();
   }, []);
 
-  /* -------------------- ANSWER SELECTION -------------------- */
-  function selectAnswer(qid: number, option: string) {
+  /* -------------------- DERIVED -------------------- */
+  const isBooting =
+    courseComplete === null || loadingQuestions;
+
+  const total = questions.length;
+
+  const progressPercent =
+    started && total > 0
+      ? Math.round(((index + 1) / total) * 100)
+      : 0;
+
+  /* -------------------- ACTIONS -------------------- */
+  function selectAnswer(option: string) {
     setAnswers((prev) => ({
       ...prev,
-      [qid]: option,
+      [questions[index].id]: option,
     }));
   }
 
-  /* -------------------- SUBMIT EXAM -------------------- */
   async function submitExam() {
-    if (Object.keys(answers).length !== questions.length) {
-      setError("Please answer all questions before submitting.");
+    if (Object.keys(answers).length !== total) {
+      setError("Please answer all questions.");
       return;
     }
 
@@ -87,18 +94,14 @@ export default function ExamPage() {
         body: JSON.stringify({ answers }),
       });
 
-      const text = await res.text();
-      const result = text ? JSON.parse(text) : null;
+      const result = await res.json();
+      if (!res.ok) throw new Error(result?.error);
 
-      if (!res.ok) {
-        throw new Error(result?.error || "Exam submission failed");
-      }
-
-      if (result?.passed) {
-        router.replace("/my-permit");
-      } else {
-        router.replace(`/exam/failed?score=${result?.score ?? 0}`);
-      }
+      router.replace(
+        result.passed
+          ? "/my-permit"
+          : `/exam/failed?score=${result.score ?? 0}`
+      );
     } catch (err: any) {
       setError(err.message || "Submission failed");
     } finally {
@@ -106,155 +109,162 @@ export default function ExamPage() {
     }
   }
 
-  /* -------------------- LOADING -------------------- */
-  if (loading || !statusLoaded) {
-    return <div className="p-6 text-[#001f40]">Loading exam…</div>;
-  }
-
   /* -------------------- RENDER -------------------- */
   return (
-    <div className="relative max-w-4xl mx-auto p-6 space-y-8">
-
-      {/* -------- LOCK OVERLAY -------- */}
-      {!courseComplete && (
-        <div className="absolute inset-0 z-40 bg-white/70 backdrop-blur-sm flex items-center justify-center rounded-lg">
-          <div className="max-w-md text-center p-6 bg-white rounded-xl shadow border border-gray-200">
-            <h2 className="text-xl font-bold text-[#001f40] mb-3">
-              Course Not Completed
-            </h2>
-
-            <p className="text-gray-700 mb-5">
-              You must complete the entire Florida Permit Training course
-              before taking the final exam.
-            </p>
-
-            <button
-              onClick={() => router.push("/course")}
-              className="
-                w-full
-                px-4
-                py-3
-                rounded-lg
-                font-semibold
-                bg-[#001f40]
-                text-white
-                hover:bg-[#00356e]
-                transition
-              "
-            >
-              Return to Course
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* -------- PAGE CONTENT (BLURRED WHEN LOCKED) -------- */}
-      <div className={courseComplete ? "" : "pointer-events-none blur-sm"}>
-
-        <h1 className="text-2xl font-bold text-[#001f40] mb-2">
-          Final Exam
-        </h1>
-
-        <div className="space-y-3 text-[#001f40] leading-6 mb-6">
-          <p>
-            This exam consists of <span className="font-semibold text-[#ca5608]">40 multiple-choice questions</span>.
-            You must score  <span className="font-semibold text-[#ca5608]">80% or higher</span> to pass.
-          </p>
-
-          <p>
-            Passing the exam is required to complete the Florida Permit Training
-            course and become eligible for submission to the Florida DMV.
-          </p>
-
-          <p>
-            You may retake the exam as many times as needed until a passing
-            score is achieved.
-          </p>
-        </div>
-
-        {/* -------- QUESTIONS -------- */}
-        {questions.map((q, idx) => (
-          <div
-            key={q.id}
-            className="
-              w-full
-              p-5
-              border border-gray-300
-              rounded-lg
-              bg-white
-              shadow-sm
-              mb-6
-            "
-          >
-            <p className="font-medium mb-5 text-[#001f40] text-lg leading-7">
-              {idx + 1}. {q.question}
-            </p>
-
-            <div className="space-y-2">
-              {(["A", "B", "C"] as const).map((opt) => {
-                const label =
-                  opt === "A"
-                    ? q.option_a
-                    : opt === "B"
-                    ? q.option_b
-                    : q.option_c;
-
-                return (
-                  <label
-                    key={opt}
-                    className="
-                      flex items-start gap-3
-                      p-3
-                      border border-gray-200
-                      rounded-lg
-                      cursor-pointer
-                      text-[#001f40]
-                      hover:bg-orange-50
-                    "
-                  >
-                    <input
-                      type="radio"
-                      name={`q-${q.id}`}
-                      checked={answers[q.id] === opt}
-                      onChange={() => selectAnswer(q.id, opt)}
-                      className="accent-[#ca5608] w-4 h-4 mt-1"
-                    />
-
-                    <span className="leading-6">
-                      <strong>{opt}.</strong> {label}
-                    </span>
-                  </label>
-                );
-              })}
+    <ExamProgressContext.Provider value={progressPercent}>
+      <ExamShell>
+        {isBooting ? (
+          /* ===== BOOT / LOADING (NO FLASH) ===== */
+          <div className="h-full flex items-center justify-center bg-white">
+            {/* <SteeringWheelLoader /> */}
+            <div className="text-[#001f40] font-medium">
+              Loading exam…
             </div>
           </div>
-        ))}
+        ) : !courseComplete ? (
+          /* ===== COURSE NOT COMPLETE ===== */
+          <main className="h-full flex items-center justify-center bg-white">
+            <div className="max-w-md p-6 rounded-xl border shadow text-center">
+              <h2 className="text-xl font-bold text-[#001f40] mb-3">
+                Course Not Completed
+              </h2>
+              <p className="text-gray-700 mb-5">
+                You must complete the course before taking the final exam.
+              </p>
+              <button
+                onClick={() => router.push("/course")}
+                className="w-full h-12 bg-[#001f40] text-white rounded-lg font-semibold"
+              >
+                Return to Course
+              </button>
+            </div>
+          </main>
+        ) : (
+          /* ===== EXAM ===== */
+          <main className="h-full flex items-center justify-center px-6">
+            <div className="w-full max-w-3xl">
 
-        {error && (
-          <div className="text-red-600 font-medium">
-            {error}
-          </div>
+              {!started ? (
+                /* ===== INTRO ===== */
+                <div className="text-center space-y-6">
+                  <h1 className="text-3xl font-bold text-[#001f40]">
+                    Final Exam
+                  </h1>
+
+                  <div className="text-[#001f40] leading-7">
+                    <p>
+                      This exam consists of{" "}
+                      <strong>40 multiple-choice questions</strong>.
+                    </p>
+                    <p>
+                      You must score{" "}
+                      <strong>80% or higher</strong> to pass.
+                    </p>
+                    <p>
+                      You may retake the exam as many times as needed.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setStarted(true)}
+                    className="mt-6 w-full h-12 bg-[#ca5608] text-white rounded-lg font-semibold hover:bg-[#b24b06]"
+                  >
+                    Start Exam
+                  </button>
+                </div>
+              ) : (
+                /* ===== QUESTION VIEW ===== */
+                questions[index] && (
+                  <div className="space-y-8">
+                    <div className="text-sm text-[#001f40] text-center opacity-70">
+                      Question {index + 1} of {total}
+                    </div>
+
+                    <h2 className="text-xl font-semibold text-[#001f40] leading-7">
+                      {questions[index].question}
+                    </h2>
+
+                    <div className="space-y-3">
+                      {(["A", "B", "C"] as const).map((opt) => {
+                        const label =
+                          opt === "A"
+                            ? questions[index].option_a
+                            : opt === "B"
+                            ? questions[index].option_b
+                            : questions[index].option_c;
+
+                        const selected =
+                          answers[questions[index].id] === opt;
+
+                        return (
+                          <button
+                            key={opt}
+                            onClick={() => selectAnswer(opt)}
+                            className={`
+                              w-full text-left p-4 rounded-lg border transition
+                              text-[#001f40]
+                              ${
+                                selected
+                                  ? "border-[#ca5608] bg-orange-50"
+                                  : "border-gray-300 hover:bg-gray-50"
+                              }
+                            `}
+                          >
+                            <strong>{opt}.</strong> {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* ===== NAV ===== */}
+                    <div className="flex justify-between pt-4">
+                      <button
+                        disabled={index === 0}
+                        onClick={() => setIndex((i) => i - 1)}
+                        className="
+                          px-6 py-2 rounded-lg
+                          border border-[#001f40]
+                          text-[#001f40]
+                          bg-white
+                          font-semibold
+                          hover:bg-[#001f40]/5
+                          disabled:opacity-40
+                        "
+                      >
+                        Previous
+                      </button>
+
+                      {index < total - 1 ? (
+                        <button
+                          disabled={!answers[questions[index].id]}
+                          onClick={() => setIndex((i) => i + 1)}
+                          className="px-6 py-2 rounded-lg bg-[#001f40] text-white disabled:opacity-40"
+                        >
+                          Next
+                        </button>
+                      ) : (
+                        <button
+                          disabled={submitting}
+                          onClick={submitExam}
+                          className="px-6 py-2 rounded-lg bg-[#ca5608] text-white"
+                        >
+                          {submitting ? "Submitting…" : "Submit Exam"}
+                        </button>
+                      )}
+                    </div>
+
+                    {error && (
+                      <div className="text-red-600 font-medium text-center">
+                        {error}
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          </main>
         )}
-
-        <button
-          onClick={submitExam}
-          disabled={submitting}
-          className="
-            w-full
-            bg-[#ca5608]
-            text-white
-            px-6
-            py-3
-            rounded-lg
-            shadow-sm
-            font-semibold
-            cursor-pointer
-            disabled:opacity-50
-          "
-        >
-          {submitting ? "Submitting…" : "Submit Exam"}
-        </button>
-      </div>
-    </div>
+      </ExamShell>
+    </ExamProgressContext.Provider>
   );
 }

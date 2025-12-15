@@ -1,12 +1,12 @@
-// NO "use client"
-export const dynamic = "force-dynamic";
+import type { ReactNode } from "react";
+import AppShell from "./AppShell";
 
-import DashboardShell from "./DashboardShell";
+export const dynamic = "force-dynamic";
 
 export default function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return <AppShell>{children}</AppShell>;
 }

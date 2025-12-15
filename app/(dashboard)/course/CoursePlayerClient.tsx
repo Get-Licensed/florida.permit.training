@@ -2,7 +2,6 @@
 
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef } from "react";
 
@@ -167,9 +166,6 @@ const VOICES = [
 
 export default function CoursePlayerClient() {
   const didApplyProgress = useRef(false);
-  const searchParams = useSearchParams();
-  const initialModuleId = searchParams.get("module_id");
-
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
   // track highest DB-completed module
@@ -204,6 +200,11 @@ export default function CoursePlayerClient() {
   totalSeconds: number; }>({ totalSeconds: 0 });
 
   const [moduleTotals, setModuleTotals] = useState<Record<string, number>>({});
+  const COURSE_ID = "FL_PERMIT_TRAINING";
+  const TOTAL_REQUIRED_SECONDS = 6 * 60 * 60; // 21600
+  
+  const voiceLabel =
+    VOICES.find(v => v.code === voice)?.label ?? "Unknown";
 
 
 // -------------------------------------------------------------
@@ -668,11 +669,8 @@ function applyProgress(
     highestSeenModule
   );
 
-  const initialIdx = modules.findIndex(m => m.id === initialModuleId);
-  const resolvedModuleIndex =
-    initialIdx >= 0 ? initialIdx : targetModuleIndex;
+  setCurrentModuleIndex(Math.max(targetModuleIndex, 0));
 
-  setCurrentModuleIndex(Math.max(resolvedModuleIndex, 0));
 
   // ----------------------------------
   // SLIDE POSITION WITHIN MODULE
@@ -1701,41 +1699,56 @@ if (!urls.length) {
       </div>
 
       {/* VOICE SELECT — PILL */}
-      <div className="relative">
-        <select
-          value={voice}
-          onChange={(e) => setVoice(e.target.value)}
-          className="
-            h-10 px-4
-            rounded-full
-            bg-[#001f40]
-            text-white
-            text-xs
-            outline-none
-            border border-[#001f40]
-            hover:bg-[#002a5f]
-            cursor-pointer
-          "
-        >
-          <option value="" disabled>
-            Select Voice…
-          </option>
+<div className="relative">
+  <select
+  value={voice}
+  onChange={(e) => setVoice(e.target.value)}
+  className="
+    h-10 pl-8 pr-10
+    rounded-full
+    bg-[#001f40]
+    text-xs
+    outline-none
+    border border-[#001f40]
+    hover:bg-[#002a5f]
+    cursor-pointer
+    appearance-none
 
-          {VOICES.map((v) => (
-            <option
-              key={v.code}
-              value={v.code}
-              className="bg-[#001f40] text-white"
-            >
-              {v.label}
-            </option>
-          ))}
-        </select>
+    text-transparent
+    [text-shadow:0_0_0_transparent]
+    [-webkit-text-fill-color:transparent]
+  "
+>
+
+    {VOICES.map((v) => (
+     <option
+  key={v.code}
+  value={v.code}
+  className="text-white bg-[#001f40]"
+>
+  {v.label}
+</option>
+
+    ))}
+  </select>
+
+  {/* visible label */}
+  <div className="pointer-events-none absolute inset-0 flex items-center pl-4 text-white text-xs font-medium">
+    | CC | {voiceLabel}
+  </div>
+
+  {/* caret */}
+  <svg
+    className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 fill-white opacity-80"
+    viewBox="0 0 24 24"
+  >
+    <path d="M7 10l5 5 5-5z" />
+  </svg>
+</div>
       </div>
 
     </div>
   </div>
-</div>
 </div>
   );
 }
@@ -1768,50 +1781,51 @@ function formatTime(seconds: number) {
 
 function SlideView({ currentImage }: { currentImage: string | null }) {
   const [loaded, setLoaded] = useState(false);
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
 
   useEffect(() => {
     setLoaded(false);
+    setResolvedSrc(null);
+
     if (!currentImage) return;
 
     const img = new Image();
-    img.onload = () => setLoaded(true);
+    img.onload = () => {
+      setResolvedSrc(currentImage);
+      setLoaded(true);
+    };
     img.src = currentImage;
   }, [currentImage]);
 
   return (
     <div className="absolute inset-0 flex items-center justify-center z-10 bg-white">
-
-      {/* RADIAL GRADIENT SKELETON */}
+      {/* SKELETON / PLACEHOLDER */}
       <div
         className={`
           absolute inset-0
-          animate-pulse
-          transition-opacity duration-500
+          transition-opacity duration-300
           ${loaded ? "opacity-0" : "opacity-100"}
         `}
         style={{
-          background: "linear-gradient(to bottom, #909090ff 0%, #ffffffff 45%, #ffffff 100%)",
+          background:
+            "linear-gradient(to bottom, #909090ff 0%, #ffffffff 45%, #ffffff 100%)",
         }}
       />
 
-      {/* FADE-IN IMAGE */}
-      {currentImage && (
+      {/* IMAGE — rendered ONLY after load */}
+      {resolvedSrc && (
         <img
-          src={currentImage}
+          src={resolvedSrc}
           draggable={false}
           decoding="async"
-          loading="eager"
-          className={`
+          className="
             absolute inset-0
-            w-full h-full object-cover object-center
+            w-full h-full
+            object-cover object-center
             transition-opacity duration-500
-            ${loaded ? "opacity-100" : "opacity-0"}
-          `}
+            opacity-100
+          "
         />
-      )}
-
-      {!currentImage && (
-        <div className="text-gray-400 italic"></div>
       )}
     </div>
   );
@@ -1896,10 +1910,10 @@ function TimelineWithPromo(props: any) {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white z-40 py-6 border-t shadow-inner">
+    <div className="fixed bottom-0 left-0 right-0 bg-white z-40 border-t shadow-inner min-h-[6rem]">
       <div className="w-full px-4 md:px-0">
         <div className="md:max-w-6xl md:mx-auto p-4">
-          <div className="relative w-full h-6 flex items-center -translate-y-[20px]">
+          <div className="relative w-full h-6 py-7 flex items-center -translate-y-[20px]">
 
             {/* dark rail */}
             <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full" />

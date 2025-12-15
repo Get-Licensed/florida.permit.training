@@ -188,7 +188,7 @@ useEffect(() => {
     <main className="flex flex-col bg-white relative overflow-hidden" style={{ height: "calc(100vh - 2px)", marginTop: "2px" }}>
       
       {/* ===== FIXED PROGRESS BAR ===== */}
-      <div className="fixed top-0 left-0 right-0 z-[70] bg-gray-200 h-[3px] pointer-events-none">
+      <div className="fixed top-0 left-0 right-0 z-[70] bg-gray-200 h-[8px] pointer-events-none">
         <TopProgressBar percent={progress} />
       </div>
 

@@ -1,3 +1,4 @@
+// app\(dashboard)\_HeaderClient.tsx
 // deno-lint-ignore-file no-sloppy-imports
 "use client";
 
@@ -562,6 +563,7 @@ async function cropToSquare(file: File): Promise<Blob> {
   </div>
 </div>
         </header>
+<div className="h-px bg-gray-200 shadow-sm w-full" />
 
 {/* AVATAR UPLOAD MODAL */}
 {avatarModalOpen && (
