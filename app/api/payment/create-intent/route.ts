@@ -38,9 +38,13 @@ export async function POST(req: NextRequest) {
     const intent = await stripe.paymentIntents.create({
       amount: amount_cents,
       currency: "usd",
-      automatic_payment_methods: { enabled: true },
-      metadata: { user_id, course_id },
+      payment_method_types: ["card"], // ← REQUIRED
+      metadata: {
+        user_id,
+        course_id,
+      },
     });
+
 
     await supabase.from("payments").insert({
       user_id,
