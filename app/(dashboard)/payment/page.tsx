@@ -71,6 +71,7 @@ export default function PaymentPage() {
       try {
         const res = await fetch("/api/payment/create-intent", {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
           },
