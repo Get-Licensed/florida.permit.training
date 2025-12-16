@@ -3,16 +3,12 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next({
-    request: {
-      headers: req.headers,
-    },
-  });
-
-  // ✅ Skip Stripe webhooks entirely
+  // 🚫 Skip Stripe webhooks entirely (raw body required)
   if (req.nextUrl.pathname.startsWith("/api/webhooks")) {
-    return res;
+    return NextResponse.next();
   }
+
+  const res = NextResponse.next();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,27 +22,35 @@ export async function middleware(req: NextRequest) {
           res.cookies.set({ name, value, ...options });
         },
         remove(name: string, options: CookieOptions) {
-          res.cookies.set({ name, value: "", ...options, maxAge: 0 });
+          res.cookies.set({
+            name,
+            value: "",
+            ...options,
+            maxAge: 0,
+          });
         },
       },
     }
   );
 
-  // 🔑 REQUIRED — sync auth session
+  // 🔑 REQUIRED — sync auth session into cookies
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 🔒 PROTECT COURSE ROUTES
-  if (req.nextUrl.pathname.startsWith("/course")) {
-    if (!user) {
-      return NextResponse.redirect(new URL("/", req.url));
-    }
-
-    if (!user.user_metadata?.session_2fa_verified) {
-      return NextResponse.redirect(new URL("/", req.url));
-    }
+// 🔒 Protect course routes
+if (
+  req.nextUrl.pathname.startsWith("/course") ||
+  req.nextUrl.pathname.startsWith("/payment")
+) {
+  if (!user) {
+    return NextResponse.redirect(new URL("/", req.url));
   }
+
+  if (!user.user_metadata?.session_2fa_verified) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
+}
 
   return res;
 }

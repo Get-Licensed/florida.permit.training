@@ -10,39 +10,31 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export async function POST() {
   try {
-    console.log("CREATE INTENT START");
-
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error("Missing STRIPE_SECRET_KEY");
-    }
-
     const supabase = await createSupabaseServerClient();
 
     /* ───────── AUTH ───────── */
     const {
       data: { user },
-      error: authError,
+      error,
     } = await supabase.auth.getUser();
 
-    console.log("AUTH USER:", user?.id, authError);
-
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401 }
-      );
+    if (error || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+      });
     }
 
-    const courseId = "FL_PERMIT_TRAINING";
-    const amountCents = 5995;
+    const course_id = "FL_PERMIT_TRAINING";
+    const amount_cents = 5995;
 
     /* ───────── BLOCK IF ALREADY PAID ───────── */
     const { data: paid } = await supabase
       .from("payments")
       .select("id")
       .eq("user_id", user.id)
-      .eq("course_id", courseId)
+      .eq("course_id", course_id)
       .eq("status", "succeeded")
+      .limit(1)
       .maybeSingle();
 
     if (paid) {
@@ -52,42 +44,67 @@ export async function POST() {
       );
     }
 
-    /* ───────── CREATE PAYMENT INTENT (ONCE) ───────── */
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountCents,
+    /* ───────── CHECK FOR VALID OPEN PAYMENT ───────── */
+    const { data: existing } = await supabase
+      .from("payments")
+      .select("stripe_payment_intent_id, client_secret")
+      .eq("user_id", user.id)
+      .eq("course_id", course_id)
+      .in("status", ["requires_payment", "requires_confirmation"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      // Verify with Stripe that it is still usable
+      const intent = await stripe.paymentIntents.retrieve(
+        existing.stripe_payment_intent_id
+      );
+
+      if (
+        intent.status === "requires_payment_method" ||
+        intent.status === "requires_confirmation"
+      ) {
+        return new Response(
+          JSON.stringify({ clientSecret: intent.client_secret }),
+          { status: 200 }
+        );
+      }
+
+      // Otherwise mark it abandoned
+      await supabase
+        .from("payments")
+        .update({ status: "abandoned" })
+        .eq("stripe_payment_intent_id", intent.id);
+    }
+
+    /* ───────── CREATE NEW INTENT ───────── */
+    const intent = await stripe.paymentIntents.create({
+      amount: amount_cents,
       currency: "usd",
       automatic_payment_methods: { enabled: true },
       metadata: {
         user_id: user.id,
-        course_id: courseId,
+        course_id,
       },
     });
 
-    /* ───────── STORE PAYMENT ───────── */
-    const { error: insertError } = await supabase
-      .from("payments")
-      .insert({
-        user_id: user.id,
-        course_id: courseId,
-        stripe_payment_intent_id: paymentIntent.id,
-        amount_cents: amountCents,
-        status: "requires_payment",
-        client_secret: paymentIntent.client_secret!,
-      });
+    /* ───────── INSERT (DB ENFORCES UNIQUENESS) ───────── */
+    const { error: insertError } = await supabase.from("payments").insert({
+      user_id: user.id,
+      course_id,
+      stripe_payment_intent_id: intent.id,
+      amount_cents,
+      status: "requires_payment",
+      client_secret: intent.client_secret!,
+    });
 
-    if (insertError) {
-      console.error("PAYMENT INSERT ERROR:", insertError);
-      return new Response(
-        JSON.stringify({ error: "Failed to store payment" }),
-        { status: 500 }
-      );
-    }
+    if (insertError) throw insertError;
 
     return new Response(
-      JSON.stringify({ clientSecret: paymentIntent.client_secret }),
+      JSON.stringify({ clientSecret: intent.client_secret }),
       { status: 200 }
     );
-
   } catch (err) {
     console.error("CREATE INTENT ERROR:", err);
     return new Response(

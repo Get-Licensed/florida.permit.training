@@ -5,7 +5,6 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import { useSearchParams, useRouter } from "next/navigation";
 import StripeCheckoutForm from "@/components/StripeCheckoutForm";
-import PaymentFAQs from "@/components/PaymentFAQs";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string
@@ -27,9 +26,8 @@ function Wrapper({ children }: { children: ReactNode }) {
 
 export default function PaymentPage() {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [backendError, setBackendError] = useState<PaymentError | null>(null);
   const [loading, setLoading] = useState(true);
-  const [backendError, setBackendError] = useState<string | null>(null);
-
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -41,36 +39,73 @@ export default function PaymentPage() {
   }, [searchParams, router]);
 
   /* ───────── INIT PAYMENT INTENT ───────── */
-  useEffect(() => {
-    async function init() {
-      try {
-        const res = await fetch("/api/payment/create-intent", {
-          method: "POST",
-        });
+type PaymentError = {
+  code: string;
+  message: string;
+  detail?: string;
+  payment_intent_id?: string;
+};
 
-        const json: { clientSecret?: string; error?: string } =
-          await res.json();
+useEffect(() => {
+  let cancelled = false;
 
-        if (json.error) {
-          if (json.error === "Course already paid") {
-            router.replace("/complete");
-            return;
-          }
-          setBackendError(json.error);
-        } else if (json.clientSecret) {
-          setClientSecret(json.clientSecret);
-        } else {
-          setBackendError("Payment unavailable.");
+  async function init() {
+    try {
+      const res = await fetch("/api/payment/create-intent", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        const err = json as PaymentError;
+
+        if (err.code === "ALREADY_PAID") {
+          router.replace("/complete");
+          return;
         }
-      } catch {
-        setBackendError("Unable to initialize payment.");
-      } finally {
+
+        if (!cancelled) {
+          setBackendError(err);
+        }
+        return;
+      }
+
+      if (!json.clientSecret) {
+        if (!cancelled) {
+          setBackendError({
+            code: "NO_CLIENT_SECRET",
+            message: "Your Payment is Pending.",
+          });
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setClientSecret(json.clientSecret);
+      }
+    } catch (e) {
+      if (!cancelled) {
+        setBackendError({
+          code: "NETWORK_ERROR",
+          message: "Unable to initialize payment.",
+          detail: String(e),
+        });
+      }
+    } finally {
+      if (!cancelled) {
         setLoading(false);
       }
     }
+  }
 
-    init();
-  }, [router]);
+  init();
+
+  return () => {
+    cancelled = true;
+  };
+}, [router]);
 
   /* ───────── LOADING ───────── */
   if (loading) {
@@ -81,15 +116,38 @@ export default function PaymentPage() {
     );
   }
 
-  /* ───────── ERROR ───────── */
-  if (!clientSecret || backendError) {
-    return (
-      <Wrapper>
-        <h2 className="text-2xl font-semibold">You have already paid...</h2>
-        <p className="mt-2">{backendError}</p>
-      </Wrapper>
-    );
-  }
+/* ───────── ERROR ───────── */
+if (!clientSecret || backendError) {
+  return (
+    <Wrapper>
+      <h2 className="text-2xl font-semibold">
+        {backendError?.code === "ALREADY_PAID"
+          ? "Payment already completed"
+          : backendError?.code === "PAYMENT_EXISTS"
+          ? "Payment in progress"
+          : "Payment unavailable"}
+      </h2>
+
+      <div className="mt-3 text-sm text-gray-600 space-y-2">
+        {backendError?.message && (
+          <p>{backendError.message}</p>
+        )}
+
+        {backendError?.detail && (
+          <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto">
+            {backendError.detail}
+          </pre>
+        )}
+      </div>
+
+      {backendError?.payment_intent_id && (
+        <p className="mt-4 text-xs text-gray-500">
+          Payment Intent: <code>{backendError.payment_intent_id}</code>
+        </p>
+      )}
+    </Wrapper>
+  );
+}
 
   /* ───────── PAYMENT UI ───────── */
   return (

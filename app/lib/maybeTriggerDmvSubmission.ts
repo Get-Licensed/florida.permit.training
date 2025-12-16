@@ -28,13 +28,13 @@ export async function maybeTriggerDmvSubmission(userId: string) {
   const now = new Date().toISOString();
 
   await client
-    .from("course_status")
-    .update({
-      status: "dmv_submitted",
-      dmv_submitted_at: now,
-    })
-    .eq("user_id", userId)
-    .eq("course_id", "FL_PERMIT_TRAINING");
+  .from("course_status")
+  .update({
+    dmv_submitted_at: now,
+  })
+  .eq("user_id", userId)
+  .eq("course_id", "FL_PERMIT_TRAINING");
+
 
   // insert log for your records
   await client.from("dmv_submissions").insert({

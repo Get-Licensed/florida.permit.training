@@ -1965,7 +1965,7 @@ function TimelineWithPromo(props: any) {
               <div className="relative w-full h-6 flex items-center">
 
                {modules.map((m: ModuleRow, i: number) => {
-                    const isCompleted = i < currentModuleIndex;
+                    const isCompleted = i <= maxCompletedIndex;
                     const isActive = i === currentModuleIndex;
                     const isUnlocked = i <= maxCompletedIndex + 1 || examPassed;
 
@@ -1973,11 +1973,11 @@ function TimelineWithPromo(props: any) {
                       ? "cursor-pointer"
                       : "cursor-not-allowed";
 
-                    let bg;
-                    if (isCompleted) bg = "#ca5608";
-                    else if (isActive) bg = "#ca5608";
-                    else bg = "#001f40";
+                    // COLOR — completion is permanent
+                    let bg = isCompleted ? "#ca5608" : "#001f40";
 
+                    // ACTIVE always wins visually
+                    if (isActive) bg = "#ca5608";
                     return (
                       <div
                         key={m.id}

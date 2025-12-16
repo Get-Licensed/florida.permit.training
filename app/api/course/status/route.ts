@@ -40,12 +40,19 @@ export async function GET() {
   }
 
   /* -------------------- DERIVE STATUS (SOURCE OF TRUTH) -------------------- */
-  let status = "in_progress";
+let status = "in_progress";
 
-  if (cs.completed_at) status = "course_completed";
-  if (cs.exam_passed) status = "completed_unpaid";
-  if (cs.exam_passed && cs.paid_at) status = "completed_paid";
-  if (cs.dmv_submitted_at) status = "dmv_submitted";
+if (!cs.completed_at) {
+  status = "in_progress";
+} else if (cs.completed_at && !cs.exam_passed) {
+  status = "course_completed_exam_pending";
+} else if (cs.completed_at && cs.exam_passed && !cs.paid_at) {
+  status = "completed_unpaid";
+} else if (cs.completed_at && cs.exam_passed && cs.paid_at && !cs.dmv_submitted_at) {
+  status = "completed_paid";
+} else if (cs.dmv_submitted_at) {
+  status = "dmv_submitted";
+}
 
   /* -------------------- RESPONSE -------------------- */
   return Response.json(

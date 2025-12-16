@@ -138,10 +138,10 @@ if (!questions || questions.length === 0) {
         score,
         correct,
         total,
-        status: finalStatus,
       },
       { status: 200 }
     );
+
   } catch (err) {
     console.error("EXAM SUBMIT ERROR:", err);
 

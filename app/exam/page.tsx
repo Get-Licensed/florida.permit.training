@@ -74,10 +74,34 @@ export default function ExamPage() {
 
   const total = questions.length;
 
-  const progressPercent =
-    started && total > 0
-      ? Math.round(((index + 1) / total) * 100)
-      : 0;
+const answeredCount = Object.keys(answers).length;
+
+const progressPercent =
+  started && total > 0
+    ? Math.round((answeredCount / total) * 100)
+    : 0;
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Enter") return;
+
+      // prevent accidental form submits / button clicks
+      e.preventDefault();
+
+      handleEnterAction();
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    started,
+    submitting,
+    index,
+    total,
+    answers,
+    questions,
+  ]);
+
 
   /* -------------------- ACTIONS -------------------- */
   function selectAnswer(option: string) {
@@ -117,6 +141,29 @@ export default function ExamPage() {
       setSubmitting(false);
     }
   }
+
+  function handleEnterAction() {
+  if (!started) return;
+  if (!courseComplete) return;
+  if (submitting) return;
+
+  const currentQuestion = questions[index];
+  if (!currentQuestion) return;
+
+  const hasAnswer = Boolean(answers[currentQuestion.id]);
+
+  // LAST QUESTION → SUBMIT
+  if (index === total - 1) {
+    if (hasAnswer) submitExam();
+    return;
+  }
+
+  // NORMAL QUESTION → NEXT
+  if (hasAnswer) {
+    setIndex((i) => i + 1);
+  }
+}
+
 
   /* -------------------- RENDER -------------------- */
   return (

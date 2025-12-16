@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import { requireAuth } from "@/utils/requireAuth";
+import { usePermitStatus } from "@/utils/usePermitStatus";
 import PermitStatusFooter from "@/app/(dashboard)/PermitStatusFooter";
 
 /* -------------------- Loader -------------------- */
@@ -22,17 +22,9 @@ function Loader() {
 export default function MyPermitPage() {
   const router = useRouter();
 
-  /* -------------------- STATE -------------------- */
+  /* -------------------- AUTH -------------------- */
   const [authChecked, setAuthChecked] = useState(false);
-  const [statusReady, setStatusReady] = useState(false);
 
-  const [courseComplete, setCourseComplete] = useState(false);
-  const [examPassed, setExamPassed] = useState(false);
-  const [paid, setPaid] = useState(false);
-
-  const fullyComplete = courseComplete && examPassed && paid;
-
-  /* -------------------- AUTH CHECK -------------------- */
   useEffect(() => {
     async function run() {
       const user = await requireAuth(router);
@@ -41,50 +33,17 @@ export default function MyPermitPage() {
     run();
   }, [router]);
 
-  /* -------------------- LOAD ALL STATUSES -------------------- */
-  useEffect(() => {
-    if (!authChecked) return;
-
-    async function loadStatuses() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const [courseRes, examRes, paymentRes] = await Promise.all([
-        supabase
-          .from("course_status")
-          .select("completed_at")
-          .eq("user_id", user.id)
-          .eq("course_id", "FL_PERMIT_TRAINING")
-          .single(),
-
-        supabase
-          .from("course_status")
-          .select("exam_passed")
-          .eq("user_id", user.id)
-          .eq("course_id", "FL_PERMIT_TRAINING")
-          .single(),
-
-        supabase
-          .from("payments")
-          .select("status")
-          .eq("user_id", user.id)
-          .single(),
-      ]);
-
-      setCourseComplete(!!courseRes.data?.completed_at);
-      setExamPassed(!!examRes.data?.exam_passed);
-      setPaid(paymentRes.data?.status === "paid");
-
-      setStatusReady(true);
-    }
-
-    loadStatuses();
-  }, [authChecked]);
+  /* -------------------- STATUS (SINGLE SOURCE OF TRUTH) -------------------- */
+  const {
+    loading: statusLoading,
+    courseComplete,
+    examPassed,
+    paid,
+    fullyComplete,
+  } = usePermitStatus();
 
   /* -------------------- HARD GATE -------------------- */
-  if (!authChecked || !statusReady) {
+  if (!authChecked || statusLoading) {
     return <Loader />;
   }
 
@@ -128,8 +87,20 @@ export default function MyPermitPage() {
                 You’ve completed the required Florida Permit Training course.
               </p>
             </div>
-            <div className="mt-6 p-3 bg-green-100 text-green-800 rounded-lg font-semibold text-center">
-              ✅ Course Complete
+
+            <div className="mt-6">
+              {courseComplete ? (
+                <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
+                  ✅ Course Complete
+                </div>
+              ) : (
+                <button
+                  onClick={() => router.push("/course")}
+                  className="w-full h-12 bg-[#001f40] text-white rounded-lg font-semibold hover:bg-[#00356e]"
+                >
+                  Continue Course
+                </button>
+              )}
             </div>
           </div>
 
@@ -179,12 +150,12 @@ export default function MyPermitPage() {
 
             <div className="mt-6">
               {!paid ? (
-                <a
-                  href="/payment"
-                  className="w-full h-12 flex items-center justify-center bg-[#ca5608] text-white rounded-lg font-semibold hover:bg-[#b24b06]"
+                <button
+                  onClick={() => router.push("/payment")}
+                  className="w-full h-12 bg-[#ca5608] text-white rounded-lg font-semibold hover:bg-[#b24b06]"
                 >
                   Complete Payment
-                </a>
+                </button>
               ) : (
                 <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
                   ✅ Payment Complete
@@ -195,7 +166,11 @@ export default function MyPermitPage() {
         </div>
       </main>
 
-      <PermitStatusFooter />
+      <PermitStatusFooter
+        courseComplete={courseComplete}
+        examPassed={examPassed}
+        paid={paid}
+      />
     </>
   );
 }
