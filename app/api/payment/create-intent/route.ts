@@ -14,8 +14,16 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-11-17.clover",
 });
 
-export async function POST() {
-  try {
+export async function POST(req: Request) {
+    try {
+    const cookieHeader = req.headers.get("cookie");
+    const hasAuthCookie = cookieHeader?.includes("sb-") ?? false;
+
+    console.log("AUTH CHECK", {
+      hasAuthCookie,
+      cookieLength: cookieHeader?.length ?? 0,
+    });
+
     /* ───────── AUTH (SERVER SAFE) ───────── */
     const supabase = await createSupabaseServerClient();
 
@@ -23,6 +31,12 @@ export async function POST() {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser();
+
+        console.log("AUTH USER", {
+      userId: user?.id ?? null,
+      authError: authError?.message ?? null,
+    });
+
 
     if (authError || !user) {
       return Response.json(
