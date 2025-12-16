@@ -2,10 +2,9 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import process from "node:process";
-import type { ReadonlyRequestCookies } from "next/dist/server/web/spec-extension/adapters/request-cookies";
 
-export function createSupabaseServerClient() {
-  const cookieStore = cookies() as unknown as ReadonlyRequestCookies;
+export async function createSupabaseServerClient() {
+  const cookieStore = await cookies(); // <-- REQUIRED for Deno
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,6 +13,20 @@ export function createSupabaseServerClient() {
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options = {}) {
+          try {
+            cookieStore.set(name, value, options);
+          } catch {
+            // ignored (server components)
+          }
+        },
+        remove(name: string, options = {}) {
+          try {
+            cookieStore.set(name, "", { ...options, maxAge: 0 });
+          } catch {
+            // ignored
+          }
         },
       },
     }

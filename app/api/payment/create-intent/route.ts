@@ -1,12 +1,15 @@
+// app/api/payment/create-intent/route.ts
+
 import Stripe from "stripe";
 import process from "node:process";
+import { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
 /* ───────── DEBUG BOOT ───────── */
 console.log("CREATE INTENT HIT", {
   stripeKey: !!process.env.STRIPE_SECRET_KEY,
   supabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-  serviceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+  anonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
 });
 
 /* ───────── STRIPE ───────── */
@@ -14,13 +17,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-11-17.clover",
 });
 
-export async function POST(req: Request) {
-    try {
-    const cookieHeader = req.headers.get("cookie");
-    const hasAuthCookie = cookieHeader?.includes("sb-") ?? false;
+export async function POST(request: NextRequest) {
+  try {
+    /* ───────── COOKIE DIAGNOSTICS ───────── */
+    const cookieHeader = request.headers.get("cookie");
 
     console.log("AUTH CHECK", {
-      hasAuthCookie,
+      hasAuthCookie: cookieHeader?.includes("sb-") ?? false,
       cookieLength: cookieHeader?.length ?? 0,
     });
 
@@ -32,11 +35,10 @@ export async function POST(req: Request) {
       error: authError,
     } = await supabase.auth.getUser();
 
-        console.log("AUTH USER", {
+    console.log("AUTH USER", {
       userId: user?.id ?? null,
       authError: authError?.message ?? null,
     });
-
 
     if (authError || !user) {
       return Response.json(
