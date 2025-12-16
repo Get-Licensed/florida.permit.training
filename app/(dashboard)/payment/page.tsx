@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
-import { useSearchParams, useRouter } from "next/navigation";
+import { supabase } from "@/utils/supabaseClient";
 import StripeCheckoutForm from "@/components/StripeCheckoutForm";
 
+/* ───────── STRIPE ───────── */
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string
 );
@@ -14,6 +16,14 @@ console.log(
   "Stripe key present:",
   !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 );
+
+/* ───────── TYPES ───────── */
+type PaymentError = {
+  code?: string;
+  message: string;
+  detail?: string;
+  payment_intent_id?: string;
+};
 
 /* ───────── LAYOUT WRAPPER ───────── */
 function Wrapper({ children }: { children: ReactNode }) {
@@ -25,11 +35,13 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 export default function PaymentPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [userId, setUserId] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [backendError, setBackendError] = useState<PaymentError | null>(null);
   const [loading, setLoading] = useState(true);
-  const searchParams = useSearchParams();
-  const router = useRouter();
 
   /* ───────── HANDLE STRIPE REDIRECT ───────── */
   useEffect(() => {
@@ -38,74 +50,83 @@ export default function PaymentPage() {
     }
   }, [searchParams, router]);
 
+  /* ───────── LOAD USER ───────── */
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) {
+        router.replace("/login");
+        return;
+      }
+      setUserId(data.user.id);
+    });
+  }, [router]);
+
   /* ───────── INIT PAYMENT INTENT ───────── */
-type PaymentError = {
-  code: string;
-  message: string;
-  detail?: string;
-  payment_intent_id?: string;
-};
+  useEffect(() => {
+    if (!userId) return;
 
-useEffect(() => {
-  let cancelled = false;
+    let cancelled = false;
 
-  async function init() {
-    try {
-      const res = await fetch("/api/payment/create-intent", {
-        method: "POST",
-        credentials: "include",
-      });
+    async function init() {
+      try {
+        const res = await fetch("/api/payment/create-intent", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ user_id: userId }),
+        });
 
-      const json = await res.json();
+        const json = await res.json();
 
-      if (!res.ok) {
-        const err = json as PaymentError;
+        if (!res.ok) {
+          if (json.error === "course_already_paid") {
+            router.replace("/complete");
+            return;
+          }
 
-        if (err.code === "ALREADY_PAID") {
-          router.replace("/complete");
+          if (!cancelled) {
+            setBackendError({
+              message: json.error || "Payment unavailable",
+            });
+          }
+          return;
+        }
+
+        if (!json.clientSecret) {
+          if (!cancelled) {
+            setBackendError({
+              code: "NO_CLIENT_SECRET",
+              message: "Payment is pending. Please refresh in a moment.",
+            });
+          }
           return;
         }
 
         if (!cancelled) {
-          setBackendError(err);
+          setClientSecret(json.clientSecret);
         }
-        return;
-      }
-
-      if (!json.clientSecret) {
+      } catch (err) {
         if (!cancelled) {
           setBackendError({
-            code: "NO_CLIENT_SECRET",
-            message: "Your Payment is Pending.",
+            code: "NETWORK_ERROR",
+            message: "Unable to initialize payment.",
+            detail: String(err),
           });
         }
-        return;
-      }
-
-      if (!cancelled) {
-        setClientSecret(json.clientSecret);
-      }
-    } catch (e) {
-      if (!cancelled) {
-        setBackendError({
-          code: "NETWORK_ERROR",
-          message: "Unable to initialize payment.",
-          detail: String(e),
-        });
-      }
-    } finally {
-      if (!cancelled) {
-        setLoading(false);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
-  }
 
-  init();
+    init();
 
-  return () => {
-    cancelled = true;
-  };
-}, [router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, router]);
 
   /* ───────── LOADING ───────── */
   if (loading) {
@@ -116,59 +137,52 @@ useEffect(() => {
     );
   }
 
-/* ───────── ERROR ───────── */
-if (!clientSecret || backendError) {
-  return (
-    <Wrapper>
-      <h2 className="text-2xl font-semibold">
-        {backendError?.code === "ALREADY_PAID"
-          ? "Payment already completed"
-          : backendError?.code === "PAYMENT_EXISTS"
-          ? "Payment in progress"
-          : "Payment unavailable"}
-      </h2>
+  /* ───────── ERROR ───────── */
+  if (!clientSecret || backendError) {
+    return (
+      <Wrapper>
+        <h2 className="text-2xl font-semibold">
+          {backendError?.code === "ALREADY_PAID"
+            ? "Payment already completed"
+            : backendError?.code === "NO_CLIENT_SECRET"
+            ? "Payment in progress"
+            : "Payment unavailable"}
+        </h2>
 
-      <div className="mt-3 text-sm text-gray-600 space-y-2">
-        {backendError?.message && (
-          <p>{backendError.message}</p>
+        <div className="mt-3 text-sm text-gray-600 space-y-2">
+          {backendError?.message && <p>{backendError.message}</p>}
+
+          {backendError?.detail && (
+            <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto">
+              {backendError.detail}
+            </pre>
+          )}
+        </div>
+
+        {backendError?.payment_intent_id && (
+          <p className="mt-4 text-xs text-gray-500">
+            Payment Intent:{" "}
+            <code>{backendError.payment_intent_id}</code>
+          </p>
         )}
-
-        {backendError?.detail && (
-          <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto">
-            {backendError.detail}
-          </pre>
-        )}
-      </div>
-
-      {backendError?.payment_intent_id && (
-        <p className="mt-4 text-xs text-gray-500">
-          Payment Intent: <code>{backendError.payment_intent_id}</code>
-        </p>
-      )}
-    </Wrapper>
-  );
-}
+      </Wrapper>
+    );
+  }
 
   /* ───────── PAYMENT UI ───────── */
   return (
-    <>
-      <Elements stripe={stripePromise} options={{ clientSecret }}>
-        <Wrapper>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-            {/* LEFT COLUMN */}
-            <div>
-              <h1 className="text-2xl font-bold mb-4">
+    <Elements stripe={stripePromise} options={{ clientSecret }}>
+      <Wrapper>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+          {/* LEFT COLUMN */}
+          <div>
+            <h1 className="text-2xl font-bold mb-4">
               Florida Permit Training — Payment
             </h1>
 
-              <h2 className="text-[2em] text-[#ca5608] font-bold">
-              $59.95
-            </h2>
+            <h2 className="text-[2em] text-[#ca5608] font-bold">$59.95</h2>
 
-            <p className="text-sm italic mb-3">
-              One-time fee
-            </p>
-
+            <p className="text-sm italic mb-3">One-time fee</p>
 
             <p className="mb-3">
               You are nearing completion of the Florida Permit Training
@@ -184,16 +198,14 @@ if (!clientSecret || backendError) {
               This one-time administrative payment allows us to securely process
               and submit your completion record on your behalf.
             </p>
-
-            </div>
-
-            {/* RIGHT COLUMN */}
-            <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-6">
-              <StripeCheckoutForm />
-            </div>
           </div>
-        </Wrapper>
-      </Elements>
-    </>
+
+          {/* RIGHT COLUMN */}
+          <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-6">
+            <StripeCheckoutForm />
+          </div>
+        </div>
+      </Wrapper>
+    </Elements>
   );
 }
