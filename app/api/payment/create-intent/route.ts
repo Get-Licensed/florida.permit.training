@@ -1,4 +1,9 @@
 // app/api/payment/create-intent/route.ts
+console.log("CREATE INTENT HIT", {
+  stripeKey: !!process.env.STRIPE_SECRET_KEY,
+  supabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+  serviceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+})
 
 import Stripe from "stripe";
 import process from "node:process";
