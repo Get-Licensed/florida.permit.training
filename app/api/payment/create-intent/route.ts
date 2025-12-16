@@ -1,8 +1,6 @@
-// app/api/payment/create-intent/route.ts
-
 import Stripe from "stripe";
 import process from "node:process";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
 /* ───────── DEBUG BOOT ───────── */
 console.log("CREATE INTENT HIT", {
@@ -11,39 +9,31 @@ console.log("CREATE INTENT HIT", {
   serviceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
+/* ───────── STRIPE ───────── */
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-11-17.clover",
 });
 
-export async function POST(req: Request) {
+export async function POST() {
   try {
-    /* ───────── PARSE BODY ───────── */
-    let body: { user_id?: string };
-    try {
-      body = await req.json();
-    } catch {
+    /* ───────── AUTH (SERVER SAFE) ───────── */
+    const supabase = await createSupabaseServerClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return Response.json(
-        { error: "invalid_json" },
-        { status: 400 }
+        { error: "unauthorized" },
+        { status: 401 }
       );
     }
 
-    const user_id = body.user_id;
-    if (!user_id) {
-      return Response.json(
-        { error: "missing_user_id" },
-        { status: 400 }
-      );
-    }
-
+    const user_id = user.id;
     const course_id = "FL_PERMIT_TRAINING";
     const amount_cents = 5995;
-
-    /* ───────── SERVICE ROLE CLIENT (REQUIRED IN PROD) ───────── */
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
 
     /* ───────── BLOCK IF ALREADY PAID ───────── */
     const { data: paid, error: paidErr } = await supabase
@@ -52,13 +42,12 @@ export async function POST(req: Request) {
       .eq("user_id", user_id)
       .eq("course_id", course_id)
       .eq("status", "succeeded")
-      .limit(1)
       .maybeSingle();
 
     if (paidErr) {
       console.error("PAID CHECK ERROR", paidErr);
       return Response.json(
-        { error: "payment_check_failed", detail: paidErr.message },
+        { error: "payment_check_failed" },
         { status: 500 }
       );
     }
@@ -84,7 +73,7 @@ export async function POST(req: Request) {
     if (existingErr) {
       console.error("EXISTING PAYMENT CHECK ERROR", existingErr);
       return Response.json(
-        { error: "payment_lookup_failed", detail: existingErr.message },
+        { error: "payment_lookup_failed" },
         { status: 500 }
       );
     }
@@ -137,7 +126,7 @@ export async function POST(req: Request) {
     if (insertError) {
       console.error("PAYMENT INSERT ERROR", insertError);
       return Response.json(
-        { error: "payment_insert_failed", detail: insertError.message },
+        { error: "payment_insert_failed" },
         { status: 500 }
       );
     }
