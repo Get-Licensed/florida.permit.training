@@ -61,75 +61,85 @@ export default function PaymentPage() {
     });
   }, [router]);
 
-  /* ───────── INIT PAYMENT INTENT ───────── */
-  useEffect(() => {
-    if (!userId) return;
+/* ───────── INIT PAYMENT INTENT ───────── */
+useEffect(() => {
+  let cancelled = false;
 
-    let cancelled = false;
+  async function init() {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    async function init() {
-      try {
-        const res = await fetch("/api/payment/create-intent", {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ user_id: userId }),
+      if (!session?.access_token) {
+        setBackendError({
+          code: "NO_SESSION",
+          message: "You must be logged in to continue.",
         });
+        setLoading(false);
+        return;
+      }
 
-        const json = await res.json();
+      const res = await fetch("/api/payment/create-intent", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
 
-        if (!res.ok) {
-          if (json.error === "course_already_paid") {
-            router.replace("/complete");
-            return;
-          }
+      const json = await res.json();
 
-          if (!cancelled) {
-            setBackendError({
-              message: json.error || "Payment unavailable",
-            });
-          }
+      if (!res.ok) {
+        if (json.error === "course_already_paid") {
+          router.replace("/complete");
           return;
         }
 
-        if (!json.clientSecret) {
-          if (!cancelled) {
-            setBackendError({
-              code: "NO_CLIENT_SECRET",
-              message: "Payment is pending. Please refresh in a moment.",
-            });
-          }
-          return;
-        }
-
-        if (!cancelled) {
-          setClientSecret(json.clientSecret);
-        }
-      } catch (err) {
         if (!cancelled) {
           setBackendError({
-            code: "NETWORK_ERROR",
-            message: "Unable to initialize payment.",
-            detail: String(err),
+            code: json.error ?? "PAYMENT_ERROR",
+            message: "Payment unavailable.",
           });
         }
-      } finally {
+        return;
+      }
+
+      if (!json.clientSecret) {
         if (!cancelled) {
-          setLoading(false);
+          setBackendError({
+            code: "NO_CLIENT_SECRET",
+            message: "Payment is pending. Please refresh.",
+          });
         }
+        return;
+      }
+
+      if (!cancelled) {
+        setClientSecret(json.clientSecret);
+      }
+    } catch (err) {
+      if (!cancelled) {
+        setBackendError({
+          code: "NETWORK_ERROR",
+          message: "Unable to initialize payment.",
+          detail: String(err),
+        });
+      }
+    } finally {
+      if (!cancelled) {
+        setLoading(false);
       }
     }
+  }
 
-    init();
+  init();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, router]);
+  return () => {
+    cancelled = true;
+  };
+}, [router]);
 
-  /* ───────── LOADING ───────── */
+/* ───────── LOADING ───────── */
   if (loading) {
     return (
       <Wrapper>
