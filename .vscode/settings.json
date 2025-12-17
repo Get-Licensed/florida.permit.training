@@ -1,18 +1,12 @@
 {
-  "deno.enable": true,
-  "deno.lint": true,
-  "deno.path": "C:\\Users\\maitr\\.deno\\bin\\deno.exe",
-
-  "deno.importMap": "supabase/deno.json",
+  "deno.enable": false,
 
   "deno.workspace": [
     {
       "folder": "supabase/functions",
       "enable": true
-    },
-    {
-      "folder": ".",
-      "enable": false
     }
-  ]
+  ],
+
+  "typescript.tsdk": "node_modules/typescript/lib"
 }

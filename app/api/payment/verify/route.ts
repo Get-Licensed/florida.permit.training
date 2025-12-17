@@ -1,15 +1,17 @@
-// deno-lint-ignore-file
-// @ts-nocheck
-
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
-export async function POST(req: Request) {
+export const runtime = "nodejs";
+
+export async function POST(request: Request) {
   try {
-    const { payment_intent } = await req.json();
+    const { payment_intent } = await request.json();
 
     if (!payment_intent) {
-      return NextResponse.json({ error: "Missing payment_intent" }, { status: 400 } as any);
+      return NextResponse.json(
+        { error: "Missing payment_intent" },
+        { status: 400 }
+      );
     }
 
     const supabase = getSupabaseAdmin();
@@ -18,17 +20,26 @@ export async function POST(req: Request) {
       .from("payments")
       .select("status")
       .eq("stripe_payment_intent_id", payment_intent)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
-      return NextResponse.json({ success: false }, { status: 404 } as any);
+    if (error) {
+      console.error("VERIFY QUERY ERROR", error);
+      return NextResponse.json(
+        { success: false },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({
-      success: data.status === "succeeded",
-    });
+    if (data?.status === "succeeded") {
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ success: false });
   } catch (err) {
-    console.error("PAYMENT VERIFY ERROR:", err);
-    return NextResponse.json({ success: false }, { status: 500 } as any);
+    console.error("PAYMENT VERIFY ERROR", err);
+    return NextResponse.json(
+      { success: false },
+      { status: 500 }
+    );
   }
 }
