@@ -4,14 +4,15 @@ import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 /* ---------------- GET MODULE ---------------- */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const supabase = getSupabaseAdmin();
 
   const { data, error } = await supabase
     .from("modules")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (error) {
@@ -29,14 +30,15 @@ export async function GET(
 /* ---------------- DELETE MODULE ---------------- */
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const supabase = getSupabaseAdmin();
 
   const { error } = await supabase
     .from("modules")
     .delete()
-    .eq("id", params.id);
+    .eq("id", id);
 
   if (error) {
     return new Response(
