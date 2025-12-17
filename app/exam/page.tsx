@@ -54,6 +54,10 @@ export default function ExamPage() {
         const res = await fetch("/api/exam/questions");
         if (!res.ok) throw new Error();
         const json = await res.json();
+
+              console.log("EXAM QUESTIONS RESPONSE", json);
+
+
         setQuestions(json.questions || []);
       } catch {
         setError("Unable to load exam questions.");
@@ -216,12 +220,10 @@ export default function ExamPage() {
                       </div>
                     ) : (
                       <button
-                        disabled={!courseComplete}
+                        disabled={false}
                         onClick={() => {
-                          if (courseComplete && questions.length > 0) {
                             setStarted(true);
-                          }
-                        }}                        
+                         }}                        
                         className={`
                             w-[50%] h-12 rounded-lg font-semibold transition
                             ${

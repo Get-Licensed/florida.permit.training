@@ -1,14 +1,21 @@
-import { createSupabaseServerClient } from "@/utils/supabaseServer";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
-export async function GET(req: Request) {
-  const authHeader = req.headers.get("authorization");
+export async function GET() {
+  // ✅ FIX: await cookies()
+  const cookieStore = await cookies();
 
-  if (!authHeader?.startsWith("Bearer ")) {
-    return Response.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  const accessToken = authHeader.replace("Bearer ", "");
-  const supabase = createSupabaseServerClient(accessToken);
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+      },
+    }
+  );
 
   const {
     data: { user },

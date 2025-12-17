@@ -6,7 +6,6 @@ import { requireAuth } from "@/utils/requireAuth";
 import { usePermitStatus } from "@/utils/usePermitStatus";
 import PermitStatusFooter from "@/app/(dashboard)/PermitStatusFooter";
 
-/* -------------------- Loader -------------------- */
 function Loader() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-white fade-in">
@@ -22,7 +21,6 @@ function Loader() {
 export default function MyPermitPage() {
   const router = useRouter();
 
-  /* -------------------- AUTH -------------------- */
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
@@ -33,21 +31,30 @@ export default function MyPermitPage() {
     run();
   }, [router]);
 
-  /* -------------------- STATUS (SINGLE SOURCE OF TRUTH) -------------------- */
   const {
     loading: statusLoading,
     courseComplete,
     examPassed,
     paid,
-    fullyComplete,
   } = usePermitStatus();
 
-  /* -------------------- HARD GATE -------------------- */
-  if (!authChecked || statusLoading) {
+  const shouldRedirect =
+    authChecked &&
+    !statusLoading &&
+    courseComplete &&
+    examPassed &&
+    paid;
+
+  useEffect(() => {
+    if (shouldRedirect) {
+      router.replace("/permit-complete");
+    }
+  }, [shouldRedirect, router]);
+
+  if (!authChecked || statusLoading || shouldRedirect) {
     return <Loader />;
   }
 
-  /* -------------------- RENDER -------------------- */
   return (
     <>
       <main className="min-h-screen bg-white p-8 fade-in">
@@ -55,29 +62,7 @@ export default function MyPermitPage() {
           Your Florida Learner’s Permit – Final Steps
         </h1>
 
-        {/* FINAL COMPLETION MESSAGE */}
-        {fullyComplete && (
-          <div className="max-w-4xl mx-auto mb-10 p-6 rounded-2xl border border-green-300 bg-green-50 text-center">
-            <h2 className="text-2xl font-bold text-green-800 mb-2">
-              🎉 Congratulations!
-            </h2>
-
-            <p className="text-green-900 leading-6">
-              You are now officially done with the Florida Learner’s Permit
-              course.
-              <br />
-              Your information will be sent to the Florida DMV, and you may visit
-              the DMV to obtain your learner’s permit.
-            </p>
-
-            <p className="mt-3 text-sm text-green-800">
-              DMV submission typically occurs within 1 business day.
-            </p>
-          </div>
-        )}
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          {/* STEP 1 */}
           <div className="p-6 rounded-2xl shadow-md border bg-white flex flex-col justify-between">
             <div>
               <h2 className="text-xl font-bold text-[#001f40] mb-3">
@@ -104,7 +89,6 @@ export default function MyPermitPage() {
             </div>
           </div>
 
-          {/* STEP 2 */}
           <div className="p-6 rounded-2xl shadow-md border bg-white flex flex-col justify-between">
             <div>
               <h2 className="text-xl font-bold text-[#001f40] mb-3">
@@ -137,7 +121,6 @@ export default function MyPermitPage() {
             </div>
           </div>
 
-          {/* STEP 3 */}
           <div className="p-6 rounded-2xl shadow-md border bg-white flex flex-col justify-between">
             <div>
               <h2 className="text-xl font-bold text-[#001f40] mb-3">

@@ -1,3 +1,4 @@
+// utils/usePermitStatus.ts
 "use client";
 
 import { useEffect, useState } from "react";
@@ -14,9 +15,11 @@ export function usePermitStatus() {
 
     async function run() {
       try {
+        // 1️⃣ Get user
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user || !alive) return;
 
+        // 2️⃣ Try to load existing row
         const { data, error } = await supabase
           .from("course_status")
           .select("completed_at, exam_passed, paid_at")
@@ -24,8 +27,18 @@ export function usePermitStatus() {
           .eq("course_id", "FL_PERMIT_TRAINING")
           .single();
 
-        if (error || !data || !alive) return;
+        // 3️⃣ Row does not exist → create it
+        if (error && error.code === "PGRST116") {
+          await supabase.from("course_status").insert({
+            user_id: user.id,
+            course_id: "FL_PERMIT_TRAINING",
+          });
+          return; // next render will re-fetch
+        }
 
+        if (!data || !alive) return;
+
+        // 4️⃣ Apply state
         setCourseComplete(Boolean(data.completed_at));
         setExamPassed(Boolean(data.exam_passed));
         setPaid(Boolean(data.paid_at));
@@ -37,7 +50,9 @@ export function usePermitStatus() {
     }
 
     run();
-    return () => { alive = false };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   return {
