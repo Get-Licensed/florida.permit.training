@@ -62,21 +62,20 @@ export default function VerifyPhoneModal({ userId, onComplete }: Props) {
     setLoading(false);
   }
 
-  /* ---------------------------------------------------------
-     VERIFY SMS CODE
-  --------------------------------------------------------- */
-  async function verifyCode() {
-    if (code.length !== 6) {
-      setError("Enter the 6-digit code");
-      return;
-    }
+async function verifyCode() {
+  if (code.length !== 6) {
+    setError("Enter the 6-digit code");
+    return;
+  }
 
-    setLoading(true);
-    setError(null);
+  setLoading(true);
+  setError(null);
 
-    const normalized = normalizePhone(phone);
+  const normalized = normalizePhone(phone);
 
-    const res = await fetch("/api/2fa/verify", {
+  let res: Response;
+  try {
+    res = await fetch("/api/2fa/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -85,21 +84,34 @@ export default function VerifyPhoneModal({ userId, onComplete }: Props) {
         user_id: userId,
       }),
     });
-
-    const json = await res.json();
-
-    if (!res.ok || !json.success) {
-      setError(json.error || "Invalid code");
-      setLoading(false);
-      return;
-    }
-
-    await supabase.auth.updateUser({
-      data: { session_2fa_verified: true },
-    });
-
-    onComplete();
+  } catch {
+    setError("Network error. Please try again.");
+    setLoading(false);
+    return;
   }
+
+  let json: any = {};
+  try {
+    const text = await res.text();
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    setError("Invalid server response.");
+    setLoading(false);
+    return;
+  }
+
+  if (!res.ok || !json.success) {
+    setError(json.error || "Invalid verification code");
+    setLoading(false);
+    return;
+  }
+
+  await supabase.auth.updateUser({
+    data: { session_2fa_verified: true },
+  });
+
+  onComplete();
+}
 
   /* ---------------------------------------------------------
      UI
