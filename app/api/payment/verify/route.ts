@@ -1,43 +1,74 @@
+import twilio from "twilio";
+import process from "node:process";
 import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
-export async function POST(request: Request) {
+export async function POST(req: Request): Promise<Response> {
   try {
-    const { payment_intent } = await request.json();
+    const { phone, code, user_id } = await req.json();
 
-    if (!payment_intent) {
+    if (!phone || !code || !user_id) {
       return new Response(
-        JSON.stringify({ success: false, error: "Missing payment_intent" }),
-        { status: 400 }
+        JSON.stringify({ error: "Missing phone, code, or user_id" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
-    const supabase = getSupabaseAdmin();
+    const twilioClient = twilio(
+      process.env.TWILIO_ACCOUNT_SID!,
+      process.env.TWILIO_AUTH_TOKEN!
+    );
 
-    /* ───────── VERIFY PAYMENT ───────── */
-    const { data, error } = await supabase
-      .from("payments")
-      .select("status")
-      .eq("stripe_payment_intent_id", payment_intent)
-      .single();
+    const check = await twilioClient.verify.v2
+      .services(process.env.TWILIO_VERIFY_SID!)
+      .verificationChecks.create({
+        to: phone,
+        code,
+      });
 
-    if (error || !data) {
+    if (!check.valid) {
       return new Response(
         JSON.stringify({ success: false }),
-        { status: 200 }
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
-    return new Response(
-      JSON.stringify({ success: data.status === "succeeded" }),
-      { status: 200 }
-    );
-  } catch (err) {
-    console.error("PAYMENT VERIFY ERROR:", err);
+    // ✅ ADMIN CLIENT (no access token required)
+    const supabase = getSupabaseAdmin();
+
+    await supabase
+      .from("profiles")
+      .update({
+        phone_verified: true,
+        home_phone: phone,
+      })
+      .eq("id", user_id)
+      .throwOnError();
 
     return new Response(
-      JSON.stringify({ success: false }),
-      { status: 500 }
+      JSON.stringify({ success: true }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  } catch (err) {
+    console.error("2FA VERIFY ERROR:", err);
+
+    return new Response(
+      JSON.stringify({ error: "Verification failed" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   }
 }
+
+// 🔒 Ensures module classification for Next/Vercel
 export {};
