@@ -1,14 +1,16 @@
-import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
-export async function GET(req: Request) {
+export async function GET(request: Request) {
   const supabase = getSupabaseAdmin();
 
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(request.url);
   const lessonId = searchParams.get("lessonId");
 
   if (!lessonId) {
-    return NextResponse.json({ error: "Missing lessonId" }, { status: 400 });
+    return new Response(
+      JSON.stringify({ error: "Missing lessonId" }),
+      { status: 400 }
+    );
   }
 
   const { data, error } = await supabase
@@ -19,8 +21,14 @@ export async function GET(req: Request) {
 
   if (error) {
     console.error(error);
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 400 }
+    );
   }
 
-  return NextResponse.json({ data });
+  return new Response(
+    JSON.stringify({ data }),
+    { status: 200 }
+  );
 }

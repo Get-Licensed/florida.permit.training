@@ -1,12 +1,13 @@
 import { requireAdmin } from "@/utils/requireAdmin";
-import { createSupabaseServerClient } from "@/utils/supabaseServer";
+import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 import ModuleList from "./_ModuleList";
 
 export default async function ModulesPage() {
-  // Redirects to /admin/not-authorized if not admin
+  // Redirects if not admin
   const user = await requireAdmin();
 
-  const supabase = await createSupabaseServerClient();
+  // ✅ ADMIN client only
+  const supabase = getSupabaseAdmin();
 
   const { data: modules } = await supabase
     .from("modules")
@@ -16,6 +17,7 @@ export default async function ModulesPage() {
   return (
     <main className="p-6 bg-white min-h-screen">
       <h1 className="text-2xl font-bold text-[#001f40]">Modules</h1>
+
       <p className="text-gray-600 mt-2 text-sm">
         Logged in as: {user.email}
       </p>

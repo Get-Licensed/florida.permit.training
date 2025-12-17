@@ -1,31 +1,42 @@
-import Stripe from "stripe";
-import process from "node:process";
-import { createSupabaseServerClient } from "@/utils/supabaseServer";
+import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
-export async function POST(req: Request) {
-const { payment_intent } = await req.json();
+export async function POST(request: Request) {
+  try {
+    const { payment_intent } = await request.json();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
- apiVersion: "2025-11-17.clover",
- });
+    if (!payment_intent) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Missing payment_intent" }),
+        { status: 400 }
+      );
+    }
 
+    const supabase = getSupabaseAdmin();
 
+    /* ───────── VERIFY PAYMENT ───────── */
+    const { data, error } = await supabase
+      .from("payments")
+      .select("status")
+      .eq("stripe_payment_intent_id", payment_intent)
+      .single();
 
-  const pi = await stripe.paymentIntents.retrieve(payment_intent);
+    if (error || !data) {
+      return new Response(
+        JSON.stringify({ success: false }),
+        { status: 200 }
+      );
+    }
 
-  if (pi.status !== "succeeded") {
-    return Response.json({ success: false });
+    return new Response(
+      JSON.stringify({ success: data.status === "succeeded" }),
+      { status: 200 }
+    );
+  } catch (err) {
+    console.error("PAYMENT VERIFY ERROR:", err);
+
+    return new Response(
+      JSON.stringify({ success: false }),
+      { status: 500 }
+    );
   }
-
-  const client = await createSupabaseServerClient();
-
-  await client
-    .from("payments")
-    .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
-    })
-    .eq("stripe_payment_intent_id", pi.id);
-
-  return Response.json({ success: true });
 }

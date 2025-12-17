@@ -1,37 +1,67 @@
-import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/utils/supabaseClient";
+import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
-// GET module by ID
-export async function GET(request: NextRequest, context: any) {
-  const id = context.params.id;
+/* -------------------------------------------------
+   GET module by ID (ADMIN)
+------------------------------------------------- */
+export async function GET(
+  _request: Request,
+  { params }: { params: { id: string } }
+) {
+  const supabase = getSupabaseAdmin();
 
   try {
     const { data, error } = await supabase
       .from("course_modules")
       .select("*")
-      .eq("id", id)
+      .eq("id", params.id)
       .single();
 
-    if (error) throw error;
-    return NextResponse.json(data);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    if (error) {
+      return new Response(
+        JSON.stringify({ error: error.message }),
+        { status: 404 }
+      );
+    }
+
+    return new Response(JSON.stringify(data), { status: 200 });
+  } catch {
+    return new Response(
+      JSON.stringify({ error: "Failed to load module" }),
+      { status: 500 }
+    );
   }
 }
 
-// DELETE module by ID
-export async function DELETE(request: NextRequest, context: any) {
-  const id = context.params.id;
+/* -------------------------------------------------
+   DELETE module by ID (ADMIN)
+------------------------------------------------- */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: { id: string } }
+) {
+  const supabase = getSupabaseAdmin();
 
   try {
     const { error } = await supabase
       .from("course_modules")
       .delete()
-      .eq("id", id);
+      .eq("id", params.id);
 
-    if (error) throw error;
-    return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    if (error) {
+      return new Response(
+        JSON.stringify({ error: error.message }),
+        { status: 500 }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ success: true }),
+      { status: 200 }
+    );
+  } catch {
+    return new Response(
+      JSON.stringify({ error: "Failed to delete module" }),
+      { status: 500 }
+    );
   }
 }
