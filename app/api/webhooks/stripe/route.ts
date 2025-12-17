@@ -2,7 +2,7 @@
 
 import Stripe from "stripe";
 import process from "node:process";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 });
 
 export async function POST(req: Request) {
-  /* ───────── STRIPE SIGNATURE ───────── */
   const sig = req.headers.get("stripe-signature");
   if (!sig) {
     return new Response("Missing stripe-signature", { status: 400 });
@@ -31,7 +30,6 @@ export async function POST(req: Request) {
     return new Response("Invalid signature", { status: 400 });
   }
 
-  /* ───────── ONLY HANDLE SUCCEEDED ───────── */
   if (event.type !== "payment_intent.succeeded") {
     return new Response("Ignored", { status: 200 });
   }
@@ -46,101 +44,60 @@ export async function POST(req: Request) {
     return new Response("Missing metadata", { status: 400 });
   }
 
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
-  /* ------------------------------------------------------------------
-     1️⃣ UPDATE EXISTING PAYMENT ROW (PRIMARY PATH)
-     ------------------------------------------------------------------ */
-    const { data: updatedRows, error: updateError } = await supabase
-      .from("payments")
-      .update({
+  /* ───────── PAYMENTS (IDEMPOTENT) ───────── */
+  await supabase
+    .from("payments")
+    .upsert(
+      {
+        user_id,
+        course_id,
+        stripe_payment_intent_id: intent.id,
+        amount_cents: intent.amount,
         status: "succeeded",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("stripe_payment_intent_id", intent.id)
-      .select("*");
+        completed_at: now,
+      },
+      { onConflict: "stripe_payment_intent_id" }
+    )
+    .throwOnError();
 
-    if (updateError) {
-      console.error("❌ Failed to update payment row", updateError);
-      return new Response("DB error", { status: 500 });
-    }
-
-    const updatedCount = updatedRows?.length ?? 0;
-
-  /* ------------------------------------------------------------------
-     1️⃣b FAILSAFE — INSERT IF ROW WAS MISSING (SELF-HEALING)
-     ------------------------------------------------------------------ */
-  if (updatedCount === 0) {
-    console.error(
-      "⚠️ Webhook received but no payment row matched. Inserting recovery row.",
-      intent.id
-    );
-
-    const { error: insertError } = await supabase.from("payments").insert({
-      user_id,
-      course_id,
-      stripe_payment_intent_id: intent.id,
-      amount_cents: intent.amount,
-      status: "succeeded",
-      completed_at: new Date().toISOString(),
-    });
-
-    if (insertError) {
-      console.error("❌ Failed to insert recovery payment row", insertError);
-      return new Response("DB error", { status: 500 });
-    }
-  }
-
-  /* ------------------------------------------------------------------
-     2️⃣ ABANDON ALL OTHER OPEN ATTEMPTS
-     ------------------------------------------------------------------ */
-  const { error: abandonError } = await supabase
+  await supabase
     .from("payments")
     .update({ status: "abandoned" })
     .eq("user_id", user_id)
     .eq("course_id", course_id)
     .neq("stripe_payment_intent_id", intent.id)
-    .in("status", ["requires_payment", "requires_confirmation"]);
+    .in("status", ["requires_payment", "requires_confirmation"])
+    .throwOnError();
 
-  if (abandonError) {
-    console.error("⚠️ Failed to abandon old attempts", abandonError);
-    // non-fatal
-  }
-
-/* ------------------------------------------------------------------
-   3️⃣ MARK COURSE AS PAID (GUARANTEED WRITE)
-   ------------------------------------------------------------------ */
-const { data: csUpdated, error: csUpdateError } = await supabase
-  .from("course_status")
-  .update({
-    paid_at: new Date().toISOString(),
-  })
-  .eq("user_id", user_id)
-  .eq("course_id", course_id)
-  .select("*");
-
-if (csUpdateError) {
-  console.error("❌ Failed to update course_status", csUpdateError);
-  return new Response("DB error", { status: 500 });
-}
-
-if ((csUpdated?.length ?? 0) === 0) {
-  const { error: csInsertError } = await supabase
+  /* ───────── COURSE STATUS (CANONICAL) ───────── */
+  const { data: existing } = await supabase
     .from("course_status")
-    .insert({
-      user_id,
-      course_id,
-      paid_at: new Date().toISOString(),
-    });
+    .select("completed_at, exam_passed, status")
+    .eq("user_id", user_id)
+    .eq("course_id", course_id)
+    .maybeSingle();
 
-  if (csInsertError) {
-    console.error("❌ Failed to insert course_status", csInsertError);
-    return new Response("DB error", { status: 500 });
-  }
-}
+  await supabase
+    .from("course_status")
+    .upsert(
+      {
+        user_id,
+        course_id,
+
+        paid_at: now,
+        completed_at: existing?.completed_at ?? now,
+
+        status:
+          existing?.exam_passed
+            ? "completed_paid"
+            : "completed_unpaid",
+      },
+      { onConflict: "user_id" }
+    )
+    .throwOnError();
+
   return new Response("ok", { status: 200 });
 }

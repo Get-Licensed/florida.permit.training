@@ -1,19 +1,24 @@
 import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
-export async function GET() {
-  const supabase = await createSupabaseServerClient();
+export async function GET(req: Request) {
+  const authHeader = req.headers.get("authorization");
 
-  /* -------- AUTH CHECK -------- */
-  const { data: auth, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !auth?.user) {
-    return Response.json(
-      { error: "Not authenticated" },
-      { status: 401 }
-    );
+  if (!authHeader?.startsWith("Bearer ")) {
+    return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  /* -------- LOAD QUESTIONS -------- */
+  const accessToken = authHeader.replace("Bearer ", "");
+  const supabase = createSupabaseServerClient(accessToken);
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return Response.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const { data, error } = await supabase
     .from("exam_questions")
     .select("id, question, option_a, option_b, option_c")

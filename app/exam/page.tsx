@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ExamShell from "./ExamShell";
+import { requireAuth } from "@/utils/requireAuth";
+import { usePermitStatus } from "@/utils/usePermitStatus";
 import { ExamProgressContext } from "./ExamProgressContext";
 // import SteeringWheelLoader from "@/components/SteeringWheelLoader"; // ← use if you have it
 
@@ -26,28 +28,24 @@ export default function ExamPage() {
 
   const [started, setStarted] = useState(false);
   const [index, setIndex] = useState(0);
-  
-  const [courseComplete, setCourseComplete] = useState<boolean | null>(null);
-  const [examPassed, setExamPassed] = useState<boolean | null>(null);
 
+  /* -------------------- AUTH GATE -------------------- */
 
-  /* -------------------- COURSE STATUS -------------------- */
+  const [authChecked, setAuthChecked] = useState(false);
+
   useEffect(() => {
-    async function checkCourseStatus() {
-      try {
-        const res = await fetch("/api/course/status");
-        const data = await res.json();
-
-        setCourseComplete(Boolean(data.completed_at));
-        setExamPassed(Boolean(data.exam_passed));
-      } catch {
-        setCourseComplete(false);
-        setExamPassed(false);
-      }
+    async function run() {
+      const user = await requireAuth(router);
+      if (user) setAuthChecked(true);
     }
+    run();
+  }, [router]);
 
-    checkCourseStatus();
-  }, []);
+  const {
+  loading: statusLoading,
+  courseComplete,
+  examPassed,
+} = usePermitStatus();
 
   /* -------------------- LOAD QUESTIONS -------------------- */
   useEffect(() => {
@@ -67,25 +65,33 @@ export default function ExamPage() {
   }, []);
 
   /* -------------------- DERIVED -------------------- */
-   const isBooting =
-     courseComplete === null ||
-     examPassed === null ||
-     loadingQuestions;
+  const isBooting =
+    !authChecked ||
+    statusLoading ||
+    loadingQuestions;
+
+    useEffect(() => {
+  if (!statusLoading && examPassed) {
+    router.replace("/my-permit");
+  }
+}, [statusLoading, examPassed, router]);
+
+
 
   const total = questions.length;
 
-const answeredCount = Object.keys(answers).length;
+  const answeredCount = Object.keys(answers).length;
 
-const progressPercent =
-  started && total > 0
-    ? Math.round((answeredCount / total) * 100)
-    : 0;
+  const progressPercent =
+    started && total > 0
+      ? Math.round((answeredCount / total) * 100)
+      : 0;
 
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Enter") return;
+    useEffect(() => {
+      function onKeyDown(e: KeyboardEvent) {
+        if (e.key !== "Enter") return;
 
-      // prevent accidental form submits / button clicks
+        // prevent accidental form submits / button clicks
       e.preventDefault();
 
       handleEnterAction();
@@ -211,15 +217,19 @@ const progressPercent =
                     ) : (
                       <button
                         disabled={!courseComplete}
-                        onClick={() => courseComplete && setStarted(true)}
-                        className={`
-                          w-[50%] h-12 rounded-lg font-semibold transition
-                          ${
-                            courseComplete
-                              ? "bg-[#001f40] text-white hover:bg-[#00356e]"
-                              : "bg-gray-300 text-gray-600 cursor-not-allowed"
+                        onClick={() => {
+                          if (courseComplete && questions.length > 0) {
+                            setStarted(true);
                           }
-                        `}
+                        }}                        
+                        className={`
+                            w-[50%] h-12 rounded-lg font-semibold transition
+                            ${
+                              courseComplete
+                                ? "bg-[#001f40] text-white hover:bg-[#00356e] cursor-pointer"
+                                : "bg-gray-300 text-gray-600 cursor-not-allowed"
+                            }
+                          `}
                       >
                         {courseComplete
                           ? "Start Exam"

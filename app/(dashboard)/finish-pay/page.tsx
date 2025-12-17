@@ -10,41 +10,30 @@ export default function FinishPayPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const paymentIntent = searchParams.get("payment_intent");
     const redirectStatus = searchParams.get("redirect_status");
 
-    if (!paymentIntent || redirectStatus !== "succeeded") {
-      setError("Missing payment confirmation.");
+    // Stripe guarantees success via webhook, but redirect must still say succeeded
+    if (redirectStatus !== "succeeded") {
+      setError("Payment was not completed.");
       return;
     }
 
-    fetch("/api/payment/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payment_intent: paymentIntent }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          router.replace("/complete");
-        } else {
-          setError("We couldn’t verify your payment. Please contact support.");
-        }
-      })
-      .catch(() => {
-        setError("Unable to verify payment. Please try again.");
-      });
+    // Allow Stripe webhook time to update DB
+    const timeout = setTimeout(() => {
+      router.replace("/complete");
+    }, 1500);
+
+    return () => clearTimeout(timeout);
   }, [searchParams, router]);
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-6">
       <div className="relative bg-white border border-gray-200 shadow-sm rounded-xl p-10 w-full max-w-md text-center">
-
         {/* Subtle background logo */}
         <img
           src="/logo.png"
           alt=""
-          className="absolute inset-0 m-auto opacity-[0.04] w-600 pointer-events-none"
+          className="absolute inset-0 m-auto opacity-[0.04] w-[600px] pointer-events-none"
         />
 
         <h1 className="text-xl font-bold text-[#001f40] mb-4 relative z-10">

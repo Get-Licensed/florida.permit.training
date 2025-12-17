@@ -4,6 +4,9 @@
 
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef } from "react";
+import CourseTimeline from "@/components/CourseTimeline";
+import { useSearchParams } from "next/navigation";
+
 
 /* ------------------------------------------------------
    KARAOKE HELPERS  (MOVE THESE OUTSIDE THE COMPONENT)
@@ -208,7 +211,9 @@ export default function CoursePlayerClient() {
   
   const voiceLabel =
     VOICES.find(v => v.code === voice)?.label ?? "Unknown";
-
+  
+  const searchParams = useSearchParams();
+  const deepLinkConsumedRef = useRef(false);
 
 // -------------------------------------------------------------
 // DEBUG: Core gate values (helps detect infinite steering wheel)
@@ -254,7 +259,6 @@ function preloadAudio(url: string) {
   a.preload = "auto";  // Tells browser to decode early
 }
 
-
 // ------------------------------------------------------
 // COURSE COMPLETION
 // ------------------------------------------------------
@@ -265,7 +269,10 @@ async function markCourseCompletedOnce() {
   courseCompletionSentRef.current = true;
 
   try {
-    await fetch("/api/course/complete", { method: "POST" });
+    await fetch("/api/course/complete", {
+  method: "POST",
+  credentials: "include",
+});
   } catch (e) {
     console.error("Failed to mark course complete", e);
   }
@@ -566,7 +573,9 @@ useEffect(() => {
   /* ------------------------------------------------------
      checks backend status and redirects
   ------------------------------------------------------ */
-    async function refreshStatusAndRedirect() {
+ const [terminalStatusLoaded, setTerminalStatusLoaded] = useState(false);
+
+ async function refreshStatusAndRedirect() {
       const res = await fetch("/api/course/status");
       const data = await res.json();
 
@@ -582,22 +591,24 @@ useEffect(() => {
 
     async function loadTerminalStatus() {
       const res = await fetch("/api/course/status");
+      if (!res.ok) return;
+
       const data = await res.json();
 
-      // exam is passed once course is completed at all
       const passed =
         data.status === "completed_unpaid" ||
         data.status === "completed_paid" ||
         data.status === "dmv_submitted";
 
-      // payment is only passed once paid or submitted
       const paid =
         data.status === "completed_paid" ||
         data.status === "dmv_submitted";
 
       setExamPassed(passed);
       setPaymentPaid(paid);
+      setTerminalStatusLoaded(true);
     }
+
 
   /* ------------------------------------------------------
      LOAD MODULES
@@ -653,6 +664,7 @@ function applyProgress(
   modRows: any[] = [],
   slideRows: any[] = []
 ) {
+
   // ----------------------------------
   // SINGLE ENTRY GUARD (ONLY PLACE)
   // ----------------------------------
@@ -672,63 +684,83 @@ function applyProgress(
     return;
   }
 
-  // ----------------------------------
-  // MODULE COMPLETION
-  // ----------------------------------
-  const completedModules = modRows.filter(m => m?.completed);
-  const maxCompletedModuleIndex = completedModules.length
-    ? Math.max(...completedModules.map(m => m.module_index ?? 0))
-    : 0;
+// ----------------------------------
+// URL DEEP-LINK (ONE-TIME OVERRIDE)
+// ----------------------------------
+const urlModule = searchParams.get("module");
 
-  setMaxCompletedIndex(maxCompletedModuleIndex);
+let urlIndex: number | null = null;
 
-  const highestSeenModule = modRows.length
-    ? Math.max(...modRows.map(m => m?.module_index ?? 0))
-    : 0;
-
-  const targetModuleIndex = Math.max(
-    maxCompletedModuleIndex,
-    highestSeenModule
-  );
-
-  setCurrentModuleIndex(Math.max(targetModuleIndex, 0));
-
-
-  // ----------------------------------
-  // SLIDE POSITION WITHIN MODULE
-  // ----------------------------------
-  const slidesInModule = slideRows.filter(
-    s => (s?.module_index ?? -1) === targetModuleIndex
-  );
-
-  if (!slidesInModule.length) {
-    // New user or empty module
-    setCurrentLessonIndex(0);
-    setSlideIndex(0);
-    unlockProgressGates();
-    return;
+if (urlModule !== null) {
+  const parsed = Number(urlModule);
+  if (Number.isInteger(parsed)) {
+    urlIndex = parsed;
   }
+}
 
-  const last = slidesInModule.reduce((a, b) =>
-    (a.slide_index ?? 0) > (b.slide_index ?? 0) ? a : b
-  );
-
-  setCurrentLessonIndex(last.lesson_index ?? 0);
-  setSlideIndex(last.slide_index ?? 0);
-
-  // ----------------------------------
-  // CONTINUE BUTTON RULE
-  // ----------------------------------
-  const isFinalSlide =
-    last.lesson_index === (lessons?.length ?? 0) - 1 &&
-    last.slide_index === (slides?.length ?? 0) - 1;
+const hasValidUrlModule =
+  urlIndex !== null &&
+  urlIndex >= 0 &&
+  urlIndex < modules.length &&
+  !deepLinkConsumedRef.current;
 
 
-  if (!isFinalSlide) {
-    setCanProceed(true);
-  }
+// ----------------------------------
+// MODULE COMPLETION (DB)
+// ----------------------------------
+const completedModules = modRows.filter(m => m?.completed);
 
+const maxCompletedModuleIndex = completedModules.length
+  ? Math.max(...completedModules.map(m => m.module_index ?? 0))
+  : 0;
+
+setMaxCompletedIndex(maxCompletedModuleIndex);
+
+const highestSeenModule = modRows.length
+  ? Math.max(...modRows.map(m => m?.module_index ?? 0))
+  : 0;
+
+// ----------------------------------
+// FINAL MODULE DECISION (SINGLE SOURCE OF TRUTH)
+// ----------------------------------
+const finalModuleIndex =
+  hasValidUrlModule && urlIndex !== null
+    ? urlIndex
+    : Math.max(maxCompletedModuleIndex, highestSeenModule, 0);
+
+console.log("📍 FINAL MODULE INDEX:", finalModuleIndex);
+
+// Apply module
+setCurrentModuleIndex(finalModuleIndex);
+
+if (hasValidUrlModule) {
+  deepLinkConsumedRef.current = true;
+}
+
+
+// ----------------------------------
+// SLIDE POSITION WITHIN *FINAL* MODULE
+// ----------------------------------
+const slidesInModule = slideRows.filter(
+  s => (s?.module_index ?? -1) === finalModuleIndex
+);
+
+if (!slidesInModule.length) {
+  setCurrentLessonIndex(0);
+  setSlideIndex(0);
   unlockProgressGates();
+  return;
+}
+
+const last = slidesInModule.reduce((a, b) =>
+  (a.slide_index ?? 0) > (b.slide_index ?? 0) ? a : b
+);
+
+setCurrentLessonIndex(last.lesson_index ?? 0);
+setSlideIndex(last.slide_index ?? 0);
+
+unlockProgressGates();
+
 }
 
 // ----------------------------------
@@ -1512,57 +1544,72 @@ const cur = caps[currentCaptionIndex];
 if (
   cur &&
   !canProceed &&
-  !isFinalSlideOfModule &&   // 👈 THIS is the key fix
+  !isFinalSlideOfModule && 
   (cur.seconds ?? 0) > 0 &&
   t >= (cur.seconds ?? 0) - 0.75
 ) {
   setCanProceed(true);
 }
-
   }}
-
 
   onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration)}
   onEnded={async () => {
-  if (isPaused) return;
+    if (isPaused) return;
 
-  const slide = slides[slideIndex];
-  if (!slide) return;
+    const slide = slides[slideIndex];
+    if (!slide) return;
 
-  const caps = captions[slide.id] || [];
-  const urls = caps
-    .map((c) => resolveVoiceUrl(c, voice))
-    .filter(Boolean) as string[];
+    const caps = captions[slide.id] || [];
+    const urls = caps
+      .map((c) => resolveVoiceUrl(c, voice))
+      .filter(Boolean) as string[];
 
-  // record this slide as completed no matter what
-  await recordSlideComplete(currentModuleIndex, currentLessonIndex, slideIndex);
-  await updateModuleProgress(currentModuleIndex);
+    // Always record progress
+    await recordSlideComplete(
+      currentModuleIndex,
+      currentLessonIndex,
+      slideIndex
+    );
+    await updateModuleProgress(currentModuleIndex);
 
-// no narration
-if (!urls.length) {
-  if (!isFinalSlideOfModule) {
+    // Advance caption if there are more
+    if (currentCaptionIndex < urls.length - 1) {
+      setCurrentCaptionIndex((i) => i + 1);
+      return;
+    }
+
+    // Final caption of this slide reached
     setCanProceed(true);
-  }
-  return;
-}
 
+    // 🔥 FINAL COURSE TERMINAL — GUARANTEED COMPLETION
+    if (isFinalCourseSlide) {
+      console.log("🔥 FINAL COURSE SLIDE — COMPLETING COURSE");
 
-  // more captions?
-  if (currentCaptionIndex < urls.length - 1) {
-    setCurrentCaptionIndex(i => i + 1);
-    return;
-  }
+      await markCourseCompletedOnce();
 
-  // last caption in slide reached
-  setCanProceed(true);
+      // allow DB write to flush before redirect
+      setTimeout(() => {
+        window.location.href = "/my-permit";
+      }, 300);
 
-  // auto advance only if not final slide
-  if (!isFinalSlideOfModule && !isPaused) {
-    goNext();
-  }
-}}
+      return;
+    }
 
-/>
+    // No narration edge-case (still allow continue)
+    if (!urls.length) {
+      if (!isFinalSlideOfModule) {
+        setCanProceed(true);
+      }
+      return;
+    }
+
+    // Auto-advance normally
+    if (!isFinalSlideOfModule && !isPaused) {
+      goNext();
+    }
+  }}
+
+  />
 
 {/* CONTINUE BTN (intro slides) ---------------------------- */}
 <div
@@ -1613,22 +1660,19 @@ if (!urls.length) {
   currentWordIndex={currentWordIndex}
 />
 
-{/* TIMELINE + PROMO ---------------------------------------- */}
-<TimelineWithPromo
-  modules={modules}
-  currentModuleIndex={currentModuleIndex}
-  maxCompletedIndex={maxCompletedIndex}
-  goToModule={goToModule}
-  promoOpen={promoOpen}
-  setPromoOpen={setPromoOpen}
-  slideIndex={slideIndex}
-  totalSlides={totalSlides}
-  currentLessonIndex={currentLessonIndex}
-  totalModuleSeconds={totalModuleSeconds}
-  elapsedSeconds={elapsedSeconds}
-  examPassed={examPassed}
-  paymentPaid={paymentPaid}
-/>
+{/* COURSE TIMELINE ---------------------------------------- */}
+  <CourseTimeline
+    modules={modules}
+    currentModuleIndex={currentModuleIndex}
+    maxCompletedIndex={maxCompletedIndex}
+    goToModule={goToModule}
+    currentLessonIndex={currentLessonIndex}
+    totalModuleSeconds={totalModuleSeconds}
+    elapsedSeconds={elapsedSeconds}
+    examPassed={examPassed}
+    paymentPaid={paymentPaid}
+  />
+
 
 {/* MINI YOUTUBE-STYLE CONTROLS + META (PILL STYLE) -------- */}
 <div className="fixed bottom-[12px] left-0 right-0 z-40 pointer-events-auto">

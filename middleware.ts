@@ -11,7 +11,7 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
   /* ───────────────── CSP (REQUIRED) ───────────────── */
-  res.headers.set(
+res.headers.set(
   "Content-Security-Policy",
   [
     "default-src 'self'",
@@ -19,22 +19,26 @@ export async function middleware(req: NextRequest) {
     // Next.js + Stripe scripts
     "script-src 'self' 'unsafe-inline' https://js.stripe.com https://m.stripe.network",
 
-    // REQUIRED for Tailwind / inline styles
+    // Inline styles (Tailwind)
     "style-src 'self' 'unsafe-inline'",
 
-    // REQUIRED for Next/Image, icons, Stripe
+    // Images
     "img-src 'self' data: blob: https:",
 
-    // REQUIRED for Tailwind fonts
+    // Fonts
     "font-src 'self' data:",
+
+    // ✅ AUDIO / VIDEO (THIS FIXES PLAYBACK)
+    "media-src 'self' blob: https://storage.googleapis.com https:",
 
     // Stripe iframes
     "frame-src https://js.stripe.com https://hooks.stripe.com https://m.stripe.network",
 
-    // Stripe + Supabase APIs
-    "connect-src 'self' https://api.stripe.com https://m.stripe.network https://*.supabase.co",
+    // APIs (Stripe + Supabase + Google audio fetch)
+    "connect-src 'self' https://api.stripe.com https://m.stripe.network https://*.supabase.co https://storage.googleapis.com",
   ].join("; ")
 );
+
 
 
   /* ───────────────── Supabase SSR ───────────────── */

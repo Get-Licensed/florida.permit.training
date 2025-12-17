@@ -1,24 +1,38 @@
 import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
-export async function POST() {
-  const supabase = await createSupabaseServerClient();
+export async function POST(req: Request) {
+  const authHeader = req.headers.get("authorization");
 
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) {
+  if (!authHeader?.startsWith("Bearer ")) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const user_id = auth.user.id;
+  const accessToken = authHeader.replace("Bearer ", "");
+  const supabase = createSupabaseServerClient(accessToken);
 
-  await supabase.from("course_status").upsert(
-    {
-      user_id,
-      course_id: "FL_PERMIT_TRAINING",
-      completed_at: new Date().toISOString(),
-      status: "completed_unpaid",
-    },
-    { onConflict: "user_id" }
-  );
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return Response.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const now = new Date().toISOString();
+
+  await supabase
+    .from("course_status")
+    .upsert(
+      {
+        user_id: user.id,
+        course_id: "FL_PERMIT_TRAINING",
+        completed_at: now,
+        status: "completed_unpaid",
+      },
+      { onConflict: "user_id" }
+    )
+    .throwOnError();
 
   return Response.json({ ok: true });
 }

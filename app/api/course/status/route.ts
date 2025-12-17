@@ -1,74 +1,39 @@
 import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
-export async function GET() {
-  const supabase = await createSupabaseServerClient();
+export async function GET(req: Request) {
+  const authHeader = req.headers.get("authorization");
 
-  /* -------------------- AUTH -------------------- */
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) {
+  if (!authHeader?.startsWith("Bearer ")) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const userId = auth.user.id;
+  const accessToken = authHeader.replace("Bearer ", "");
+  const supabase = createSupabaseServerClient(accessToken);
 
-  /* -------------------- LOAD COURSE STATUS -------------------- */
-  const { data: cs, error } = await supabase
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return Response.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const { data, error } = await supabase
     .from("course_status")
-    .select(`
-      completed_at,
-      exam_passed,
-      passed_at,
-      paid_at,
-      dmv_submitted_at
-    `)
-    .eq("user_id", userId)
+    .select(
+      "completed_at, exam_passed, paid_at, dmv_submitted_at, status"
+    )
+    .eq("user_id", user.id)
     .eq("course_id", "FL_PERMIT_TRAINING")
     .single();
 
-  /* -------------------- NO ROW = NOT STARTED -------------------- */
-  if (error || !cs) {
+  if (error) {
     return Response.json(
-      {
-        status: "not_started",
-        course_complete: false,
-        exam_passed: false,
-        paid: false,
-        dmv_submitted: false,
-      },
-      { status: 200 }
+      { error: "Failed to load course status" },
+      { status: 500 }
     );
   }
 
-  /* -------------------- DERIVE STATUS (SOURCE OF TRUTH) -------------------- */
-let status = "in_progress";
-
-if (!cs.completed_at) {
-  status = "in_progress";
-} else if (cs.completed_at && !cs.exam_passed) {
-  status = "course_completed_exam_pending";
-} else if (cs.completed_at && cs.exam_passed && !cs.paid_at) {
-  status = "completed_unpaid";
-} else if (cs.completed_at && cs.exam_passed && cs.paid_at && !cs.dmv_submitted_at) {
-  status = "completed_paid";
-} else if (cs.dmv_submitted_at) {
-  status = "dmv_submitted";
-}
-
-  /* -------------------- RESPONSE -------------------- */
-  return Response.json(
-    {
-      status,
-
-      course_complete: Boolean(cs.completed_at),
-      exam_passed: Boolean(cs.exam_passed),
-      paid: Boolean(cs.paid_at),
-      dmv_submitted: Boolean(cs.dmv_submitted_at),
-
-      completed_at: cs.completed_at,
-      passed_at: cs.passed_at,
-      paid_at: cs.paid_at,
-      dmv_submitted_at: cs.dmv_submitted_at,
-    },
-    { status: 200 }
-  );
+  return Response.json(data);
 }

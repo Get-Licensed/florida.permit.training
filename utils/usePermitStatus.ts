@@ -14,55 +14,30 @@ export function usePermitStatus() {
 
     async function run() {
       try {
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-        if (authError || !user) return;
+        const { data, error } = await supabase
+          .from("course_status")
+          .select("completed_at, exam_passed, paid_at")
+          .eq("user_id", user.id)
+          .eq("course_id", "FL_PERMIT_TRAINING")
+          .single();
 
-        const [courseRes, examRes, paymentsRes] = await Promise.all([
-          supabase
-            .from("course_status")
-            .select("completed_at")
-            .eq("user_id", user.id)
-            .eq("course_id", "FL_PERMIT_TRAINING")
-            .maybeSingle(),
+        if (error || !data || !alive) return;
 
-          supabase
-            .from("course_status")
-            .select("exam_passed")
-            .eq("user_id", user.id)
-            .eq("course_id", "FL_PERMIT_TRAINING")
-            .maybeSingle(),
-
-          supabase
-            .from("payments")
-            .select("status")
-            .eq("user_id", user.id)
-            .eq("course_id", "FL_PERMIT_TRAINING"),
-        ]);
-
-        if (!alive) return;
-
-        const paidStatuses = new Set(["succeeded", "paid"]);
-
-        setCourseComplete(Boolean(courseRes.data?.completed_at));
-        setExamPassed(Boolean(examRes.data?.exam_passed));
-        setPaid(
-          paymentsRes.data?.some(p => paidStatuses.has(p.status)) ?? false
-        );
-      } catch (err) {
-        console.error("usePermitStatus error:", err);
+        setCourseComplete(Boolean(data.completed_at));
+        setExamPassed(Boolean(data.exam_passed));
+        setPaid(Boolean(data.paid_at));
+      } catch (e) {
+        console.error("usePermitStatus error", e);
       } finally {
         if (alive) setLoading(false);
       }
     }
 
     run();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false };
   }, []);
 
   return {

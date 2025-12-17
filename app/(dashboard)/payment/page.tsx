@@ -6,6 +6,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import { supabase } from "@/utils/supabaseClient";
 import StripeCheckoutForm from "@/components/StripeCheckoutForm";
+import CourseTimeline from "@/components/CourseTimeline";
 
 /* ───────── STRIPE ───────── */
 const stripePromise = loadStripe(
@@ -42,6 +43,13 @@ export default function PaymentPage() {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [backendError, setBackendError] = useState<PaymentError | null>(null);
   const [loading, setLoading] = useState(true);
+  const [modules, setModules] = useState<any[]>([]);
+
+  /* ───────── DEEP LINK MODULES ───────── */
+
+function handleGoToModule(i: number) {
+  router.push(`/course?module=${i}`);
+}
 
   /* ───────── HANDLE STRIPE REDIRECT ───────── */
   useEffect(() => {
@@ -139,6 +147,18 @@ useEffect(() => {
   };
 }, [router]);
 
+/* ───────── MODULES ───────── */
+
+  useEffect(() => {
+    supabase
+      .from("modules")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .then(({ data }) => {
+        if (data) setModules(data);
+      });
+  }, []);
+
 /* ───────── LOADING ───────── */
   if (loading) {
     return (
@@ -181,42 +201,54 @@ useEffect(() => {
   }
 
   /* ───────── PAYMENT UI ───────── */
-  return (
+    return (
+    <>
     <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <Wrapper>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-          {/* LEFT COLUMN */}
-          <div>
-            <h1 className="text-2xl font-bold mb-4">
-              Florida Permit Training — Payment
-            </h1>
+        <Wrapper>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            {/* LEFT COLUMN */}
+            <div>
+              <h1 className="text-2xl font-bold mb-4">
+                Florida Permit Training — Payment
+              </h1>
 
-            <h2 className="text-[2em] text-[#ca5608] font-bold">$59.95</h2>
+              <h2 className="text-[2em] text-[#ca5608] font-bold">$59.95</h2>
 
-            <p className="text-sm italic mb-3">One-time fee</p>
+              <p className="text-sm italic mb-3">One-time fee</p>
 
-            <p className="mb-3">
-              You are nearing completion of the Florida Permit Training
-              requirements.
-            </p>
+              <p className="mb-3">
+                You are nearing completion of the Florida Permit Training
+                requirements.
+              </p>
 
-            <p className="mb-3">
-              Once your course and exam are completed, Florida requires an
-              electronic submission of your results to the DMV.
-            </p>
+              <p className="mb-3">
+                Once your course and exam are completed, Florida requires an
+                electronic submission of your results to the DMV.
+              </p>
 
-            <p className="mb-6">
-              This one-time administrative payment allows us to securely process
-              and submit your completion record on your behalf.
-            </p>
+              <p className="mb-6">
+                This one-time administrative payment allows us to securely process
+                and submit your completion record on your behalf.
+              </p>
+            </div>
+
+            {/* RIGHT COLUMN */}
+            <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-6">
+              <StripeCheckoutForm />
+            </div>
           </div>
+        </Wrapper>
+      </Elements>
 
-          {/* RIGHT COLUMN */}
-          <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-6">
-            <StripeCheckoutForm />
-          </div>
-        </div>
-      </Wrapper>
-    </Elements>
+    {/* COURSE TIMELINE (read-only, payment step) */}
+      <CourseTimeline
+        modules={modules}
+        currentModuleIndex={modules.length + 1}
+        maxCompletedIndex={modules.length}
+        examPassed={true}
+        paymentPaid={false}
+        goToModule={handleGoToModule}
+      />
+    </>
   );
 }

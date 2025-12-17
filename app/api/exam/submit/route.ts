@@ -1,60 +1,48 @@
-// app/api/exam/submit/route.ts
-
 import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
 type ExamAnswers = Record<string, string>;
 
 export async function POST(req: Request) {
   try {
-    const client = await createSupabaseServerClient();
+    /* ---------- AUTH ---------- */
+    const authHeader = req.headers.get("authorization");
 
-    /* --------------------------------------------------
-       AUTH
-    -------------------------------------------------- */
-    const { data: auth } = await client.auth.getUser();
-    if (!auth?.user) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return Response.json({ error: "Not authenticated" }, { status: 401 });
     }
-    const userId = auth.user.id;
 
-    /* --------------------------------------------------
-       PARSE BODY
-    -------------------------------------------------- */
-    let body: { answers?: ExamAnswers };
-    try {
-      body = await req.json();
-    } catch {
-      return Response.json({ error: "Invalid JSON" }, { status: 400 });
+    const accessToken = authHeader.replace("Bearer ", "");
+    const supabase = createSupabaseServerClient(accessToken);
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return Response.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const answers: ExamAnswers = body.answers ?? {};
+    const userId = user.id;
 
-/* --------------------------------------------------
-   LOAD QUESTIONS
--------------------------------------------------- */
-const { data: questions, error: qErr } = await client
-  .from("exam_questions")
-  .select("id, correct_option")
-  .order("order_index", { ascending: true });
+    /* ---------- BODY ---------- */
+    const body = await req.json().catch(() => null);
+    const answers: ExamAnswers = body?.answers ?? {};
 
-if (qErr) {
-  console.error("EXAM QUESTIONS LOAD ERROR:", qErr);
-  return Response.json(
-    { error: "Could not load exam questions" },
-    { status: 500 }
-  );
-}
+    /* ---------- LOAD QUESTIONS ---------- */
+    const { data: questions, error: qErr } = await supabase
+      .from("exam_questions")
+      .select("id, correct_option")
+      .order("order_index", { ascending: true });
 
-if (!questions || questions.length === 0) {
-  return Response.json(
-    { error: "No exam questions found" },
-    { status: 500 }
-  );
-}
+    if (qErr || !questions?.length) {
+      return Response.json(
+        { error: "Failed to load exam questions" },
+        { status: 500 }
+      );
+    }
 
-/* --------------------------------------------------
-       SCORE EXAM
-    -------------------------------------------------- */
+    /* ---------- SCORE ---------- */
     let correct = 0;
 
     for (const q of questions) {
@@ -71,10 +59,8 @@ if (!questions || questions.length === 0) {
     const score = Math.round((correct / total) * 100);
     const passed = score >= 80;
 
-    /* --------------------------------------------------
-       RECORD ATTEMPT
-    -------------------------------------------------- */
-    const { error: attemptErr } = await client
+    /* ---------- RECORD ATTEMPT ---------- */
+    const { error: attemptErr } = await supabase
       .from("exam_attempts")
       .insert({
         user_id: userId,
@@ -90,13 +76,9 @@ if (!questions || questions.length === 0) {
       );
     }
 
-    /* --------------------------------------------------
-       COURSE STATUS
-    -------------------------------------------------- */
-    let finalStatus = "in_progress";
-
+    /* ---------- UPDATE COURSE STATUS IF PASSED ---------- */
     if (passed) {
-      const { data: statusRow, error: statusErr } = await client
+      await supabase
         .from("course_status")
         .update({
           exam_passed: true,
@@ -104,47 +86,17 @@ if (!questions || questions.length === 0) {
         })
         .eq("user_id", userId)
         .eq("course_id", "FL_PERMIT_TRAINING")
-        .select()
-        .single();
-
-      if (!statusRow || statusErr) {
-        return Response.json(
-          { error: "Failed to update course status" },
-          { status: 500 }
-        );
-      }
-
-      const timeDone = !!statusRow.completed_at;
-      const paid = !!statusRow.paid_at;
-      const dmv = !!statusRow.dmv_submitted_at;
-
-      if (!timeDone) {
-        finalStatus = "in_progress";
-      } else if (timeDone && !paid) {
-        finalStatus = "completed_unpaid";
-      } else if (timeDone && paid && !dmv) {
-        finalStatus = "completed_paid";
-      } else {
-        finalStatus = "dmv_submitted";
-      }
+        .throwOnError();
     }
 
-    /* --------------------------------------------------
-       RESPONSE
-    -------------------------------------------------- */
-    return Response.json(
-      {
-        passed,
-        score,
-        correct,
-        total,
-      },
-      { status: 200 }
-    );
-
+    return Response.json({
+      passed,
+      score,
+      correct,
+      total,
+    });
   } catch (err) {
     console.error("EXAM SUBMIT ERROR:", err);
-
     return Response.json(
       { error: "Internal server error" },
       { status: 500 }
