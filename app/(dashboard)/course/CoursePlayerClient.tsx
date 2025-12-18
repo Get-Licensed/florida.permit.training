@@ -701,25 +701,18 @@ function applyProgress(
   }
 
 // ----------------------------------
-// URL DEEP-LINK (ONE-TIME OVERRIDE)
+// URL DEEP-LINK
 // ----------------------------------
-const urlModule = searchParams.get("module");
+const rawParam = searchParams.get("module");
 
 let urlIndex: number | null = null;
 
-if (urlModule !== null) {
-  const parsed = Number(urlModule);
+if (rawParam !== null) {
+  const parsed = Number(rawParam);
   if (Number.isInteger(parsed)) {
     urlIndex = parsed;
   }
 }
-
-const hasValidUrlModule =
-  urlIndex !== null &&
-  urlIndex >= 0 &&
-  urlIndex < modules.length &&
-  !deepLinkConsumedRef.current;
-
 
 // ----------------------------------
 // MODULE COMPLETION (DB)
@@ -732,27 +725,18 @@ const maxCompletedModuleIndex = completedModules.length
 
 setMaxCompletedIndex(maxCompletedModuleIndex);
 
-const highestSeenModule = modRows.length
-  ? Math.max(...modRows.map(m => m?.module_index ?? 0))
-  : 0;
-
 // ----------------------------------
 // FINAL MODULE DECISION (SINGLE SOURCE OF TRUTH)
 // ----------------------------------
-const finalModuleIndex =
-  hasValidUrlModule && urlIndex !== null
-    ? urlIndex
-    : maxCompletedModuleIndex;
+let finalModuleIndex = maxCompletedModuleIndex;
 
+if (urlIndex !== null) {
+  finalModuleIndex = Math.min(urlIndex, maxCompletedModuleIndex);
+}
 
 console.log("📍 FINAL MODULE INDEX:", finalModuleIndex);
 
-// Apply module
 setCurrentModuleIndex(finalModuleIndex);
-
-if (hasValidUrlModule) {
-  deepLinkConsumedRef.current = true;
-}
 
 
 // ----------------------------------

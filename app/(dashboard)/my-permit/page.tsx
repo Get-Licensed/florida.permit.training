@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { requireAuth } from "@/utils/requireAuth";
 import { usePermitStatus } from "@/utils/usePermitStatus";
-import PermitStatusFooter from "@/app/(dashboard)/PermitStatusFooter";
+import { supabase } from "@/utils/supabaseClient";
+import CourseTimeline from "@/components/CourseTimeline";
 
 function Loader() {
   return (
@@ -23,6 +24,16 @@ export default function MyPermitPage() {
 
   const [authChecked, setAuthChecked] = useState(false);
 
+  const {
+    loading: statusLoading,
+    courseComplete,
+    examPassed,
+    paid,
+  } = usePermitStatus();
+
+  const [modules, setModules] = useState<any[]>([]);
+  const [maxCompletedIndex, setMaxCompletedIndex] = useState(0);
+
   useEffect(() => {
     async function run() {
       const user = await requireAuth(router);
@@ -31,12 +42,39 @@ export default function MyPermitPage() {
     run();
   }, [router]);
 
-  const {
-    loading: statusLoading,
-    courseComplete,
-    examPassed,
-    paid,
-  } = usePermitStatus();
+  useEffect(() => {
+    async function loadProgress() {
+      const user = await supabase.auth.getUser();
+      if (!user.data.user) return;
+
+      const { data } = await supabase
+        .from("course_progress_modules")
+        .select("module_index")
+        .eq("user_id", user.data.user.id)
+        .eq("course_id", "FL_PERMIT_TRAINING")
+        .eq("completed", true);
+
+      if (!data?.length) {
+        setMaxCompletedIndex(0);
+        return;
+      }
+
+      const max = Math.max(...data.map((r) => r.module_index ?? 0));
+      setMaxCompletedIndex(max);
+    }
+
+    loadProgress();
+  }, []);
+
+  useEffect(() => {
+    supabase
+      .from("modules")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .then(({ data }) => {
+        if (data) setModules(data);
+      });
+  }, []);
 
   const shouldRedirect =
     authChecked &&
@@ -76,7 +114,7 @@ export default function MyPermitPage() {
             <div className="mt-6">
               {courseComplete ? (
                 <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
-                  ✅ Course Complete
+                  Course Complete
                 </div>
               ) : (
                 <button
@@ -103,7 +141,7 @@ export default function MyPermitPage() {
             <div className="mt-6">
               {examPassed ? (
                 <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
-                  ✅ Exam Passed
+                  Exam Passed
                 </div>
               ) : (
                 <button
@@ -141,7 +179,7 @@ export default function MyPermitPage() {
                 </button>
               ) : (
                 <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
-                  ✅ Payment Complete
+                  Payment Complete
                 </div>
               )}
             </div>
@@ -149,11 +187,23 @@ export default function MyPermitPage() {
         </div>
       </main>
 
-      <PermitStatusFooter
-        courseComplete={courseComplete}
-        examPassed={examPassed}
-        paid={paid}
-      />
+      {modules.length > 0 && (
+        <CourseTimeline
+          modules={modules}
+          currentModuleIndex={maxCompletedIndex}
+          maxCompletedIndex={maxCompletedIndex}
+          currentLessonIndex={0}
+          elapsedSeconds={1}
+          totalModuleSeconds={1}
+          examPassed={examPassed}
+          paymentPaid={paid}
+          goToModule={(i: number) => {
+            if (i <= modules.length - 1) {
+              router.push(`/course?module=${i}`);
+            }
+          }}
+        />
+      )}
     </>
   );
 }

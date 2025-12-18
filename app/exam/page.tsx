@@ -6,7 +6,8 @@ import ExamShell from "./ExamShell";
 import { requireAuth } from "@/utils/requireAuth";
 import { usePermitStatus } from "@/utils/usePermitStatus";
 import { ExamProgressContext } from "./ExamProgressContext";
-// import SteeringWheelLoader from "@/components/SteeringWheelLoader"; // ← use if you have it
+import { supabase } from "@/utils/supabaseClient";
+import CourseTimeline from "@/components/CourseTimeline";
 
 type Question = {
   id: number;
@@ -19,7 +20,6 @@ type Question = {
 export default function ExamPage() {
   const router = useRouter();
 
-  /* -------------------- STATE -------------------- */
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [loadingQuestions, setLoadingQuestions] = useState(true);
@@ -29,9 +29,13 @@ export default function ExamPage() {
   const [started, setStarted] = useState(false);
   const [index, setIndex] = useState(0);
 
-  /* -------------------- AUTH GATE -------------------- */
-
   const [authChecked, setAuthChecked] = useState(false);
+
+  const { loading: statusLoading, courseComplete, examPassed, paid } =
+    usePermitStatus();
+
+  const [modules, setModules] = useState<any[]>([]);
+  const [maxCompletedIndex, setMaxCompletedIndex] = useState(0);
 
   useEffect(() => {
     async function run() {
@@ -41,23 +45,45 @@ export default function ExamPage() {
     run();
   }, [router]);
 
-  const {
-  loading: statusLoading,
-  courseComplete,
-  examPassed,
-} = usePermitStatus();
+  useEffect(() => {
+    async function loadProgress() {
+      const user = await supabase.auth.getUser();
+      if (!user.data.user) return;
 
-  /* -------------------- LOAD QUESTIONS -------------------- */
+      const { data } = await supabase
+        .from("course_progress_modules")
+        .select("module_index")
+        .eq("user_id", user.data.user.id)
+        .eq("course_id", "FL_PERMIT_TRAINING")
+        .eq("completed", true);
+
+      if (!data?.length) {
+        setMaxCompletedIndex(0);
+        return;
+      }
+
+      const max = Math.max(...data.map((r) => r.module_index ?? 0));
+      setMaxCompletedIndex(max);
+    }
+
+    loadProgress();
+  }, []);
+
+  useEffect(() => {
+    supabase
+      .from("modules")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .then(({ data }) => {
+        if (data) setModules(data);
+      });
+  }, []);
+
   useEffect(() => {
     async function loadQuestions() {
       try {
         const res = await fetch("/api/exam/questions");
-        if (!res.ok) throw new Error();
         const json = await res.json();
-
-              console.log("EXAM QUESTIONS RESPONSE", json);
-
-
         setQuestions(json.questions || []);
       } catch {
         setError("Unable to load exam questions.");
@@ -68,55 +94,33 @@ export default function ExamPage() {
     loadQuestions();
   }, []);
 
-  /* -------------------- DERIVED -------------------- */
   const isBooting =
-    !authChecked ||
-    statusLoading ||
-    loadingQuestions;
+    !authChecked || statusLoading || loadingQuestions;
 
-    useEffect(() => {
-  if (!statusLoading && examPassed) {
-    router.replace("/my-permit");
-  }
-}, [statusLoading, examPassed, router]);
-
-
+  useEffect(() => {
+    if (!statusLoading && examPassed) router.replace("/my-permit");
+  }, [statusLoading, examPassed, router]);
 
   const total = questions.length;
 
-  const answeredCount = Object.keys(answers).length;
-
   const progressPercent =
     started && total > 0
-      ? Math.round((answeredCount / total) * 100)
+      ? Math.round((Object.keys(answers).length / total) * 100)
       : 0;
 
-    useEffect(() => {
-      function onKeyDown(e: KeyboardEvent) {
-        if (e.key !== "Enter") return;
-
-        // prevent accidental form submits / button clicks
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Enter") return;
       e.preventDefault();
-
       handleEnterAction();
     }
-
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    started,
-    submitting,
-    index,
-    total,
-    answers,
-    questions,
-  ]);
+  }, [started, submitting, index, total, answers, questions]);
 
-
-  /* -------------------- ACTIONS -------------------- */
   function selectAnswer(option: string) {
-    setAnswers((prev) => ({
-      ...prev,
+    setAnswers((p) => ({
+      ...p,
       [questions[index].id]: option,
     }));
   }
@@ -146,54 +150,45 @@ export default function ExamPage() {
           : `/exam/failed?score=${result.score ?? 0}`
       );
     } catch (err: any) {
-      setError(err.message || "Submission failed");
+      setError(err.message);
     } finally {
       setSubmitting(false);
     }
   }
 
   function handleEnterAction() {
-  if (!started) return;
-  if (!courseComplete) return;
-  if (submitting) return;
-
-  const currentQuestion = questions[index];
-  if (!currentQuestion) return;
-
-  const hasAnswer = Boolean(answers[currentQuestion.id]);
-
-  // LAST QUESTION → SUBMIT
-  if (index === total - 1) {
-    if (hasAnswer) submitExam();
-    return;
+    if (!started || !courseComplete || submitting) return;
+    const current = questions[index];
+    if (!current) return;
+    const answered = Boolean(answers[current.id]);
+    if (index === total - 1 && answered) {
+      submitExam();
+      return;
+    }
+    if (answered) setIndex((i) => i + 1);
   }
 
-  // NORMAL QUESTION → NEXT
-  if (hasAnswer) {
-    setIndex((i) => i + 1);
+  function goToModule(i: number) {
+    if (i <= maxCompletedIndex) {
+      router.push(`/course?module=${i}`);
+    }
   }
-}
 
-
-  /* -------------------- RENDER -------------------- */
   return (
     <ExamProgressContext.Provider value={progressPercent}>
       <ExamShell>
         {isBooting ? (
-          /* ===== BOOT / LOADING (NO FLASH) ===== */
-          <div className="h-full flex items-center justify-center bg-white">
-            {/* <SteeringWheelLoader /> */}
-            <div className="text-[#001f40] font-medium">
-              Loading exam…
-            </div>
-          </div>
+          <main className="fixed inset-0 flex items-center justify-center bg-white">
+            <img
+              src="/steering-wheel.png"
+              alt="Loading"
+              className="w-20 h-20 steering-animation opacity-80"
+            />
+          </main>
         ) : (
-          /* ===== EXAM ===== */
           <main className="h-full flex items-center justify-center px-6">
             <div className="w-full max-w-3xl">
-
               {!started ? (
-                /* ===== INTRO ===== */
                 <div className="text-center space-y-6">
                   <h1 className="text-3xl font-bold text-[#001f40]">
                     Final Exam
@@ -216,22 +211,17 @@ export default function ExamPage() {
                   <div className="mt-6 flex justify-center">
                     {examPassed ? (
                       <div className="w-[50%] p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
-                        ✅ Exam Passed
+                        Exam Passed
                       </div>
                     ) : (
                       <button
-                        disabled={false}
-                        onClick={() => {
-                            setStarted(true);
-                         }}                        
-                        className={`
-                            w-[50%] h-12 rounded-lg font-semibold transition
-                            ${
-                              courseComplete
-                                ? "bg-[#001f40] text-white hover:bg-[#00356e] cursor-pointer"
-                                : "bg-gray-300 text-gray-600 cursor-not-allowed"
-                            }
-                          `}
+                        disabled={!courseComplete}
+                        onClick={() => setStarted(true)}
+                        className={`w-[50%] h-12 rounded-lg font-semibold transition ${
+                          courseComplete
+                            ? "bg-[#001f40] text-white hover:bg-[#00356e]"
+                            : "bg-gray-300 text-gray-600 cursor-not-allowed"
+                        }`}
                       >
                         {courseComplete
                           ? "Start Exam"
@@ -241,7 +231,6 @@ export default function ExamPage() {
                   </div>
                 </div>
               ) : (
-                /* ===== QUESTION VIEW ===== */
                 questions[index] && (
                   <div className="space-y-8">
                     <div className="text-sm text-[#001f40] text-center opacity-70">
@@ -268,15 +257,11 @@ export default function ExamPage() {
                           <button
                             key={opt}
                             onClick={() => selectAnswer(opt)}
-                            className={`
-                              w-full text-left p-4 rounded-lg border transition
-                              text-[#001f40]
-                              ${
-                                selected
-                                  ? "border-[#ca5608] bg-orange-50"
-                                  : "border-gray-300 hover:bg-gray-50"
-                              }
-                            `}
+                            className={`w-full text-left p-4 rounded-lg border transition text-[#001f40] ${
+                              selected
+                                ? "border-[#ca5608] bg-orange-50"
+                                : "border-gray-300 hover:bg-gray-50"
+                            }`}
                           >
                             <strong>{opt}.</strong> {label}
                           </button>
@@ -284,20 +269,11 @@ export default function ExamPage() {
                       })}
                     </div>
 
-                    {/* ===== NAV ===== */}
                     <div className="flex justify-between pt-4">
                       <button
                         disabled={index === 0}
                         onClick={() => setIndex((i) => i - 1)}
-                        className="
-                          px-6 py-2 rounded-lg
-                          border border-[#001f40]
-                          text-[#001f40]
-                          bg-white
-                          font-semibold
-                          hover:bg-[#001f40]/5
-                          disabled:opacity-40
-                        "
+                        className="px-6 py-2 rounded-lg border border-[#001f40] text-[#001f40] bg-white font-semibold hover:bg-[#001f40]/5 disabled:opacity-40"
                       >
                         Previous
                       </button>
@@ -333,6 +309,23 @@ export default function ExamPage() {
           </main>
         )}
       </ExamShell>
+
+      {modules.length > 0 && !isBooting && (
+        <CourseTimeline
+          modules={modules}
+          currentModuleIndex={Math.min(
+            maxCompletedIndex,
+            modules.length - 1
+          )}
+          maxCompletedIndex={maxCompletedIndex}
+          currentLessonIndex={0}
+          elapsedSeconds={1}
+          totalModuleSeconds={1}
+          examPassed={examPassed}
+          paymentPaid={paid}
+          goToModule={goToModule}
+        />
+      )}
     </ExamProgressContext.Provider>
   );
 }

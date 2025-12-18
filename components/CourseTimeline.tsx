@@ -49,6 +49,7 @@ export default function CourseTimeline({
 }: CourseTimelineProps) {
   const totalSegments = modules.length + TERMINAL_SEGMENTS.length;
   const segmentWidth = totalSegments > 0 ? 100 / totalSegments : 100;
+  const onPaymentPage = typeof window !== "undefined" && window.location.pathname.startsWith("/payment");
 
   // removed visualActiveIndex completely - glowing follows current module always
 
@@ -108,18 +109,41 @@ export default function CourseTimeline({
             })}
 
 
-            {/* TERMINAL SEGMENTS */}
+{/* TERMINAL SEGMENTS */}
 {TERMINAL_SEGMENTS.map((seg, i) => {
   const isLast = i === TERMINAL_SEGMENTS.length - 1;
 
-  let bg = "#001f40";
+  const pathname =
+    typeof window !== "undefined" ? window.location.pathname : "";
 
+  const onPaymentPage = pathname.startsWith("/payment");
+  const onExamPage = pathname.startsWith("/exam");
+
+  let bg = "#001f40";
+  let glow = "none";
+
+  // ----- EXAM -----
   if (seg.id === "exam") {
-    bg = examPassed ? "#ca5608" : "#001f40";
+    const passed = examPassed;
+    bg = passed ? "#ca5608" : "#001f40";
+
+    if (onExamPage) {
+      glow = passed
+        ? "0 0 6px #ca5608"
+        : "0 0 6px #001f40";
+    }
   }
 
+  // ----- PAYMENT -----
   if (seg.id === "payment") {
-    bg = paymentPaid ? "#ca5608" : "#001f40";
+    const paid = paymentPaid;
+    bg = paid ? "#ca5608" : "#001f40";
+
+    if (onPaymentPage) {
+      glow = paid
+        ? "0 0 6px #ca5608"
+        : "0 0 6px #001f40";
+    }
   }
 
   return (
@@ -134,8 +158,7 @@ export default function CourseTimeline({
           className="flex-1 h-2"
           style={{
             backgroundColor: bg,
-
-         
+            boxShadow: glow,
             borderTopRightRadius: isLast ? 999 : 0,
             borderBottomRightRadius: isLast ? 999 : 0,
           }}
@@ -149,6 +172,9 @@ export default function CourseTimeline({
     </div>
   );
 })}
+
+
+
           </div>
         </div>
       </div>

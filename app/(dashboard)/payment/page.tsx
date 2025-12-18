@@ -195,13 +195,18 @@ export default function PaymentPage() {
       </Wrapper>
     );
   }
+const goToModule = (i: number) => {
+  if (!modules.length) return;
 
-  const goToModule = (i: number) => {
-  // Allow going BACK to completed modules only
-  if (i <= modules.length - 1) {
-    router.push(`/course?module=${i}`);
-  }
+  const safeIndex = Math.min(
+    i,
+    maxCompletedIndex,     // restrict to completed only
+    modules.length - 1
+  );
+
+  router.push(`/course?module=${safeIndex}`);
 };
+
 
   return (
   <>
