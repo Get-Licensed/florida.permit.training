@@ -149,13 +149,13 @@ body {
 /* TRACK */
 .vol-range::-webkit-slider-runnable-track {
   height: 4px;
-  background: #001f40;
+  background: #ffffff;
   border-radius: 999px;
 }
 
 .vol-range::-moz-range-track {
   height: 4px;
-  background: #001f40;
+  background: #ffffff;
   border-radius: 999px;
 }
 
@@ -165,7 +165,7 @@ body {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #001f40;
+  background: #ffffff;
   margin-top: -3px; /* centers thumb on track */
   cursor: pointer;
 }
@@ -174,6 +174,16 @@ body {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #001f40;
+  background: #ffffff;
   cursor: pointer;
+}
+
+/* CC VOICE SELECTOR */
+select.voice-hidden {
+  color: transparent !important;
+}
+
+select.voice-hidden option {
+  color:#001f40; /* deep blue */
+  border-radius: 12px;
 }
