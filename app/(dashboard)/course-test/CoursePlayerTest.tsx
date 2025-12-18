@@ -212,7 +212,8 @@ export default function CoursePlayerClient() {
   const [moduleTotals, setModuleTotals] = useState<Record<string, number>>({});
   const COURSE_ID = "FL_PERMIT_TRAINING";
   const TOTAL_REQUIRED_SECONDS = 6 * 60 * 60; // 21600
-  
+  const [showTimeline, setShowTimeline] = useState(false);
+
   const voiceLabel =
     VOICES.find(v => v.code === voice)?.label ?? "Unknown";
   
@@ -1612,8 +1613,28 @@ return (
         Continue
       </button>
     </div>
+   
+{/* HOVER REVEAL AREA */}
+<div
+  className="
+    fixed bottom-0 left-0 right-0
+    z-40 px-0 pb-[0px]
+  "
+  onMouseEnter={() => setShowTimeline(true)}
+  onMouseLeave={() => setShowTimeline(false)}
+>
+  <div
+    className={`
+      transition-all duration-300 ease-out
+      ${showTimeline
+        ? "opacity-100 translate-y-0"
+        : "opacity-0 translate-y-3 pointer-events-none"
+      }
+    `}
+  >
 
-     <CourseTimeline
+    {/* TIMELINE */}
+    <CourseTimeline
       modules={modules}
       currentModuleIndex={currentModuleIndex}
       maxCompletedIndex={maxCompletedIndex}
@@ -1623,124 +1644,134 @@ return (
       togglePlay={togglePlay}
       isPaused={isPaused}
     />
-    
-<div className="fixed bottom-[160px] left-0 right-0 z-40 pointer-events-auto"
-       onClick={(e)=>e.stopPropagation()}>
-<div className="md:max-w-6xl md:mx-auto px-4">
-    <div className="flex items-center gap-4 text-[#001f40]">
+
+    {/* CONTROLS – volume + CC */}
     <div
-      className="
-        h-10 px-4
-        flex items-center gap-2
-        rounded-full
-      "
+      className="fixed bottom-[160px] left-0 right-0 z-40 pointer-events-auto"
+      onClick={(e) => e.stopPropagation()}
     >
-      <svg
-        viewBox="0 0 24 24"
-        className="w-5 h-5 fill-white drop-shadow-sm translate-x-[35px]"
-      >
-        <path d="M5 9v6h4l5 4V5L9 9H5z" />
-      </svg>
+      <div className="md:max-w-6xl md:mx-auto px-4">
+        <div className="flex items-center gap-4 text-[#001f40]">
 
-      <div className="relative w-24">
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          value={volume}
-          onChange={(e) => {
-            const v = Number(e.target.value)
-            setVolume(v)
-            if (audioRef.current) audioRef.current.volume = v
-          }}
-          className="vol-range w-24 shadow-sm -translate-y-[4px] translate-x-[25px] shadow-black/10 relative z-10"
-        />
-      </div>
-    </div>
-    <div>
-</div>
-<div className="relative z-50">
+          {/* VOLUME */}
+          <div
+            className="
+              h-10 px-4
+              flex items-center gap-2
+              rounded-full
+            "
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="w-5 h-5 fill-white drop-shadow-sm translate-x-[35px]"
+            >
+              <path d="M5 9v6h4l5 4V5L9 9H5z" />
+            </svg>
 
-  <select
-    value={voice}
-    onChange={(e) => setVoice(e.target.value)}
-    className="
-      voice-hidden
-      h-10 pl-8 pr-10
-      rounded-full
-      text-xs
-      outline-none
-      cursor-pointer
-      appearance-none
-      pl-[20px]
-      w-20
-    "
-  >
-    {VOICES.map((v) => (
-      <option key={v.code} value={v.code}>
-        {v.label}
-      </option>
-    ))}
-  </select>
+            <div className="relative w-24">
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={volume}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setVolume(v);
+                  if (audioRef.current) audioRef.current.volume = v;
+                }}
+                className="vol-range w-24 shadow-sm -translate-y-[4px] translate-x-[25px] shadow-black/10 relative z-10"
+              />
+            </div>
+          </div>
 
-  <div
-    className="
-      pointer-events-none absolute inset-0 flex items-center
-      pl-2 text-white text-xs font-medium
-      z-10
-    "
-  >
-    <span
-      className="
-        inline-flex items-center justify-center
-        border-2 border-white
-        bg-black/60
-        px-1 py-[2px] mx-1
-        text-xs leading-none
-        rounded-sm
-        font-bold
-      "
-    >
-      CC
-    </span>
-    {voiceLabel}
-  </div>
+          <div></div>
 
- <svg
-  className="
-    pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 translate-x-[30px]
-    w-4 h-4 fill-white opacity-80
-    z-[999]
-  "
+          {/* CC + voice */}
+          <div className="relative z-50">
 
-    viewBox="0 0 24 24"
-  >
-    <path d="M7 10l5 5 5-5z"/>
-  </svg>
+            <select
+              value={voice}
+              onChange={(e) => setVoice(e.target.value)}
+              className="
+                voice-hidden
+                h-10 pl-8 pr-10
+                rounded-full
+                text-xs
+                outline-none
+                cursor-pointer
+                appearance-none
+                pl-[20px]
+                w-20
+              "
+            >
+              {VOICES.map((v) => (
+                <option key={v.code} value={v.code}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
 
+            <div
+              className="
+                pointer-events-none absolute inset-0 flex items-center
+                pl-2 text-white text-xs font-medium
+                z-10
+              "
+            >
+              <span
+                className="
+                  inline-flex items-center justify-center
+                  border-2 border-white
+                  bg-black/60
+                  px-1 py-[2px] mx-1
+                  text-xs leading-none
+                  rounded-sm
+                  font-bold
+                "
+              >
+                CC
+              </span>
+              {voiceLabel}
+            </div>
+
+            <svg
+              className="
+                pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 translate-x-[30px]
+                w-4 h-4 fill-white opacity-80
+                z-[999]
+              "
+              viewBox="0 0 24 24"
+            >
+              <path d="M7 10l5 5 5-5z" />
+            </svg>
 
           </div>
+
         </div>
       </div>
     </div>
-  
 
-  <FooterNav
-      goPrev={goPrev}
-      goNext={goNext}
-      slideIndex={slideIndex}
-      totalSlides={totalSlides}
-      audioTime={audioTime}
-      audioDuration={audioDuration}
-      captionText={captionText}
-      currentModuleIndex={currentModuleIndex}
-      currentLessonIndex={currentLessonIndex}
-      captions={captions}
-      slides={slides}
-      currentCaptionIndex={currentCaptionIndex}
-      currentWordIndex={currentWordIndex}
-    />
+  </div>
+</div>
+
+
+{/* unchanged footer nav */}
+<FooterNav
+  goPrev={goPrev}
+  goNext={goNext}
+  slideIndex={slideIndex}
+  totalSlides={totalSlides}
+  audioTime={audioTime}
+  audioDuration={audioDuration}
+  captionText={captionText}
+  currentModuleIndex={currentModuleIndex}
+  currentLessonIndex={currentLessonIndex}
+  captions={captions}
+  slides={slides}
+  currentCaptionIndex={currentCaptionIndex}
+  currentWordIndex={currentWordIndex}
+/>
   </div>
   );
 }
