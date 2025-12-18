@@ -64,21 +64,6 @@ body {
 }
 
 /* -------------------------------------------------
-   STEERING WHEEL LOADER (smooth loop)
---------------------------------------------------- */
-@keyframes steer {
-  0%   { transform: rotate(0deg);   opacity: 0.4; }
-  25%  { transform: rotate(-12deg); opacity: 1;   }
-  50%  { transform: rotate(0deg);   opacity: 0.7; }
-  75%  { transform: rotate(12deg);  opacity: 1;   }
-  100% { transform: rotate(0deg);   opacity: 0.4; }
-}
-
-.steering-animation {
-  animation: steer 2.5s ease-in-out infinite;
-}
-
-/* -------------------------------------------------
    DRAG AND DROP EFFECTS
 --------------------------------------------------- */
 .sortable-ghost {
@@ -89,6 +74,67 @@ body {
   background-color: rgba(202, 86, 8, 0.12) !important; /* Slight orange */
 }
 
+/* -------------------------------------------------
+   STEERING WHEEL — 50% SCALE
+--------------------------------------------------- */
+
+/* overlay */
+.fl-loader-overlay {
+  position: fixed;
+  inset: 0;
+  background: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+/* wheel wrapper */
+.fl-loader-wheel-wrap {
+  position: relative;
+  width: 32px;   /* was 64 */
+  height: 32px;  /* was 64 */
+}
+
+/* wobble */
+@keyframes steer {
+  0%   { transform: rotate(0deg);   opacity: 1; }
+  25%  { transform: rotate(-6deg);  opacity: .5; } /* half rotation */
+  75%  { transform: rotate(6deg);   opacity: 1; }
+  100% { transform: rotate(0deg);   opacity: .5; }
+}
+
+.fl-loader-wheel {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: steer 5.5s ease-in-out infinite;
+}
+
+/* ring around wheel */
+.fl-loader-wheel-wrap::before {
+  content: "";
+  position: absolute;
+  top: -3px;     /* was -6 */
+  left: -3px;
+  width: 38px;   /* was 75 */
+  height: 38px;  /* was 75 */
+  border-radius: 50%;
+  border: 2px solid transparent; /* thinner */
+  border-top-color: #001f40;
+  border-right-color: #ca5608;
+  animation: spinArc 1.25s linear infinite;
+}
+
+@keyframes spinArc {
+  0%   { transform: rotate(0deg);   opacity: .8; }
+  50%  { opacity: 1; }
+  100% { transform: rotate(360deg); opacity: .8; }
+}
+
+.animate-steer {
+  animation: steer 4.5s ease-in-out infinite;
+}
 /* -------------------------------------------------
    VOLUME SLIDER (GLOBAL, STABLE)
 --------------------------------------------------- */

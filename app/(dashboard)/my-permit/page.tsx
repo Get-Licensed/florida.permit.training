@@ -6,18 +6,7 @@ import { requireAuth } from "@/utils/requireAuth";
 import { usePermitStatus } from "@/utils/usePermitStatus";
 import { supabase } from "@/utils/supabaseClient";
 import CourseTimeline from "@/components/CourseTimeline";
-
-function Loader() {
-  return (
-    <main className="min-h-screen flex items-center justify-center bg-white fade-in">
-      <img
-        src="/steering-wheel.png"
-        alt="Loading"
-        className="w-24 h-24 steering-animation"
-      />
-    </main>
-  );
-}
+import Loader from "@/components/loader";
 
 export default function MyPermitPage() {
   const router = useRouter();

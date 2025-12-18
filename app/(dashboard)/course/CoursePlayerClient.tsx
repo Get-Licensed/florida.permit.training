@@ -7,6 +7,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import CourseTimeline from "@/components/CourseTimeline";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
+import Loader from "@/components/loader";
+
 
 
 /* ------------------------------------------------------
@@ -1370,12 +1372,7 @@ function goToModule(i: number) {
 if (!initialHydrationDone) {
   if (!progressReady || !contentReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white fade-in">
-        <img
-          src="/steering-wheel.png"
-          className="w-24 h-24 steering-animation"
-        />
-      </div>
+     <Loader />
     );
   }
 }

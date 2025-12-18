@@ -8,6 +8,8 @@ import { usePermitStatus } from "@/utils/usePermitStatus";
 import { ExamProgressContext } from "./ExamProgressContext";
 import { supabase } from "@/utils/supabaseClient";
 import CourseTimeline from "@/components/CourseTimeline";
+import Loader from "@/components/loader";
+
 
 type Question = {
   id: number;
@@ -79,20 +81,39 @@ export default function ExamPage() {
       });
   }, []);
 
-  useEffect(() => {
-    async function loadQuestions() {
-      try {
-        const res = await fetch("/api/exam/questions");
-        const json = await res.json();
-        setQuestions(json.questions || []);
-      } catch {
+useEffect(() => {
+  async function loadQuestions() {
+    try {
+      const res = await fetch("/api/exam/questions", {
+        credentials: "include", // REQUIRED so Supabase SSR sees auth cookie
+      });
+
+      if (!res.ok) {
         setError("Unable to load exam questions.");
-      } finally {
-        setLoadingQuestions(false);
+        setQuestions([]);
+        return;
       }
+
+      const json = await res.json();
+
+      if (!json?.questions || !Array.isArray(json.questions)) {
+        setError("Invalid exam questions response.");
+        setQuestions([]);
+        return;
+      }
+
+      setQuestions(json.questions);
+    } catch {
+      setError("Unable to load exam questions.");
+      setQuestions([]);
+    } finally {
+      setLoadingQuestions(false);
     }
-    loadQuestions();
-  }, []);
+  }
+
+  loadQuestions();
+}, []);
+
 
   const isBooting =
     !authChecked || statusLoading || loadingQuestions;
@@ -178,13 +199,8 @@ export default function ExamPage() {
     <ExamProgressContext.Provider value={progressPercent}>
       <ExamShell>
         {isBooting ? (
-          <main className="fixed inset-0 flex items-center justify-center bg-white">
-            <img
-              src="/steering-wheel.png"
-              alt="Loading"
-              className="w-20 h-20 steering-animation opacity-80"
-            />
-          </main>
+          <Loader />
+
         ) : (
           <main className="h-full flex items-center justify-center px-6">
             <div className="w-full max-w-3xl">

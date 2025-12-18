@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { usePermitStatus } from "@/utils/usePermitStatus";
 import { requireAuth } from "@/utils/requireAuth";
 import TimelineFooterShell from "@/app/(dashboard)/TimelineFooterShell";
+import Loader from "@/components/loader";
 
 export default function PermitCompletePage() {
   const router = useRouter();
@@ -22,13 +23,7 @@ export default function PermitCompletePage() {
 
   if (loading) {
     return (
-    <main className="min-h-screen flex items-center justify-center bg-white fade-in">
-        <img
-          src="/steering-wheel.png"
-          alt="Loading"
-          className="w-24 h-24 steering-animation"
-        />
-      </main>
+    <Loader />
     );
   }
 

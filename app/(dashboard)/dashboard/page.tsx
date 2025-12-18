@@ -6,27 +6,13 @@ import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { requireAuth } from "@/utils/requireAuth";
+import Loader from "@/components/loader";
 
 /* ───────────────────────────────
    CONSTANTS
 ────────────────────────────── */
 const COURSE_ID = "FL_PERMIT_TRAINING";
 const TOTAL_REQUIRED_SECONDS = 6 * 60 * 60; // 21600
-
-/* ───────────────────────────────
-   LOADER
-────────────────────────────── */
-function Loader() {
-  return (
-    <main className="min-h-screen flex items-center justify-center bg-white fade-in">
-      <img
-        src="/steering-wheel.png"
-        alt="Loading"
-        className="w-24 h-24 steering-animation"
-      />
-    </main>
-  );
-}
 
 /* ───────────────────────────────
    DASHBOARD PAGE

@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
 export async function GET() {
-  // ✅ FIX: await cookies()
   const cookieStore = await cookies();
 
   const supabase = createServerClient(
@@ -28,16 +27,18 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("exam_questions")
-    .select("id, question, option_a, option_b, option_c")
-    .order("order_index", { ascending: true });
+    .select("id, question, option_a, option_b, option_c, correct_option");
 
   if (error) {
-    console.error("Exam questions error:", error);
+    console.error("Exam questions SQL error:", error);
     return Response.json(
-      { error: "Failed to load exam questions" },
+      { error: error.message ?? "Failed to load exam questions" },
       { status: 500 }
     );
   }
 
-  return Response.json({ questions: data });
+  const shuffled = data.sort(() => Math.random() - 0.5);
+  const questions = shuffled.slice(0, 40);
+
+  return Response.json({ questions });
 }

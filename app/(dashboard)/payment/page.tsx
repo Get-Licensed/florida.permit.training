@@ -9,6 +9,8 @@ import { usePermitStatus } from "@/utils/usePermitStatus";
 import StripeCheckoutForm from "@/components/StripeCheckoutForm";
 import CourseTimeline from "@/components/CourseTimeline";
 import { canNavigateToModule } from "@/utils/courseNavigation";
+import Loader from "@/components/loader";
+
 
 
 const stripePromise = loadStripe(
@@ -178,12 +180,7 @@ export default function PaymentPage() {
     redirectToMyPermit
   ) {
     return (
-      <main className="fixed inset-0 flex items-center justify-center bg-white">
-        <img
-          src="/steering-wheel.png"
-          className="w-20 h-20 steering-animation opacity-80 translate-y-[10px]"
-        />
-      </main>
+     <Loader />
     );
   }
 

@@ -5,6 +5,7 @@ import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { requireAuth } from "@/utils/requireAuth";
+import Loader from "@/components/loader";
 
 /* ───────────────────────────────
    FORM TYPE
@@ -200,13 +201,7 @@ export default function UpdateProfilePage() {
      ─────────────────────────────── */
   if (loading) {
     return (
-    <main className="min-h-screen flex items-center justify-center bg-white fade-in">
-        <img
-          src="/steering-wheel.png"
-          alt="Loading"
-          className="w-24 h-24 steering-animation"
-        />
-      </main>
+   <Loader />
     );
   }
 
