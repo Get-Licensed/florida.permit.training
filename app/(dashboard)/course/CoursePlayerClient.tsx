@@ -6,6 +6,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef } from "react";
 import CourseTimeline from "@/components/CourseTimeline";
 import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 
 /* ------------------------------------------------------
@@ -169,6 +170,7 @@ const VOICES = [
 
 export default function CoursePlayerClient() {
   const didApplyProgress = useRef(false);
+  const deepLinkConsumedRef = useRef(false);
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
   // track highest DB-completed module
@@ -213,7 +215,8 @@ export default function CoursePlayerClient() {
     VOICES.find(v => v.code === voice)?.label ?? "Unknown";
   
   const searchParams = useSearchParams();
-  const deepLinkConsumedRef = useRef(false);
+  const router = useRouter();
+
 
 // -------------------------------------------------------------
 // DEBUG: Core gate values (helps detect infinite steering wheel)
@@ -590,24 +593,37 @@ useEffect(() => {
     }
 
     async function loadTerminalStatus() {
-      const res = await fetch("/api/course/status");
-      if (!res.ok) return;
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-      const data = await res.json();
+  if (!session?.access_token) {
+    console.warn("No session — skipping terminal status");
+    return;
+  }
 
-      const passed =
-        data.status === "completed_unpaid" ||
-        data.status === "completed_paid" ||
-        data.status === "dmv_submitted";
+  const res = await fetch("/api/course/status", {
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
 
-      const paid =
-        data.status === "completed_paid" ||
-        data.status === "dmv_submitted";
+  if (!res.ok) {
+    console.error("Failed to load terminal status", res.status);
+    return;
+  }
 
-      setExamPassed(passed);
-      setPaymentPaid(paid);
-      setTerminalStatusLoaded(true);
-    }
+  const data = await res.json();
+
+  console.log("COURSE STATUS RESPONSE:", data);
+
+  setExamPassed(data.exam_passed === true);
+
+  setPaymentPaid(
+    data.status === "completed_paid" ||
+    data.status === "dmv_submitted"
+  );
+}
 
 
   /* ------------------------------------------------------
@@ -726,7 +742,8 @@ const highestSeenModule = modRows.length
 const finalModuleIndex =
   hasValidUrlModule && urlIndex !== null
     ? urlIndex
-    : Math.max(maxCompletedModuleIndex, highestSeenModule, 0);
+    : maxCompletedModuleIndex;
+
 
 console.log("📍 FINAL MODULE INDEX:", finalModuleIndex);
 
@@ -1216,29 +1233,31 @@ const goNext = useCallback(async () => {
     return;
   }
 
-  // ▶️ NEXT MODULE
-  if (currentModuleIndex < modules.length - 1) {
-    const nextModule = currentModuleIndex + 1;
+// ▶ NEXT MODULE
+if (currentModuleIndex < modules.length - 1) {
+  const nextModule = currentModuleIndex + 1;
 
-    resetAudioElement();
-    cancelAutoplay.current = false;
+  resetAudioElement();
+  cancelAutoplay.current = false;
 
-    // HARD CLEAR — prevents stale audio / captions
-    setSlides([]);
-    setCaptions({});
-    setCurrentCaptionIndex(0);
-    setCurrentWordIndex(0);
+  setSlides([]);
+  setCaptions({});
+  setCurrentCaptionIndex(0);
+  setCurrentWordIndex(0);
 
-    setContentReady(false);
-    setRestoredReady(false);
+  setContentReady(false);
+  setRestoredReady(false);
 
-    setCurrentModuleIndex(nextModule);
-    setCurrentLessonIndex(0);
-    setSlideIndex(0);
+  // UI fix starts here
+  setMaxCompletedIndex(nextModule);    // optimistic state update
 
-    record(nextModule, 0, 0);
-    return;
-  }
+  setCurrentModuleIndex(nextModule);
+  setCurrentLessonIndex(0);
+  setSlideIndex(0);
+
+  record(nextModule, 0, 0);
+  return;
+}
 
   // 🚫 NO FALLTHROUGH — terminal paths handled above
 }, [
@@ -1295,14 +1314,31 @@ const goPrev = () => {
     return;
   }
 };
+
 //--------------------------------------------------------------------
-// jump to module only if user has unlocked it
+// jump to module only if user has unlocked it (GUARDED)
 //--------------------------------------------------------------------
 function goToModule(i: number) {
-  if (i > maxCompletedIndex + 1) return;
+
+  // ✅ Always allow current module
+  if (i === currentModuleIndex) {
+    // fall through to existing reload logic below
+  }
+  // ✅ Allow completed modules
+  else if (i <= maxCompletedIndex) {
+    // allowed
+  }
+  // ✅ Allow next unlocked module
+  else if (i === maxCompletedIndex + 1) {
+    // allowed
+  }
+  // 🚫 Everything else blocked
+  else {
+    return;
+  }
 
   // ------------------------------
-  // NEW: If clicking current module
+  // SAME MODULE CLICK → HARD RELOAD
   // ------------------------------
   if (i === currentModuleIndex) {
     console.log("HARD MODULE RELOAD");
@@ -1311,16 +1347,14 @@ function goToModule(i: number) {
     cancelAutoplay.current = false;
 
     setContentReady(false);
-    setRestoredReady(true);   // <-- allow content to unlock immediately
+    setRestoredReady(true);
 
-    // Force FULL reset
     setCurrentLessonIndex(0);
     setSlideIndex(0);
     setCurrentCaptionIndex(0);
     setCanProceed(false);
     setIsPaused(false);
 
-    // Force re-fetch of lessons/slides
     loadLessons(modules[i].id)
       .then(() => loadLessonContent(lessons[0]?.id));
 
@@ -1328,10 +1362,13 @@ function goToModule(i: number) {
   }
 
   // ------------------------------
-  // ORIGINAL LOGIC FOR REAL MODULE SWITCH
+  // REAL MODULE SWITCH
   // ------------------------------
   resetAudioElement();
+  cancelAutoplay.current = false;
+
   setContentReady(false);
+  setRestoredReady(false);
 
   setCurrentModuleIndex(i);
   setCurrentLessonIndex(0);
@@ -1340,13 +1377,16 @@ function goToModule(i: number) {
 
   setCanProceed(false);
   setIsPaused(false);
+
+  router.push(`/course?module=${i}`);
 }
+
 
 // Show steering wheel ONLY during very first load
 if (!initialHydrationDone) {
   if (!progressReady || !contentReady) {
     return (
-      <div className="w-screen h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex items-center justify-center bg-white fade-in">
         <img
           src="/steering-wheel.png"
           className="w-24 h-24 steering-animation"
@@ -1661,17 +1701,17 @@ if (
 />
 
 {/* COURSE TIMELINE ---------------------------------------- */}
-  <CourseTimeline
-    modules={modules}
-    currentModuleIndex={currentModuleIndex}
-    maxCompletedIndex={maxCompletedIndex}
-    goToModule={goToModule}
-    currentLessonIndex={currentLessonIndex}
-    totalModuleSeconds={totalModuleSeconds}
-    elapsedSeconds={elapsedSeconds}
-    examPassed={examPassed}
-    paymentPaid={paymentPaid}
-  />
+ <CourseTimeline
+  modules={modules}
+  currentModuleIndex={currentModuleIndex}
+  maxCompletedIndex={maxCompletedIndex}
+  goToModule={goToModule}
+  currentLessonIndex={currentLessonIndex}
+  totalModuleSeconds={totalModuleSeconds}
+  elapsedSeconds={elapsedSeconds}
+  examPassed={examPassed}
+  paymentPaid={paymentPaid}
+/>
 
 
 {/* MINI YOUTUBE-STYLE CONTROLS + META (PILL STYLE) -------- */}
@@ -1962,159 +2002,6 @@ const TERMINAL_SEGMENTS = [
     href: "/payment",
   },
 ];
-
-
-/* -----------------------------------------------------------
-   TIMELINE WITH PROMO  + FIXED METADATA (CoursePlayer version)
------------------------------------------------------------ */
-function TimelineWithPromo(props: any) {
-
-  const {
-    modules = [],
-    currentModuleIndex = 0,
-    maxCompletedIndex = 0,
-    goToModule = () => {},
-    promoOpen = false,
-    setPromoOpen = () => {},
-    slideIndex = 0,
-    totalSlides = 1,
-    audioTime = 0,
-    audioDuration = 0,
-    currentLessonIndex = 0,
-    totalModuleSeconds = 0,
-    elapsedSeconds = 0,
-
-    examPassed = false,
-    paymentPaid = false,
-  } = props;
-
-  const totalSegments = modules.length + TERMINAL_SEGMENTS.length;
-  const segmentWidth = totalSegments > 0 ? 100 / totalSegments : 100;
-
-  function statusText() {
-    const elapsed = safeTime(elapsedSeconds);
-    const total = safeTime(totalModuleSeconds);
-    return `Module ${currentModuleIndex + 1} → Lesson ${
-      currentLessonIndex + 1
-    } | ${elapsed}s / ${total}s`;
-  }
-
-  return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white z-40 border-t shadow-inner min-h-[6rem]">
-      <div className="w-full px-4 md:px-0">
-        <div className="md:max-w-6xl md:mx-auto p-4">
-            <div className="relative w-full h-6 flex items-center">
-
-            {/* dark rail */}
-              <div className="relative w-full h-6 flex items-center">
-
-               {modules.map((m: ModuleRow, i: number) => {
-                    const isCompleted = i <= maxCompletedIndex;
-                    const isActive = i === currentModuleIndex;
-                    const isUnlocked = i <= maxCompletedIndex + 1 || examPassed;
-
-                    const cursor = isUnlocked
-                      ? "cursor-pointer"
-                      : "cursor-not-allowed";
-
-                    // COLOR — completion is permanent
-                    let bg = isCompleted ? "#ca5608" : "#001f40";
-
-                    // ACTIVE always wins visually
-                    if (isActive) bg = "#ca5608";
-                    return (
-                      <div
-                        key={m.id}
-                        style={{ width: `${segmentWidth}%` }}
-                        className={`relative h-full flex items-center justify-center ${cursor}`}
-                        onClick={() => {
-                          if (isUnlocked) goToModule(i);
-                        }}
-                      >
-                        <div
-                          className="flex-1 h-2"
-                          style={{
-                            backgroundColor: bg,
-                            opacity: isUnlocked ? 1 : 0.4,
-                            boxShadow: isActive ? `0 0 6px ${bg}` : "none",
-                            borderTopLeftRadius: i === 0 ? 999 : 0,
-                            borderBottomLeftRadius: i === 0 ? 999 : 0,
-                          }}
-                        />
-                        <div className="w-[3px] h-full bg-white" />
-                      </div>
-                    );
-                  })}
-
-
-              {TERMINAL_SEGMENTS.map((seg, i) => {
-                  const isLast = i === TERMINAL_SEGMENTS.length - 1;
-
-                  let bg = "#001f40";
-
-                    if (seg.id === "exam") {
-                      bg = examPassed ? "#ca5608" : "#001f40";
-                    }
-
-                    if (seg.id === "payment") {
-                      bg = paymentPaid ? "#ca5608" : "#001f40";
-                    }
-
-
-                  return (
-                    <div
-                      key={seg.id}
-                      style={{ width: `${segmentWidth}%` }}
-                      className="relative h-full flex flex-col items-center justify-start cursor-pointer"
-                      onClick={() => {
-                        window.location.href = seg.href;
-                      }}
-                    >
-                      {/* RAIL SEGMENT */}
-                      <div className="w-full flex items-center justify-center translate-x-[1px] translate-y-[8px] h-2">
-                        <div
-                          className="flex-1 h-2"
-                       style={{
-                        backgroundColor: bg,
-
-                        // right rounding ONLY on last segment
-                        borderTopRightRadius: isLast ? 999 : 0,
-                        borderBottomRightRadius: isLast ? 999 : 0,
-                      }}
-
-
-                        />
-                        {!isLast && <div className="w-[3px] h-full bg-white" />}
-                      </div>
-
-                      {/* LABEL BELOW */}
-                      <div
-                        className="
-                          mt-3
-                          text-[9px]
-                          font-medium
-                          text-[#001f40]
-                          text-center
-                          leading-tight
-                          px-1
-                          max-w-[90px]
-                          opacity-80
-                        "
-                      >
-                        {seg.label}
-                      </div>
-                    </div>
-                  );
-                })}
-
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-}
 
 
 /* -----------------------------------------------------------

@@ -200,11 +200,11 @@ export default function UpdateProfilePage() {
      ─────────────────────────────── */
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-white">
+    <main className="min-h-screen flex items-center justify-center bg-white fade-in">
         <img
           src="/steering-wheel.png"
           alt="Loading"
-          className="w-20 h-20 steering-animation opacity-80"
+          className="w-24 h-24 steering-animation"
         />
       </main>
     );

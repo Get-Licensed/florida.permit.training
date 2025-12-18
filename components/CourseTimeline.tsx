@@ -45,9 +45,12 @@ export default function CourseTimeline({
 
   examPassed = false,
   paymentPaid = false,
+
 }: CourseTimelineProps) {
   const totalSegments = modules.length + TERMINAL_SEGMENTS.length;
   const segmentWidth = totalSegments > 0 ? 100 / totalSegments : 100;
+
+  // removed visualActiveIndex completely - glowing follows current module always
 
   function statusText() {
     return `Module ${currentModuleIndex + 1} → Lesson ${
@@ -65,17 +68,26 @@ export default function CourseTimeline({
             {modules.map((m, i) => {
               const isCompleted = i <= maxCompletedIndex;
               const isActive = i === currentModuleIndex;
-              const isUnlocked = i <= maxCompletedIndex + 1 || examPassed;
 
-              let bg = isCompleted ? "#ca5608" : "#001f40";
-              if (isActive) bg = "#ca5608";
+
+              const isUnlocked = i <= maxCompletedIndex;
+
+              let bg = "#001f40";
+              let glow = "none";
+
+              if (isCompleted) bg = "#ca5608";
+
+              if (isActive) {
+                bg = "#ca5608";
+                glow = `0 0 6px #ca5608`;
+              }
 
               return (
                 <div
                   key={m.id}
                   style={{ width: `${segmentWidth}%` }}
                   className={`relative h-full flex items-center justify-center ${
-                    isUnlocked ? "cursor-pointer" : "cursor-not-allowed"
+                    isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-45"
                   }`}
                   onClick={() => {
                     if (isUnlocked && goToModule) goToModule(i);
@@ -85,8 +97,7 @@ export default function CourseTimeline({
                     className="flex-1 h-2"
                     style={{
                       backgroundColor: bg,
-                      opacity: isUnlocked ? 1 : 0.4,
-                      boxShadow: isActive ? `0 0 6px ${bg}` : "none",
+                      boxShadow: glow,
                       borderTopLeftRadius: i === 0 ? 999 : 0,
                       borderBottomLeftRadius: i === 0 ? 999 : 0,
                     }}
@@ -96,40 +107,48 @@ export default function CourseTimeline({
               );
             })}
 
+
             {/* TERMINAL SEGMENTS */}
-            {TERMINAL_SEGMENTS.map((seg, i) => {
-              const isLast = i === TERMINAL_SEGMENTS.length - 1;
+{TERMINAL_SEGMENTS.map((seg, i) => {
+  const isLast = i === TERMINAL_SEGMENTS.length - 1;
 
-              let bg = "#001f40";
-              if (seg.id === "exam") bg = examPassed ? "#ca5608" : "#001f40";
-              if (seg.id === "payment")
-                bg = paymentPaid ? "#ca5608" : "#001f40";
+  let bg = "#001f40";
 
-              return (
-                <div
-                  key={seg.id}
-                  style={{ width: `${segmentWidth}%` }}
-                  className="relative h-full flex flex-col items-center justify-start cursor-pointer"
-                  onClick={() => (window.location.href = seg.href)}
-                >
-                  <div className="w-full flex items-center justify-center translate-x-[1px] translate-y-[8px] h-2">
-                    <div
-                      className="flex-1 h-2"
-                      style={{
-                        backgroundColor: bg,
-                        borderTopRightRadius: isLast ? 999 : 0,
-                        borderBottomRightRadius: isLast ? 999 : 0,
-                      }}
-                    />
-                    {!isLast && <div className="w-[3px] h-full bg-white" />}
-                  </div>
+  if (seg.id === "exam") {
+    bg = examPassed ? "#ca5608" : "#001f40";
+  }
 
-                  <div className="mt-3 text-[9px] font-medium text-[#001f40] text-center opacity-80 px-1">
-                    {seg.label}
-                  </div>
-                </div>
-              );
-            })}
+  if (seg.id === "payment") {
+    bg = paymentPaid ? "#ca5608" : "#001f40";
+  }
+
+  return (
+    <div
+      key={seg.id}
+      style={{ width: `${segmentWidth}%` }}
+      className="relative h-full flex flex-col items-center justify-start cursor-pointer"
+      onClick={() => (window.location.href = seg.href)}
+    >
+      <div className="w-full flex items-center justify-center translate-x-[1px] translate-y-[8px] h-2">
+        <div
+          className="flex-1 h-2"
+          style={{
+            backgroundColor: bg,
+
+         
+            borderTopRightRadius: isLast ? 999 : 0,
+            borderBottomRightRadius: isLast ? 999 : 0,
+          }}
+        />
+        {!isLast && <div className="w-[3px] h-full bg-white" />}
+      </div>
+
+      <div className="mt-3 text-[9px] font-medium text-[#001f40] text-center opacity-80 px-1">
+        {seg.label}
+      </div>
+    </div>
+  );
+})}
           </div>
         </div>
       </div>
