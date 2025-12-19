@@ -200,6 +200,7 @@ const VOICES = [
 export default function CoursePlayerClient() {
   const didApplyProgress = useRef(false);
   const deepLinkConsumedRef = useRef(false);
+  const scrubActive = useRef(false);
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
   // track highest DB-completed module
@@ -444,6 +445,7 @@ export default function CoursePlayerClient() {
 
   const applySeekTarget = useCallback(
     (target: SeekTarget) => {
+      if (scrubActive.current) return;
       const {
         moduleIndex,
         lessonIndex,
@@ -505,7 +507,17 @@ export default function CoursePlayerClient() {
     (seconds: number) => {
       if (!courseIndex) return;
 
-      const resolved = resolveCourseTime(seconds);
+      const roundTo = (value: number, precision: number) => {
+        const factor = 10 ** precision;
+        return Math.round(value * factor) / factor;
+      };
+
+      const seekSeconds = Math.max(
+        0,
+        Math.min(courseIndex.totalSeconds, roundTo(seconds, 2))
+      );
+
+      const resolved = resolveCourseTime(seekSeconds);
       if (!resolved) return;
 
       const maxUnlockedModuleIndex = Math.min(
@@ -529,6 +541,14 @@ export default function CoursePlayerClient() {
       applySeekTarget,
     ]
   );
+
+  const handleScrubStart = useCallback(() => {
+    scrubActive.current = true;
+  }, []);
+
+  const handleScrubEnd = useCallback(() => {
+    scrubActive.current = false;
+  }, []);
 
 
 // -------------------------------------------------------------
@@ -1291,6 +1311,7 @@ useEffect(() => {
 useEffect(() => {
   // 🚫 terminal state — do not reset anything
   if (isFinalCourseSlide) return;
+  if (scrubActive.current) return;
 
   resetAudioElement();
   const pendingSeek = pendingSeekRef.current;
@@ -1305,6 +1326,7 @@ useEffect(() => {
 }, [slideIndex, slides, isFinalCourseSlide, resetAudioElement]);
 
 useEffect(() => {
+  if (scrubActive.current) return;
   const pendingSeek = pendingSeekRef.current;
   const activeSlide = slides[slideIndex];
 
@@ -1318,6 +1340,7 @@ useEffect(() => {
 }, [slides, captions, slideIndex, currentCaptionIndex]);
 
 useEffect(() => {
+  if (scrubActive.current) return;
   const audio = audioRef.current;
   if (!audio || !contentReady) return;
 
@@ -1902,6 +1925,7 @@ return (
       }}
       onLoadedMetadata={(e) => {
         setAudioDuration(e.currentTarget.duration);
+        if (scrubActive.current) return;
         const pendingSeek = pendingSeekRef.current;
         const activeSlide = slides[slideIndex];
 
@@ -1921,6 +1945,7 @@ return (
       }}
       onEnded={async () => {
         if (isPaused) return
+        if (scrubActive.current) return
         const slide = slides[slideIndex]
         if (!slide) return
         const caps = captions[slide.id] || []
@@ -2015,6 +2040,8 @@ return (
       elapsedCourseSeconds={elapsedCourseSeconds}
       totalCourseSeconds={courseTotals.totalSeconds}
       onScrub={handleScrub}
+      onScrubStart={handleScrubStart}
+      onScrubEnd={handleScrubEnd}
     />
 
     {/* CONTROLS – volume + CC */}

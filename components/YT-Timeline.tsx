@@ -28,6 +28,8 @@ export type CourseTimelineProps = {
   elapsedCourseSeconds: number
   totalCourseSeconds: number
   onScrub?: (seconds: number) => void
+  onScrubStart?: () => void
+  onScrubEnd?: () => void
 }
 
 export default function CourseTimeline({
@@ -44,10 +46,13 @@ export default function CourseTimeline({
   elapsedCourseSeconds,
   totalCourseSeconds,
   onScrub,
+  onScrubStart,
+  onScrubEnd,
 }: CourseTimelineProps) {
   const [dragging, setDragging] = useState(false)
   const draggingRef = useRef(false)
   const [hoverSeconds, setHoverSeconds] = useState<number | null>(null)
+  const hoverSecondsRef = useRef<number | null>(null)
   const totalSegments = modules.length + TERMINAL_SEGMENTS.length
   const segmentWidth = totalSegments > 0 ? 100 / totalSegments : 100
   const pathname = typeof window !== "undefined" ? window.location.pathname : ""
@@ -55,9 +60,12 @@ export default function CourseTimeline({
   const onExamPage = pathname.startsWith("/exam")
   const modulesRef = useRef<HTMLDivElement | null>(null)
   const timelineRef = useRef<HTMLDivElement | null>(null)
+  const handleRef = useRef<HTMLDivElement | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const targetPxRef = useRef(0)
+  const currentPxRef = useRef(0)
   const modulePortionRatio =
     modules.length / (modules.length + TERMINAL_SEGMENTS.length)
-
 
   const getScrubSeconds = useCallback(
     (clientX: number, clampToModuleEnd: boolean) => {
@@ -86,20 +94,117 @@ export default function CourseTimeline({
     [modulePortionRatio, totalCourseSeconds]
   )
 
+  const getScrubPx = useCallback(
+    (clientX: number, clampToModuleEnd: boolean) => {
+      if (!timelineRef.current) return null
+      if (!modulesRef.current) return null
+      if (modulePortionRatio <= 0) return null
+
+      const rect = timelineRef.current.getBoundingClientRect()
+      const moduleWidth = rect.width * modulePortionRatio
+      if (moduleWidth <= 0) return null
+
+      let x = clientX - rect.left
+      if (x < 0) x = 0
+      if (x > moduleWidth) {
+        if (!clampToModuleEnd) return null
+        x = moduleWidth
+      }
+
+      return x
+    },
+    [modulePortionRatio]
+  )
+
+  const getPxFromSeconds = useCallback(
+    (seconds: number) => {
+      if (!timelineRef.current) return null
+      if (!modulesRef.current) return null
+      if (totalCourseSeconds <= 0) return null
+
+      const rect = timelineRef.current.getBoundingClientRect()
+      const clamped = Math.min(Math.max(seconds, 0), totalCourseSeconds)
+      return (clamped / totalCourseSeconds) * modulePortionRatio * rect.width
+    },
+    [modulePortionRatio, totalCourseSeconds]
+  )
+
+  const syncHandleTransform = useCallback((px: number) => {
+    currentPxRef.current = px
+    targetPxRef.current = px
+    if (handleRef.current) {
+      handleRef.current.style.transform = `translate(${px}px, -50%) translateX(-50%)`
+    }
+  }, [])
+
+  const animate = useCallback(() => {
+    if (!timelineRef.current || !handleRef.current) {
+      rafRef.current = null
+      return
+    }
+
+    const dx = targetPxRef.current - currentPxRef.current
+    currentPxRef.current += dx * 0.25
+
+    if (Math.abs(dx) > 0.2) {
+      handleRef.current.style.transform = `translate(${currentPxRef.current}px, -50%) translateX(-50%)`
+      rafRef.current = requestAnimationFrame(animate)
+    } else {
+      currentPxRef.current = targetPxRef.current
+      handleRef.current.style.transform = `translate(${currentPxRef.current}px, -50%) translateX(-50%)`
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (draggingRef.current) return
+    const px = getPxFromSeconds(elapsedCourseSeconds)
+    if (px === null) return
+    syncHandleTransform(px)
+  }, [elapsedCourseSeconds, getPxFromSeconds, syncHandleTransform])
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (draggingRef.current) return
+      const px = getPxFromSeconds(elapsedCourseSeconds)
+      if (px === null) return
+      syncHandleTransform(px)
+    }
+
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [elapsedCourseSeconds, getPxFromSeconds, syncHandleTransform])
+
   useEffect(() => {
     function handleMove(e: MouseEvent) {
       if (!draggingRef.current) return
       const sec = getScrubSeconds(e.clientX, true)
+      const px = getScrubPx(e.clientX, true)
       if (sec === null) return
-      if (onScrub) onScrub(sec)
+      if (px === null) return
+      hoverSecondsRef.current = sec
+      targetPxRef.current = px
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(animate)
+      }
     }
 
     function handleUp() {
       if (!draggingRef.current) return
       draggingRef.current = false
       document.body.style.userSelect = ""
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+      if (onScrubEnd) onScrubEnd()
+      if (hoverSecondsRef.current !== null && onScrub) {
+        onScrub(hoverSecondsRef.current)
+      }
       setDragging(false)
       setHoverSeconds(null)
+      hoverSecondsRef.current = null
     }
 
     window.addEventListener("mousemove", handleMove)
@@ -109,8 +214,13 @@ export default function CourseTimeline({
       window.removeEventListener("mousemove", handleMove)
       window.removeEventListener("mouseup", handleUp)
     }
-  }, [getScrubSeconds, onScrub])
+  }, [animate, getScrubPx, getScrubSeconds, onScrub, onScrubEnd])
 
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
+  }, [])
 
 return (
   <div className="fixed bottom-[145px] left-0 right-0 z-40 min-h-[6rem]">
@@ -147,12 +257,19 @@ return (
     onMouseDown={(e) => {
       if (e.button !== 0) return
       const sec = getScrubSeconds(e.clientX, false)
+      const px = getScrubPx(e.clientX, false)
       if (sec === null) return
+      if (px === null) return
       e.preventDefault()
       document.body.style.userSelect = "none"
       draggingRef.current = true
       setDragging(true)
-      if (onScrub) onScrub(sec)
+      hoverSecondsRef.current = sec
+      targetPxRef.current = px
+      if (onScrubStart) onScrubStart()
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(animate)
+      }
     }}
     onMouseMove={(e) => {
       if (dragging) return
@@ -174,6 +291,7 @@ return (
     {/* main scrub handle */}
     {totalSeconds > 0 && (
       <div
+        ref={handleRef}
         className="
           absolute top-1.5
           w-4.5 h-4.5 rounded-full
@@ -184,12 +302,8 @@ return (
           z-[10000]
         "
         style={{
-        left: `${
-          Math.min(elapsedCourseSeconds / totalCourseSeconds, 1) *
-          modulePortionRatio *
-          100
-        }%`,
-        transform: `translate(-50%, -50%)`,
+        left: 0,
+        transform: "translate(0px, -50%) translateX(-50%)",
         }}
       />
     )}
