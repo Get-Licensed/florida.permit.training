@@ -1,7 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
-import { useEffect } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 
 type ModuleRow = {
@@ -46,8 +45,8 @@ export default function CourseTimeline({
   totalCourseSeconds,
   onScrub,
 }: CourseTimelineProps) {
-  const barRef = useRef<HTMLDivElement | null>(null)
   const [dragging, setDragging] = useState(false)
+  const draggingRef = useRef(false)
   const [hoverSeconds, setHoverSeconds] = useState<number | null>(null)
   const totalSegments = modules.length + TERMINAL_SEGMENTS.length
   const segmentWidth = totalSegments > 0 ? 100 / totalSegments : 100
@@ -60,45 +59,57 @@ export default function CourseTimeline({
     modules.length / (modules.length + TERMINAL_SEGMENTS.length)
 
 
-  console.log("timeline seconds", { currentSeconds, totalSeconds })
+  const getScrubSeconds = useCallback(
+    (clientX: number, clampToModuleEnd: boolean) => {
+      if (!timelineRef.current) return null
+      if (!modulesRef.current) return null
+      if (modulePortionRatio <= 0) return null
+
+      const rect = timelineRef.current.getBoundingClientRect()
+      const moduleWidth = rect.width * modulePortionRatio
+      if (moduleWidth <= 0) return null
+
+      let x = clientX - rect.left
+      if (x < 0) x = 0
+      if (x > moduleWidth) {
+        if (!clampToModuleEnd) return null
+        x = moduleWidth
+      }
+
+      let pct = x / rect.width
+      pct = Math.min(Math.max(pct, 0), 1)
+      pct = pct / modulePortionRatio
+      pct = Math.min(Math.max(pct, 0), 1)
+
+      return pct * totalCourseSeconds
+    },
+    [modulePortionRatio, totalCourseSeconds]
+  )
 
   useEffect(() => {
-  function handleMove(e: MouseEvent) {
-    if (!dragging || !barRef.current) return
-
-    if (!modulesRef.current) return
-    if (!timelineRef.current) return
-    const rect = timelineRef.current.getBoundingClientRect()
-    let x = e.clientX - rect.left
-    const moduleWidth = rect.width * modulePortionRatio
-    if (x > moduleWidth) {
-      x = moduleWidth
+    function handleMove(e: MouseEvent) {
+      if (!draggingRef.current) return
+      const sec = getScrubSeconds(e.clientX, true)
+      if (sec === null) return
+      if (onScrub) onScrub(sec)
     }
-    let pct = x / rect.width
 
-    pct = Math.min(Math.max(pct, 0), 1)
-    pct = pct / modulePortionRatio
-    pct = Math.min(Math.max(pct, 0), 1)
+    function handleUp() {
+      if (!draggingRef.current) return
+      draggingRef.current = false
+      document.body.style.userSelect = ""
+      setDragging(false)
+      setHoverSeconds(null)
+    }
 
-    const sec = pct * totalCourseSeconds
+    window.addEventListener("mousemove", handleMove)
+    window.addEventListener("mouseup", handleUp)
 
-    if (onScrub) onScrub(sec)
-  }
-
-  function handleUp() {
-    document.body.style.userSelect = ""
-    setDragging(false)
-    setHoverSeconds(null)
-  }
-
-  window.addEventListener("mousemove", handleMove)
-  window.addEventListener("mouseup", handleUp)
-
-  return () => {
-    window.removeEventListener("mousemove", handleMove)
-    window.removeEventListener("mouseup", handleUp)
-  }
-}, [dragging, totalCourseSeconds, onScrub, modulePortionRatio])
+    return () => {
+      window.removeEventListener("mousemove", handleMove)
+      window.removeEventListener("mouseup", handleUp)
+    }
+  }, [getScrubSeconds, onScrub])
 
 
 return (
@@ -134,49 +145,22 @@ return (
         select-none cursor-pointer  
       "
     onMouseDown={(e) => {
+      if (e.button !== 0) return
+      const sec = getScrubSeconds(e.clientX, false)
+      if (sec === null) return
       e.preventDefault()
       document.body.style.userSelect = "none"
+      draggingRef.current = true
       setDragging(true)
-
-      if (!modulesRef.current) return
-
-        if (!timelineRef.current) return
-        const rect = timelineRef.current.getBoundingClientRect()
-        let x = e.clientX - rect.left
-        const moduleWidth = rect.width * modulePortionRatio
-        if (x > moduleWidth) {
-          return
-        }
-        let pct = x / rect.width
-
-        pct = Math.min(Math.max(pct, 0), 1)
-        pct = pct / modulePortionRatio
-        pct = Math.min(Math.max(pct, 0), 1)
-
-        const sec = pct * totalCourseSeconds
-
       if (onScrub) onScrub(sec)
     }}
     onMouseMove={(e) => {
       if (dragging) return
-      if (!modulesRef.current) return
-
-      if (!timelineRef.current) return
-      const rect = timelineRef.current.getBoundingClientRect()
-        let x = e.clientX - rect.left
-        const moduleWidth = rect.width * modulePortionRatio
-        if (x > moduleWidth) {
-          setHoverSeconds(null)
-          return
-        }
-        let pct = x / rect.width
-
-        pct = Math.min(Math.max(pct, 0), 1)
-        pct = pct / modulePortionRatio
-        pct = Math.min(Math.max(pct, 0), 1)
-
-        const sec = pct * totalCourseSeconds
-
+      const sec = getScrubSeconds(e.clientX, false)
+      if (sec === null) {
+        setHoverSeconds(null)
+        return
+      }
       setHoverSeconds(sec)
        }}
       onMouseLeave={() => {
