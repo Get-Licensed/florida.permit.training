@@ -79,6 +79,19 @@ export default function CourseTimeline({
   const rafRef = useRef<number | null>(null)
   const targetPxRef = useRef(0)
   const currentPxRef = useRef(0)
+  const suppressModuleClickRef = useRef(false)
+  const suppressModuleClickTimeoutRef = useRef<number | null>(null)
+
+  const releaseSuppressModuleClick = useCallback(() => {
+    if (suppressModuleClickTimeoutRef.current !== null) {
+      window.clearTimeout(suppressModuleClickTimeoutRef.current)
+    }
+
+    suppressModuleClickTimeoutRef.current = window.setTimeout(() => {
+      suppressModuleClickRef.current = false
+      suppressModuleClickTimeoutRef.current = null
+    }, 0)
+  }, [])
 
   const getScrubSeconds = useCallback(
     (clientX: number, clampToModuleEnd: boolean) => {
@@ -251,6 +264,7 @@ export default function CourseTimeline({
   }
 
   if (onScrubEnd) onScrubEnd();
+  releaseSuppressModuleClick();
 
   setDragging(false);
   setHoverSeconds(null);
@@ -272,12 +286,16 @@ export default function CourseTimeline({
     onHoverResolve,
     onScrub,
     onScrubEnd,
+    releaseSuppressModuleClick,
     syncHandleTransform,
   ])
 
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (suppressModuleClickTimeoutRef.current !== null) {
+        window.clearTimeout(suppressModuleClickTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -321,6 +339,11 @@ return (
       if (px === null) return
       e.preventDefault()
       document.body.style.userSelect = "none"
+      suppressModuleClickRef.current = true
+      if (suppressModuleClickTimeoutRef.current !== null) {
+        window.clearTimeout(suppressModuleClickTimeoutRef.current)
+        suppressModuleClickTimeoutRef.current = null
+      }
       draggingRef.current = true
       setDragging(true)
       setHoverSeconds(null)
@@ -420,6 +443,7 @@ return (
           isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-45"
         }`}
         onClick={() => {
+          if (suppressModuleClickRef.current) return
           if (isUnlocked && goToModule) goToModule(i)
         }}
       >

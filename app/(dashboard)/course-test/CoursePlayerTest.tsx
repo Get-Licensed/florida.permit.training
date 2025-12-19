@@ -483,6 +483,7 @@ export default function CoursePlayerClient() {
   const applySeekTarget = useCallback(
     (target: SeekTarget) => {
       if (scrubActive.current) return;
+      seekCommitInFlightRef.current = true;
       const {
         moduleIndex,
         lessonIndex,
@@ -515,19 +516,20 @@ export default function CoursePlayerClient() {
       }
 
       if (!slideChanged) {
-      setCurrentCaptionIndex(captionIndex);
+        setCurrentCaptionIndex(captionIndex);
 
-      // allow continuous-time scrubs: only overwrite when not scrubbing
-      if (
-        !scrubActive.current &&
-        audioRef.current &&
-        slideId === slides[slideIndex]?.id &&
-        currentCaptionIndex === captionIndex
-      ) {
-        audioRef.current.currentTime = captionOffset;
-        appliedSeekTargetRef.current = null;
+        // allow continuous-time scrubs: only overwrite when not scrubbing
+        if (
+          !scrubActive.current &&
+          audioRef.current &&
+          slideId === slides[slideIndex]?.id &&
+          currentCaptionIndex === captionIndex
+        ) {
+          audioRef.current.currentTime = captionOffset;
+          appliedSeekTargetRef.current = null;
+          seekCommitInFlightRef.current = false;
+        }
       }
-    }
 
 
       setCurrentWordIndex(0);
@@ -794,9 +796,12 @@ useEffect(() => {
 }, [voice]);
 
 
-const audioRef = useRef<HTMLAudioElement | null>(null);
-const pendingSeekRef = useRef<number | null>(null);
-const appliedSeekTargetRef = useRef<SeekTarget | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const pendingSeekRef = useRef<number | null>(null);
+  const appliedSeekTargetRef = useRef<SeekTarget | null>(null);
+  const seekCommitInFlightRef = useRef(false);
+  const moduleLoadInFlightRef = useRef<string | null>(null);
+  const lessonLoadInFlightRef = useRef<number | null>(null);
 
 useEffect(() => {
   const audio = audioRef.current;
@@ -1230,6 +1235,10 @@ function unlockProgressGates() {
      LOAD LESSONS (without resetting lesson index)
   ------------------------------------------------------ */
   async function loadLessons(moduleId: string) {
+    if (moduleLoadInFlightRef.current === moduleId) return;
+    moduleLoadInFlightRef.current = moduleId;
+
+    try {
     const { data } = await supabase
       .from("lessons")
       .select("*")
@@ -1243,89 +1252,102 @@ function unlockProgressGates() {
 
     setLessons(data);
     // DO NOT reset currentLessonIndex here
+    } finally {
+      if (moduleLoadInFlightRef.current === moduleId) {
+        moduleLoadInFlightRef.current = null;
+      }
+    }
   }
 
  /* ------------------------------------------------------
    LOAD LESSON CONTENT  (with contentReady gates)
 ------------------------------------------------------ */
 async function loadLessonContent(lessonId: number) {
+  if (lessonLoadInFlightRef.current === lessonId) return;
+  lessonLoadInFlightRef.current = lessonId;
   console.log("LOAD_LESSON_CONTENT: start", { lessonId });
 
-  // reset content-ready for this lesson load
-  setContentReady(false);
+  try {
+    // reset content-ready for this lesson load
+    setContentReady(false);
 
-  // stop any audio in progress
-  if (audioRef.current) {
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
-    audioRef.current.src = "";
-  }
+    // stop any audio in progress
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.src = "";
+    }
 
-  // clear existing content
-  setSlides([]);
-  setCaptions({});
+    // clear existing content
+    setSlides([]);
+    setCaptions({});
 
-  // ---- SLIDES ----
-  const { data: slideRows } = await supabase
-    .from("lesson_slides")
-    .select("*")
-    .eq("lesson_id", lessonId)
-    .order("order_index", { ascending: true });
+    // ---- SLIDES ----
+    const { data: slideRows } = await supabase
+      .from("lesson_slides")
+      .select("*")
+      .eq("lesson_id", lessonId)
+      .order("order_index", { ascending: true });
 
-  setSlides(slideRows || []);
+    setSlides(slideRows || []);
 
-  // ---- CAPTIONS ----
-  const slideIds = slideRows?.map((s) => s.id) ?? [];
-  const { data: captionRows } = await supabase
-    .from("slide_captions")
-    .select(`
-      id,
-      slide_id,
-      caption,
-      seconds,
-      line_index,
-      published_audio_url_d,
-      published_audio_url_a,
-      published_audio_url_j,
-      published_audio_url_o
-    `)
-    .in("slide_id", slideIds)
-    .order("line_index", { ascending: true });
+    // ---- CAPTIONS ----
+    const slideIds = slideRows?.map((s) => s.id) ?? [];
+    const { data: captionRows } = await supabase
+      .from("slide_captions")
+      .select(`
+        id,
+        slide_id,
+        caption,
+        seconds,
+        line_index,
+        published_audio_url_d,
+        published_audio_url_a,
+        published_audio_url_j,
+        published_audio_url_o
+      `)
+      .in("slide_id", slideIds)
+      .order("line_index", { ascending: true });
 
-  const grouped: Record<string, CaptionRow[]> = {};
-  slideRows?.forEach((s) => {
-    grouped[s.id] =
-      captionRows?.filter((c) => String(c.slide_id) === String(s.id)) ?? [];
-  });
+    const grouped: Record<string, CaptionRow[]> = {};
+    slideRows?.forEach((s) => {
+      grouped[s.id] =
+        captionRows?.filter((c) => String(c.slide_id) === String(s.id)) ?? [];
+    });
 
-  setCaptions(grouped);
+    setCaptions(grouped);
 
-  console.log("LESSON CONTENT LOADED:", {
-    lessonId,
-    slidesLoaded: slideRows?.length ?? 0,
-    captionsLoaded: captionRows?.length ?? 0,
-    restoredReady,
-    contentReadyPending: true
-  });
+    console.log("LESSON CONTENT LOADED:", {
+      lessonId,
+      slidesLoaded: slideRows?.length ?? 0,
+      captionsLoaded: captionRows?.length ?? 0,
+      restoredReady,
+      contentReadyPending: true
+    });
 
-  // ------------------------------------------------------
-  // PATCH: Unlock autoplay for *fresh module loads* 
-  // (restoredReady = false means NEW USER or NEW MODULE)
-  // ------------------------------------------------------
-  if (!restoredReady) {
-    console.log("FRESH MODULE LOAD → enabling contentReady immediately");
-    setContentReady(true);
-  }
+    // ------------------------------------------------------
+    // PATCH: Unlock autoplay for *fresh module loads* 
+    // (restoredReady = false means NEW USER or NEW MODULE)
+    // ------------------------------------------------------
+    if (!restoredReady) {
+      console.log("FRESH MODULE LOAD → enabling contentReady immediately");
+      setContentReady(true);
+    }
 
-  // finished loading lesson data
-  setLoading(false);
+    // finished loading lesson data
+    setLoading(false);
 
-  // ------------------------------------------------------
-  // If restoring from saved progress, wait and then unlock.
-  // ------------------------------------------------------
-  if (restoredReady) {
-    console.log("RESTORED PROGRESS → enabling contentReady");
-    setContentReady(true);
+    // ------------------------------------------------------
+    // If restoring from saved progress, wait and then unlock.
+    // ------------------------------------------------------
+    if (restoredReady) {
+      console.log("RESTORED PROGRESS → enabling contentReady");
+      setContentReady(true);
+    }
+  } finally {
+    if (lessonLoadInFlightRef.current === lessonId) {
+      lessonLoadInFlightRef.current = null;
+    }
   }
 }
 
@@ -1411,6 +1433,19 @@ useEffect(() => {
   if (scrubActive.current) return;
   const pendingSeek = appliedSeekTargetRef.current;
   const activeSlide = slides[slideIndex];
+
+    if (pendingSeek && !contentReady) {
+    console.warn("CONFLICT: pending seek cannot resolve while contentReady=false", {
+      pendingSeek,
+      progressReady,
+      contentReady,
+      restoredReady,
+      initialHydrationDone,
+      slideIndex,
+      moduleIndex: currentModuleIndex,
+    });
+  }
+
 
   if (!pendingSeek || !activeSlide || pendingSeek.slideId !== activeSlide.id) {
     return;
@@ -1782,6 +1817,7 @@ const goPrev = () => {
 // jump to module only if user has unlocked it (GUARDED)
 //--------------------------------------------------------------------
 function goToModule(i: number) {
+  if (seekCommitInFlightRef.current) return;
 
   // ✅ Always allow current module
   if (i === currentModuleIndex) {
@@ -2036,6 +2072,7 @@ return (
           );
           e.currentTarget.currentTime = seekTo;
           appliedSeekTargetRef.current = null;
+          seekCommitInFlightRef.current = false;
         }
       }}
       onEnded={async () => {
