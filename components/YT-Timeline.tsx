@@ -79,6 +79,7 @@ export default function CourseTimeline({
   const rafRef = useRef<number | null>(null)
   const targetPxRef = useRef(0)
   const currentPxRef = useRef(0)
+  const freezeSeekRef = useRef(false)
   const suppressModuleClickRef = useRef(false)
   const suppressModuleClickTimeoutRef = useRef<number | null>(null)
 
@@ -210,14 +211,18 @@ export default function CourseTimeline({
 
   useEffect(() => {
     if (draggingRef.current) return
+    if (freezeSeekRef.current) return
+    if (totalDur <= 0) return
     const px = getPxFromSeconds(elapsedCourseSeconds)
     if (px === null) return
     syncHandleTransform(px)
-  }, [elapsedCourseSeconds, getPxFromSeconds, syncHandleTransform])
+  }, [elapsedCourseSeconds, getPxFromSeconds, syncHandleTransform, totalDur])
 
   useEffect(() => {
     const handleResize = () => {
       if (draggingRef.current) return
+      if (freezeSeekRef.current) return
+      if (totalDur <= 0) return
       const px = getPxFromSeconds(elapsedCourseSeconds)
       if (px === null) return
       syncHandleTransform(px)
@@ -225,7 +230,7 @@ export default function CourseTimeline({
 
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
-  }, [elapsedCourseSeconds, getPxFromSeconds, syncHandleTransform])
+  }, [elapsedCourseSeconds, getPxFromSeconds, syncHandleTransform, totalDur])
 
   useEffect(() => {
     function handleMove(e: MouseEvent) {
@@ -244,32 +249,28 @@ export default function CourseTimeline({
     }
 
     function handleUp() {
-  if (!draggingRef.current) return;
+  if (!draggingRef.current) return
 
-  draggingRef.current = false;
-  document.body.style.userSelect = "";
+  draggingRef.current = false
+  document.body.style.userSelect = ""
 
-  // force-finish animation + snap to final pixel
   if (rafRef.current) {
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
+    cancelAnimationFrame(rafRef.current)
+    rafRef.current = null
   }
 
-  const px = targetPxRef.current;
-  currentPxRef.current = px;
+  freezeSeekRef.current = false
 
-  if (handleRef.current) {
-    handleRef.current.style.transform =
-      `translate(${px}px, -50%) translateX(-50%)`;
-  }
+  const px = getPxFromSeconds(elapsedCourseSeconds)
+  if (px !== null) syncHandleTransform(px)
 
-  if (onScrubEnd) onScrubEnd();
-  releaseSuppressModuleClick();
+  if (onScrubEnd) onScrubEnd()
+  releaseSuppressModuleClick()
 
-  setDragging(false);
-  setHoverSeconds(null);
-  hoverSecondsRef.current = null;
-  if (onHoverEnd) onHoverEnd();
+  setDragging(false)
+  setHoverSeconds(null)
+  hoverSecondsRef.current = null
+  if (onHoverEnd) onHoverEnd()
 }
 
     window.addEventListener("mousemove", handleMove)
@@ -345,6 +346,7 @@ return (
         suppressModuleClickTimeoutRef.current = null
       }
       draggingRef.current = true
+      freezeSeekRef.current = true
       setDragging(true)
       setHoverSeconds(null)
       hoverSecondsRef.current = sec
