@@ -650,8 +650,13 @@ export default function CoursePlayerClient() {
   }, []);
 
   const handleScrubStart = useCallback(() => {
-    scrubActive.current = true;
+    scrubActive.current = true;                  // start scrubbing
     resumeAfterScrubRef.current = !isPausedRef.current;
+
+    // cancel any in-flight or pending seek work
+    pendingSeekRef.current = null;
+    appliedSeekTargetRef.current = null;
+    seekCommitInFlightRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -1274,10 +1279,11 @@ function unlockProgressGates() {
    LOAD LESSON CONTENT  (with contentReady gates)
 ------------------------------------------------------ */
 async function loadLessonContent(lessonId: number) {
-  if (scrubActive.current) {
-    console.warn("LOAD CANCELLED — scrub active");
-    return;
+    if (scrubActive.current) {
+    console.warn("LOAD CANCELLED — scrub active")
+    return
   }
+
   if (lessonLoadInFlightRef.current === lessonId) return;
   lessonLoadInFlightRef.current = lessonId;
   console.log("LOAD_LESSON_CONTENT: start", { lessonId });
