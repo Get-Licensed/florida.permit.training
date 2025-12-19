@@ -515,16 +515,20 @@ export default function CoursePlayerClient() {
       }
 
       if (!slideChanged) {
-        setCurrentCaptionIndex(captionIndex);
-        if (
-          audioRef.current &&
-          slideId === slides[slideIndex]?.id &&
-          currentCaptionIndex === captionIndex
-        ) {
-          audioRef.current.currentTime = captionOffset;
-          pendingSeekRef.current = null;
-        }
+      setCurrentCaptionIndex(captionIndex);
+
+      // allow continuous-time scrubs: only overwrite when not scrubbing
+      if (
+        !scrubActive.current &&
+        audioRef.current &&
+        slideId === slides[slideIndex]?.id &&
+        currentCaptionIndex === captionIndex
+      ) {
+        audioRef.current.currentTime = captionOffset;
+        pendingSeekRef.current = null;
       }
+    }
+
 
       setCurrentWordIndex(0);
       setCanProceed(false);
@@ -553,6 +557,12 @@ export default function CoursePlayerClient() {
         0,
         Math.min(courseIndex.totalSeconds, roundTo(seconds, 2))
       );
+
+      // --- continuous player time anchor (prevents snap) ---
+      const audio = audioRef.current;
+      if (audio) {
+        audio.currentTime = seekSeconds;  // exact continuous seconds
+      }
 
       const resolved = resolveCourseTime(seekSeconds);
       if (!resolved) return;

@@ -229,22 +229,36 @@ export default function CourseTimeline({
     }
 
     function handleUp() {
-      if (!draggingRef.current) return
-      draggingRef.current = false
-      document.body.style.userSelect = ""
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-      }
-      if (onScrubEnd) onScrubEnd()
-      if (hoverSecondsRef.current !== null && onScrub) {
-        onScrub(hoverSecondsRef.current)
-      }
-      setDragging(false)
-      setHoverSeconds(null)
-      hoverSecondsRef.current = null
-      if (onHoverEnd) onHoverEnd()
-    }
+  if (!draggingRef.current) return;
+
+  draggingRef.current = false;
+  document.body.style.userSelect = "";
+
+  // force-finish animation + snap to final pixel
+  if (rafRef.current) {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }
+
+  const px = targetPxRef.current;
+  currentPxRef.current = px;
+
+  if (handleRef.current) {
+    handleRef.current.style.transform =
+      `translate(${px}px, -50%) translateX(-50%)`;
+  }
+
+  if (onScrubEnd) onScrubEnd();
+
+  if (hoverSecondsRef.current !== null && onScrub) {
+    onScrub(hoverSecondsRef.current);
+  }
+
+  setDragging(false);
+  setHoverSeconds(null);
+  hoverSecondsRef.current = null;
+  if (onHoverEnd) onHoverEnd();
+}
 
     window.addEventListener("mousemove", handleMove)
     window.addEventListener("mouseup", handleUp)
