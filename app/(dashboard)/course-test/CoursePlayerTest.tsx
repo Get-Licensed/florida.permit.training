@@ -1263,9 +1263,6 @@ if (currentModuleIndex < modules.length - 1) {
   setContentReady(false);
   setRestoredReady(false);
 
-  // UI fix starts here
-  setMaxCompletedIndex(nextModule);    // optimistic state update
-
   setCurrentModuleIndex(nextModule);
   setCurrentLessonIndex(0);
   setSlideIndex(0);

@@ -1,6 +1,8 @@
 "use client"
 
 import { useRef, useState } from "react"
+import { useEffect } from "react"
+
 
 type ModuleRow = {
   id: string
@@ -10,7 +12,7 @@ type ModuleRow = {
 
 const TERMINAL_SEGMENTS = [
   { id: "exam", label: "Final Exam", href: "/exam" },
-  { id: "payment", label: "Pay & Submit to JALJLJ.gov", href: "/payment" },
+  { id: "payment", label: "Pay & Submit to FLHSMV.gov", href: "/payment" }
 ]
 
 export type CourseTimelineProps = {
@@ -52,8 +54,48 @@ export default function CourseTimeline({
   const pathname = typeof window !== "undefined" ? window.location.pathname : ""
   const onPaymentPage = pathname.startsWith("/payment")
   const onExamPage = pathname.startsWith("/exam")
+  const modulesRef = useRef<HTMLDivElement | null>(null)
+  const timelineRef = useRef<HTMLDivElement | null>(null)
+  const modulePortionRatio =
+    modules.length / (modules.length + TERMINAL_SEGMENTS.length)
+
 
   console.log("timeline seconds", { currentSeconds, totalSeconds })
+
+  useEffect(() => {
+  function handleMove(e: MouseEvent) {
+    if (!dragging || !barRef.current) return
+
+    if (!modulesRef.current) return
+    if (!timelineRef.current) return
+    const rect = timelineRef.current.getBoundingClientRect()
+    let x = e.clientX - rect.left
+    let pct = x / rect.width
+
+    pct = Math.min(Math.max(pct, 0), 1)
+    pct = pct / modulePortionRatio
+    pct = Math.min(Math.max(pct, 0), 1)
+
+    const sec = pct * totalCourseSeconds
+
+    if (onScrub) onScrub(sec)
+  }
+
+  function handleUp() {
+    document.body.style.userSelect = ""
+    setDragging(false)
+    setHoverSeconds(null)
+  }
+
+  window.addEventListener("mousemove", handleMove)
+  window.addEventListener("mouseup", handleUp)
+
+  return () => {
+    window.removeEventListener("mousemove", handleMove)
+    window.removeEventListener("mouseup", handleUp)
+  }
+}, [dragging, totalCourseSeconds, onScrub])
+
 
 return (
   <div className="fixed bottom-[145px] left-0 right-0 z-40 min-h-[6rem]">
@@ -79,33 +121,55 @@ return (
             )}
           </button>
 
-     {/* MODULE SCRUBBER */}
-<div
-  ref={barRef}
-  className="
-    flex-1 relative
-    h-3 rounded-full bg-white/90 shadow-sm px-1
-  "
-  onClick={(e) => {
-    if (!barRef.current) return
-    const rect = barRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const pct = Math.min(Math.max(x / rect.width, 0), 1)
-    const sec = pct * totalSeconds
-    if (onScrub) onScrub(sec)
-  }}
+    {/* MODULE SCRUBBER */}
+    <div
+      ref={timelineRef}
+      className="
+        flex-1 relative
+        h-3 rounded-full bg-white/90 shadow-sm px-1
+        select-none cursor-pointer  
+      "
+    onMouseDown={(e) => {
+      e.preventDefault()
+      document.body.style.userSelect = "none"
+      setDragging(true)
 
-  onMouseMove={(e) => {
-    if (!barRef.current) return
-    const rect = barRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const pct = Math.min(Math.max(x / rect.width, 0), 1)
-    const sec = pct * totalSeconds
-    setHoverSeconds(sec)
-  }}
+      if (!modulesRef.current) return
 
-  onMouseLeave={() => setHoverSeconds(null)}
->
+        if (!timelineRef.current) return
+        const rect = timelineRef.current.getBoundingClientRect()
+        let x = e.clientX - rect.left
+        let pct = x / rect.width
+
+        pct = Math.min(Math.max(pct, 0), 1)
+        pct = pct / modulePortionRatio
+        pct = Math.min(Math.max(pct, 0), 1)
+
+        const sec = pct * totalCourseSeconds
+
+      if (onScrub) onScrub(sec)
+    }}
+    onMouseMove={(e) => {
+      if (dragging) return
+      if (!modulesRef.current) return
+
+      if (!timelineRef.current) return
+      const rect = timelineRef.current.getBoundingClientRect()
+        let x = e.clientX - rect.left
+        let pct = x / rect.width
+
+        pct = Math.min(Math.max(pct, 0), 1)
+        pct = pct / modulePortionRatio
+        pct = Math.min(Math.max(pct, 0), 1)
+
+        const sec = pct * totalCourseSeconds
+
+      setHoverSeconds(sec)
+       }}
+      onMouseLeave={() => {
+        if (!dragging) setHoverSeconds(null)
+      }}
+    >
 
   {/* SCRUB LAYER */}
   <div className="absolute inset-0 pointer-events-none z-[9999]">
@@ -124,7 +188,9 @@ return (
         "
         style={{
         left: `${
-          Math.min(elapsedCourseSeconds / totalCourseSeconds, 1) * 100
+          Math.min(elapsedCourseSeconds / totalCourseSeconds, 1) *
+          modulePortionRatio *
+          100
         }%`,
         transform: `translate(-50%, -50%)`,
         }}
@@ -141,102 +207,105 @@ return (
           bg-[#fff]/40
         "
         style={{
-          left: `${(hoverSeconds / totalSeconds) * 100}%`,
+        left: `${
+          (hoverSeconds / totalCourseSeconds) *
+          modulePortionRatio *
+          100
+        }%`,
           transform: `translate(-50%, -50%)`,
         }}
       />
     )}
   </div>
+{/* ===== TRACK + MODULE + TERMINAL CELLS (scrubbable modules only) ===== */}
+<div
+  ref={modulesRef}
+  className="relative z-[1] flex items-center h-full flex-1 -translate-y-[.5px]"
+  style={{ minWidth: 0 }}
+>
+  {modules.map((m, i) => {
+    const isCompleted = i <= maxCompletedIndex
+    const isActive = i === currentModuleIndex
+    const isUnlocked = i <= maxCompletedIndex
 
-{/* MODULE BAR LAYER (modules + terminals together) */}
-<div className="relative z-[1] flex items-center h-full -translate-y-[.5px]">
+    let bg = "#001f40"
+    let glow = "none"
 
+    if (isCompleted) bg = "#ca5608"
+    if (isActive) {
+      bg = "#ca5608"
+      glow = `0 0 6px #ca5608`
+    }
 
-            {modules.map((m, i) => {
-              const isCompleted = i <= maxCompletedIndex
-              const isActive = i === currentModuleIndex
-              const isUnlocked = i <= maxCompletedIndex
+    return (
+      <div
+        key={m.id}
+        style={{ width: `${segmentWidth}%` }}
+        className={`relative h-full flex items-center justify-center ${
+          isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-45"
+        }`}
+        onClick={() => {
+          if (isUnlocked && goToModule) goToModule(i)
+        }}
+      >
+        <div
+          className="flex-1 h-2"
+          style={{
+            backgroundColor: bg,
+            boxShadow: glow,
+            borderTopLeftRadius: i === 0 ? 999 : 0,
+            borderBottomLeftRadius: i === 0 ? 999 : 0,
+          }}
+        />
+        <div className="w-[2px] h-full" />
+      </div>
+    )
+  })}
 
-              let bg = "#001f40"
-              let glow = "none"
+{TERMINAL_SEGMENTS.map((seg, i) => {
+  const isLast = i === TERMINAL_SEGMENTS.length - 1
 
-              if (isCompleted) bg = "#ca5608"
-              if (isActive) {
-                bg = "#ca5608"
-                glow = `0 0 6px #ca5608`
-              }
+  let bg = "#001f40"
+  let glow = "none"
 
-              return (
-                <div
-                  key={m.id}
-                  style={{ width: `${segmentWidth}%` }}
-                  className={`relative h-full flex items-center justify-center ${
-                    isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-45"
-                  }`}
-                  onClick={() => {
-                    if (isUnlocked && goToModule) goToModule(i)
-                  }}
-                >
-                  <div
-                    className="flex-1 h-2"
-                    style={{
-                      backgroundColor: bg,
-                      boxShadow: glow,
-                      borderTopLeftRadius: i === 0 ? 999 : 0,
-                      borderBottomLeftRadius: i === 0 ? 999 : 0,
-                    }}
-                  />
-                  <div className="w-[2px] h-full" />
-                </div>
-              )
-            })}
+  if (seg.id === "exam") {
+    bg = examPassed ? "#ca5608" : "#001f40"
+    if (onExamPage) glow = examPassed ? "0 0 6px #ca5608" : "0 0 6px #001f40"
+  }
 
-            {TERMINAL_SEGMENTS.map((seg, i) => {
-              const isLast = i === TERMINAL_SEGMENTS.length - 1
+  if (seg.id === "payment") {
+    bg = paymentPaid ? "#ca5608" : "#001f40"
+    if (onPaymentPage) glow = paymentPaid ? "0 0 6px #ca5608" : "0 0 6px #001f40"
+  }
 
-              let bg = "#001f40"
-              let glow = "none"
+  return (
+    <div
+      key={seg.id}
+      className="relative h-full flex flex-col items-center justify-start cursor-pointer"
+      style={{ width: `${segmentWidth}%` }}
+      onClick={() => (window.location.href = seg.href)}
+    >
+      <div className="w-full flex items-center justify-center h-2 translate-y-[2.2px]">
+        <div
+          className="flex-1 h-2"
+          style={{
+            backgroundColor: bg,
+            boxShadow: glow,
+            borderTopRightRadius: isLast ? 999 : 0,
+            borderBottomRightRadius: isLast ? 999 : 0,
+          }}
+        />
+        {!isLast && <div className="w-[2px] h-full" />}
+      </div>
 
-              if (seg.id === "exam") {
-                bg = examPassed ? "#ca5608" : "#001f40"
-                if (onExamPage) glow = examPassed ? "0 0 6px #ca5608" : "0 0 6px #001f40"
-              }
-
-              if (seg.id === "payment") {
-                bg = paymentPaid ? "#ca5608" : "#001f40"
-                if (onPaymentPage) glow = paymentPaid ? "0 0 6px #ca5608" : "0 0 6px #001f40"
-              }
-
-              return (
-                <div
-                  key={seg.id}
-                  style={{ width: `${segmentWidth}%` }}
-                  className="relative h-full 
-                  flex flex-col items-center justify-start 
-                  cursor-pointer"
-                  onClick={() => (window.location.href = seg.href)}
-                >
-                  <div className="w-full flex items-center justify-center h-2 translate-y-[2.5px]">
-                    <div
-                      className="flex-1 h-2"
-                      style={{
-                        backgroundColor: bg,
-                        boxShadow: glow,
-                        borderTopRightRadius: isLast ? 999 : 0,
-                        borderBottomRightRadius: isLast ? 999 : 0,
-                      }}
-                    />
-                    {!isLast && <div className="w-[2px] h-full" />}
-                  </div>
-
-                  <div className="mt-3 text-[9px] font-medium text-[#fff] text-center opacity-80 px-1">
-                    {seg.label}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          </div>
+      <div className="mt-3 text-[9px] font-medium text-[#fff] text-center opacity-80 px-1">
+        {seg.label}
+      </div>
+    </div>
+  )
+})}
+             </div>
+           </div>
           </div>
         </div>
       </div>
