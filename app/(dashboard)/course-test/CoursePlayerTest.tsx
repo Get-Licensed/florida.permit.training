@@ -558,12 +558,6 @@ export default function CoursePlayerClient() {
         Math.min(courseIndex.totalSeconds, roundTo(seconds, 2))
       );
 
-      // --- continuous player time anchor (prevents snap) ---
-      const audio = audioRef.current;
-      if (audio) {
-        audio.currentTime = seekSeconds;  // exact continuous seconds
-      }
-
       const resolved = resolveCourseTime(seekSeconds);
       if (!resolved) return;
 
@@ -577,7 +571,18 @@ export default function CoursePlayerClient() {
           ? clampTargetToModuleEnd(maxUnlockedModuleIndex) ?? resolved
           : resolved;
 
-      applySeekTarget(target);
+      pendingSeekRef.current = target;
+      console.log("SCRUB_PENDING:", {
+        seconds: seekSeconds,
+        moduleIndex: target.moduleIndex,
+        slideIndex: target.slideIndex,
+        captionIndex: target.captionIndex,
+      });
+      console.log("SCRUB_RESOLVED:", {
+        moduleIndex: target.moduleIndex,
+        slideIndex: target.slideIndex,
+        captionIndex: target.captionIndex,
+      });
     },
     [
       courseIndex,
@@ -585,13 +590,21 @@ export default function CoursePlayerClient() {
       clampTargetToModuleEnd,
       modules.length,
       maxCompletedIndex,
-      applySeekTarget,
     ]
   );
 
   const handleScrubEnd = useCallback(() => {
     scrubActive.current = false;
-  }, []);
+    if (pendingSeekRef.current) {
+      console.log("SCRUB_COMMIT:", {
+        moduleIndex: pendingSeekRef.current.moduleIndex,
+        slideIndex: pendingSeekRef.current.slideIndex,
+        captionIndex: pendingSeekRef.current.captionIndex,
+      });
+      applySeekTarget(pendingSeekRef.current);
+      pendingSeekRef.current = null;
+    }
+  }, [applySeekTarget]);
 
   const handleHoverResolve = useCallback(
     (seconds: number, clientX: number) => {

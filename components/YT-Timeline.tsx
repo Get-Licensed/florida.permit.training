@@ -223,6 +223,7 @@ export default function CourseTimeline({
       if (px === null) return
       hoverSecondsRef.current = sec
       targetPxRef.current = px
+      if (onScrub) onScrub(sec)
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
       if (!rafRef.current) {
         rafRef.current = requestAnimationFrame(animate)
@@ -250,10 +251,6 @@ export default function CourseTimeline({
   }
 
   if (onScrubEnd) onScrubEnd();
-
-  if (hoverSecondsRef.current !== null && onScrub) {
-    onScrub(hoverSecondsRef.current);
-  }
 
   setDragging(false);
   setHoverSeconds(null);
@@ -322,6 +319,7 @@ return (
       hoverSecondsRef.current = sec
       targetPxRef.current = px
       if (onScrubStart) onScrubStart()
+      if (onScrub) onScrub(sec)
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
       if (!rafRef.current) {
         rafRef.current = requestAnimationFrame(animate)
