@@ -642,8 +642,7 @@ export default function CoursePlayerClient() {
 
   const handleScrubStart = useCallback(() => {
     scrubActive.current = true;
-    handleHoverEnd();
-  }, [handleHoverEnd]);
+  }, []);
 
   useEffect(() => {
     if (!hoverPreview?.imgUrl) return;
@@ -1901,8 +1900,11 @@ const hoverTooltipLeft = (() => {
   if (!hoverPreview || !timelineHoverRef.current) return null;
   const rect = timelineHoverRef.current.getBoundingClientRect();
   const width = tooltipWidth || 0;
-  const minBoundary = rect.left;
-  const maxBoundary = rect.right - width;
+  const viewportWidth =
+    typeof window !== "undefined" ? window.innerWidth : rect.right;
+  const minBoundary = Math.max(0, rect.left);
+  const maxViewportBoundary = Math.max(0, viewportWidth - width);
+  const maxBoundary = Math.min(rect.right - width, maxViewportBoundary);
   const desired = hoverPreview.clientX - width / 2;
   return Math.min(Math.max(desired, minBoundary), maxBoundary);
 })();
@@ -2108,17 +2110,17 @@ return (
       opacity: 1,
     }}
   >
-    <div className="w-44 rounded-lg bg-[#001f40]/95 p-2 text-white shadow-lg">
+    <div className="w-44 rounded-lg bg-black/90 p-2 text-white shadow-lg">
       {hoverPreview.imgUrl ? (
         <img
           src={hoverPreview.imgUrl}
           alt=""
-          className="mb-2 h-20 w-full rounded-md object-cover"
+          className="mb-2 h-20 w-full rounded-md object-cover transition-opacity duration-150"
         />
       ) : (
         <div className="mb-2 h-20 w-full rounded-md bg-white/10" />
       )}
-      <div className="line-clamp-2 text-[11px] leading-snug">
+      <div className="line-clamp-1 text-[11px] leading-snug">
         {hoverPreview.text ?? ""}
       </div>
       <div className="mt-1 text-[11px] tabular-nums text-white/80">
@@ -2136,6 +2138,7 @@ return (
   "
   onMouseEnter={() => setShowTimeline(true)}
   onMouseLeave={() => {
+    if (scrubActive.current) return;
     setShowTimeline(false);
     handleHoverEnd();
   }}
