@@ -211,6 +211,7 @@ export default function CoursePlayerClient() {
   const didApplyProgress = useRef(false);
   const deepLinkConsumedRef = useRef(false);
   const scrubActive = useRef(false);
+  const resumeAfterScrubRef = useRef(false);
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
   // track highest DB-completed module
@@ -270,6 +271,7 @@ export default function CoursePlayerClient() {
     const [currentWordIndex, setCurrentWordIndex] = useState(0);
 
     const resetAudioElement = useCallback(() => {
+      if (scrubActive.current) return;
       const audio = audioRef.current;
       if (!audio) return;
 
@@ -536,7 +538,6 @@ export default function CoursePlayerClient() {
 
       setCurrentWordIndex(0);
       setCanProceed(false);
-      setIsPaused(false);
     },
     [
       currentModuleIndex,
@@ -587,6 +588,12 @@ export default function CoursePlayerClient() {
         : resolved;
 
     applySeekTarget(target);
+
+    if (resumeAfterScrubRef.current) {
+      cancelAutoplay.current = false;
+      setIsPaused(false);
+      isPausedRef.current = false;
+    }
   }, [
     applySeekTarget,
     clampTargetToModuleEnd,
@@ -644,6 +651,7 @@ export default function CoursePlayerClient() {
 
   const handleScrubStart = useCallback(() => {
     scrubActive.current = true;
+    resumeAfterScrubRef.current = !isPausedRef.current;
   }, []);
 
   useEffect(() => {
@@ -828,6 +836,7 @@ useEffect(() => {
 
 
 const hardResetAudio = useCallback(() => {
+  if (scrubActive.current) return;
   cancelFade();
 
   const audio = audioRef.current;
@@ -1452,18 +1461,6 @@ useEffect(() => {
     });
   }
 
-  if (
-    !scrubActive.current &&
-    contentReady &&
-    pendingSeekRef.current != null &&
-    appliedSeekTargetRef.current != null
-  ) {
-    const target = appliedSeekTargetRef.current;
-    pendingSeekRef.current = null;
-    applySeekTarget(target);
-    console.log("FORCED_PENDING_SEEK_RESOLVE:", target);
-  }
-
   if (!pendingSeek || !activeSlide || pendingSeek.slideId !== activeSlide.id) {
     return;
   }
@@ -1471,7 +1468,34 @@ useEffect(() => {
   if (currentCaptionIndex !== pendingSeek.captionIndex) {
     setCurrentCaptionIndex(pendingSeek.captionIndex);
   }
-}, [slides, captions, slideIndex, currentCaptionIndex, contentReady, applySeekTarget]);
+}, [slides, captions, slideIndex, currentCaptionIndex, contentReady]);
+
+useEffect(() => {
+  if (scrubActive.current) return;
+  if (!contentReady) return;
+  const pendingSeek = appliedSeekTargetRef.current;
+  if (!pendingSeek) return;
+
+  const activeSlide = slides[slideIndex];
+  if (!activeSlide || pendingSeek.slideId !== activeSlide.id) {
+    return;
+  }
+
+  if (currentCaptionIndex !== pendingSeek.captionIndex) {
+    setCurrentCaptionIndex(pendingSeek.captionIndex);
+  }
+
+  const audio = audioRef.current;
+  if (audio && audio.readyState >= 1) {
+    const seekTo = Math.min(
+      pendingSeek.captionOffset,
+      audio.duration || pendingSeek.captionOffset
+    );
+    audio.currentTime = seekTo;
+    appliedSeekTargetRef.current = null;
+    seekCommitInFlightRef.current = false;
+  }
+}, [contentReady, slides, slideIndex, currentCaptionIndex]);
 
 useEffect(() => {
   if (scrubActive.current) return;
@@ -1897,6 +1921,44 @@ function goToModule(i: number) {
   router.push(`/course-test?module=${i}`);
 }
 
+const resumePlayback = useCallback(() => {
+  const audio = audioRef.current;
+  cancelAutoplay.current = false;
+  setIsPaused(false);
+  isPausedRef.current = false;
+
+  if (audio) {
+    if (audio.volume === 0) audio.volume = 0.001;
+    audio
+      .play()
+      .then(() => fadeToVolume(audio, targetVolumeRef.current, 120))
+      .catch(() => {});
+  }
+
+  setShowPlayFlash(true);
+
+  if (playFlashTimer.current) {
+    clearTimeout(playFlashTimer.current);
+  }
+
+  playFlashTimer.current = window.setTimeout(() => {
+    setShowPlayFlash(false);
+  }, 450);
+}, [fadeToVolume]);
+
+const pausePlayback = useCallback(() => {
+  const audio = audioRef.current;
+  cancelAutoplay.current = true;
+  cancelFade();
+  if (audio) {
+    audio.pause();
+    if (audio.volume === 0) audio.volume = targetVolumeRef.current;
+  }
+
+  setIsPaused(true);
+  isPausedRef.current = true;
+}, [cancelFade]);
+
 
 // Show steering wheel ONLY during very first load
 if (!initialHydrationDone) {
@@ -1909,46 +1971,20 @@ if (!initialHydrationDone) {
 
 // AFTER initial hydration → do NOT block the UI with the loader
 
+
 function togglePlay() {
   const audio = audioRef.current;
-  if (!audio) return;
+  if (!audio) {
+    resumePlayback();
+    return;
+  }
 
   if (audio.paused) {
-    cancelAutoplay.current = false;
-
-    audio.play().catch(() => {});
-
-    setIsPaused(false);
-    isPausedRef.current = false;
-
-    setShowPlayFlash(true);
-
-    if (playFlashTimer.current) {
-      clearTimeout(playFlashTimer.current);
-    }
-
-    playFlashTimer.current = window.setTimeout(() => {
-      setShowPlayFlash(false);
-    }, 450);
-
+    resumePlayback();
   } else {
-    cancelAutoplay.current = true;
-    cancelFade();
-    audio.pause();
-
-    setIsPaused(true);
-    isPausedRef.current = true;
+    pausePlayback();
   }
 }
-
-
-
-console.log("LOADER BLOCKED:", {
-  progressReady,
-  contentReady,
-  restoredReady,
-  initialHydrationDone
-});
 
 const hoverTooltipLeft = (() => {
   if (!hoverPreview || !timelineHoverRef.current) return null;
