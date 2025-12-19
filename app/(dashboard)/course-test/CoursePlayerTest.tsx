@@ -137,6 +137,7 @@ type CaptionTimingRow = {
   slide_id: string;
   seconds: number | null;
   line_index: number;
+  caption: string | null;
 };
 
 type CourseSlideRow = {
@@ -144,6 +145,7 @@ type CourseSlideRow = {
   lesson_id: number;
   module_id: string;
   order_index: number;
+  image_path: string | null;
 };
 
 type SeekTarget = {
@@ -153,6 +155,14 @@ type SeekTarget = {
   captionIndex: number;
   captionOffset: number;
   slideId: string;
+};
+
+type HoverPreview = {
+  leftPx: number;
+  imgUrl: string | null;
+  text: string | null;
+  timeLabel: string;
+  clientX: number;
 };
 
 /* ------------------------------------------------------
@@ -247,6 +257,11 @@ export default function CoursePlayerClient() {
   const COURSE_ID = "FL_PERMIT_TRAINING";
   const TOTAL_REQUIRED_SECONDS = 6 * 60 * 60; // 21600
   const [showTimeline, setShowTimeline] = useState(false);
+  const [hoverPreview, setHoverPreview] = useState<HoverPreview | null>(null);
+  const hoverDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const timelineHoverRef = useRef<HTMLDivElement | null>(null);
+  const hoverTooltipRef = useRef<HTMLDivElement | null>(null);
+  const [tooltipWidth, setTooltipWidth] = useState(0);
 
   const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
     const [canProceed, setCanProceed] = useState(false);
@@ -338,6 +353,22 @@ export default function CoursePlayerClient() {
       totalSeconds,
     };
   }, [modules, courseLessons, courseSlides, courseCaptions]);
+
+  const courseSlidesById = useMemo(() => {
+    const map = new Map<string, CourseSlideRow>();
+    courseSlides.forEach((slide) => {
+      map.set(slide.id, slide);
+    });
+    return map;
+  }, [courseSlides]);
+
+  const captionPreviewBySlideId = useMemo(() => {
+    const map = new Map<string, string | null>();
+    Object.entries(courseCaptions).forEach(([slideId, slideCaptions]) => {
+      map.set(slideId, slideCaptions[0]?.caption ?? null);
+    });
+    return map;
+  }, [courseCaptions]);
 
   const voiceLabel =
     VOICES.find(v => v.code === voice)?.label ?? "Unknown";
@@ -542,13 +573,72 @@ export default function CoursePlayerClient() {
     ]
   );
 
-  const handleScrubStart = useCallback(() => {
-    scrubActive.current = true;
-  }, []);
-
   const handleScrubEnd = useCallback(() => {
     scrubActive.current = false;
   }, []);
+
+  const handleHoverResolve = useCallback(
+    (seconds: number, clientX: number) => {
+      if (!courseIndex) return;
+
+      const target = resolveCourseTime(seconds);
+      if (!target) return;
+
+      const rect = timelineHoverRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0) return;
+
+      const leftPx = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+      const slide = courseSlidesById.get(target.slideId);
+      const imgUrl = slide ? resolveImage(slide.image_path) : null;
+      const text = captionPreviewBySlideId.get(target.slideId) ?? null;
+      const timeLabel = formatHoverTime(seconds);
+
+      const nextPreview: HoverPreview = {
+        leftPx,
+        imgUrl,
+        text,
+        timeLabel,
+        clientX,
+      };
+
+      if (hoverDebounceRef.current) {
+        clearTimeout(hoverDebounceRef.current);
+      }
+
+      hoverDebounceRef.current = setTimeout(() => {
+        setHoverPreview(nextPreview);
+      }, 60);
+    },
+    [
+      courseIndex,
+      resolveCourseTime,
+      courseSlidesById,
+      captionPreviewBySlideId,
+    ]
+  );
+
+  const handleHoverEnd = useCallback(() => {
+    if (hoverDebounceRef.current) {
+      clearTimeout(hoverDebounceRef.current);
+    }
+    setHoverPreview(null);
+  }, []);
+
+  const handleScrubStart = useCallback(() => {
+    scrubActive.current = true;
+    handleHoverEnd();
+  }, [handleHoverEnd]);
+
+  useEffect(() => {
+    if (!hoverPreview?.imgUrl) return;
+    const img = new Image();
+    img.src = hoverPreview.imgUrl;
+  }, [hoverPreview?.imgUrl]);
+
+  useEffect(() => {
+    if (!hoverPreview || !hoverTooltipRef.current) return;
+    setTooltipWidth(hoverTooltipRef.current.offsetWidth);
+  }, [hoverPreview]);
 
 
 // -------------------------------------------------------------
@@ -986,12 +1076,12 @@ useEffect(() => {
 
     const { data: slideRows } = await supabase
       .from("lesson_slides")
-      .select("id,lesson_id,module_id,order_index")
+      .select("id,lesson_id,module_id,order_index,image_path")
       .order("order_index", { ascending: true });
 
     const { data: captionRows } = await supabase
       .from("slide_captions")
-      .select("id,slide_id,seconds,line_index")
+      .select("id,slide_id,seconds,line_index,caption")
       .order("line_index", { ascending: true });
 
     setCourseLessons(lessonRows ?? []);
@@ -1815,6 +1905,16 @@ console.log("LOADER BLOCKED:", {
   initialHydrationDone
 });
 
+const hoverTooltipLeft = (() => {
+  if (!hoverPreview || !timelineHoverRef.current) return null;
+  const rect = timelineHoverRef.current.getBoundingClientRect();
+  const width = tooltipWidth || 0;
+  const minBoundary = rect.left;
+  const maxBoundary = rect.right - width;
+  const desired = hoverPreview.clientX - width / 2;
+  return Math.min(Math.max(desired, minBoundary), maxBoundary);
+})();
+
 return (
   <div className="relative min-h-screen bg-white flex flex-col">
 
@@ -2006,6 +2106,36 @@ return (
       </button>
     </div>
    
+{showTimeline && hoverPreview && hoverTooltipLeft !== null && (
+  <div
+    ref={hoverTooltipRef}
+    className="fixed z-[999999] pointer-events-none transition-opacity duration-60"
+    style={{
+      left: hoverTooltipLeft,
+      bottom: 220,
+      opacity: 1,
+    }}
+  >
+    <div className="w-44 rounded-lg bg-[#001f40]/95 p-2 text-white shadow-lg">
+      {hoverPreview.imgUrl ? (
+        <img
+          src={hoverPreview.imgUrl}
+          alt=""
+          className="mb-2 h-20 w-full rounded-md object-cover"
+        />
+      ) : (
+        <div className="mb-2 h-20 w-full rounded-md bg-white/10" />
+      )}
+      <div className="line-clamp-2 text-[11px] leading-snug">
+        {hoverPreview.text ?? ""}
+      </div>
+      <div className="mt-1 text-[11px] tabular-nums text-white/80">
+        {hoverPreview.timeLabel}
+      </div>
+    </div>
+  </div>
+)}
+
 {/* HOVER REVEAL AREA */}
 <div
   className="
@@ -2013,7 +2143,10 @@ return (
     z-40 px-0 pb-[0px]
   "
   onMouseEnter={() => setShowTimeline(true)}
-  onMouseLeave={() => setShowTimeline(false)}
+  onMouseLeave={() => {
+    setShowTimeline(false);
+    handleHoverEnd();
+  }}
 >
   <div
     className={`
@@ -2026,7 +2159,7 @@ return (
   >
 
       {/* TIMELINE */}
-      <CourseTimeline
+    <CourseTimeline
       modules={modules}
       currentModuleIndex={currentModuleIndex}
       maxCompletedIndex={maxCompletedIndex}
@@ -2042,6 +2175,9 @@ return (
       onScrub={handleScrub}
       onScrubStart={handleScrubStart}
       onScrubEnd={handleScrubEnd}
+      onHoverResolve={handleHoverResolve}
+      onHoverEnd={handleHoverEnd}
+      timelineContainerRef={timelineHoverRef}
     />
 
     {/* CONTROLS – volume + CC */}
@@ -2209,6 +2345,16 @@ function formatTime(seconds: number) {
   }
 
   return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+function formatHoverTime(seconds: number) {
+  if (!isFinite(seconds)) return "00:00:00";
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
 

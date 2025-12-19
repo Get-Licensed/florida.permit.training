@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 
 
 type ModuleRow = {
@@ -30,6 +30,9 @@ export type CourseTimelineProps = {
   onScrub?: (seconds: number) => void
   onScrubStart?: () => void
   onScrubEnd?: () => void
+  onHoverResolve?: (seconds: number, clientX: number) => void
+  onHoverEnd?: () => void
+  timelineContainerRef?: RefObject<HTMLDivElement | null>
 }
 
 export default function CourseTimeline({
@@ -48,6 +51,9 @@ export default function CourseTimeline({
   onScrub,
   onScrubStart,
   onScrubEnd,
+  onHoverResolve,
+  onHoverEnd,
+  timelineContainerRef,
 }: CourseTimelineProps) {
   const [dragging, setDragging] = useState(false)
   const draggingRef = useRef(false)
@@ -59,7 +65,8 @@ export default function CourseTimeline({
   const onPaymentPage = pathname.startsWith("/payment")
   const onExamPage = pathname.startsWith("/exam")
   const modulesRef = useRef<HTMLDivElement | null>(null)
-  const timelineRef = useRef<HTMLDivElement | null>(null)
+  const internalTimelineRef = useRef<HTMLDivElement | null>(null)
+  const timelineRef = timelineContainerRef ?? internalTimelineRef
   const handleRef = useRef<HTMLDivElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const targetPxRef = useRef(0)
@@ -205,6 +212,7 @@ export default function CourseTimeline({
       setDragging(false)
       setHoverSeconds(null)
       hoverSecondsRef.current = null
+      if (onHoverEnd) onHoverEnd()
     }
 
     window.addEventListener("mousemove", handleMove)
@@ -264,9 +272,11 @@ return (
       document.body.style.userSelect = "none"
       draggingRef.current = true
       setDragging(true)
+      setHoverSeconds(null)
       hoverSecondsRef.current = sec
       targetPxRef.current = px
       if (onScrubStart) onScrubStart()
+      if (onHoverEnd) onHoverEnd()
       if (!rafRef.current) {
         rafRef.current = requestAnimationFrame(animate)
       }
@@ -276,12 +286,15 @@ return (
       const sec = getScrubSeconds(e.clientX, false)
       if (sec === null) {
         setHoverSeconds(null)
+        if (onHoverEnd) onHoverEnd()
         return
       }
       setHoverSeconds(sec)
+      if (onHoverResolve) onHoverResolve(sec, e.clientX)
        }}
       onMouseLeave={() => {
         if (!dragging) setHoverSeconds(null)
+        if (!dragging && onHoverEnd) onHoverEnd()
       }}
     >
 
