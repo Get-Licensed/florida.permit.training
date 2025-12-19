@@ -3,7 +3,7 @@
 "use client";
 
 import { supabase } from "@/utils/supabaseClient";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import CourseTimeline from "@/components/YT-Timeline";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
@@ -97,12 +97,6 @@ function mapTimingIndexToDisplayIndex(
   return result;
 }
 
-// Called by timeline scrub
-function handleScrub(seconds: number) {
-  // temporary until full implementation
-  console.log("SCRUB TARGET:", seconds)
-}
-
 /* ------------------------------------------------------
    TYPES
 ------------------------------------------------------ */
@@ -138,12 +132,39 @@ type CaptionRow = {
   published_audio_url_o: string | null;
 };
 
+type CaptionTimingRow = {
+  id: string;
+  slide_id: string;
+  seconds: number | null;
+  line_index: number;
+};
+
+type CourseSlideRow = {
+  id: string;
+  lesson_id: number;
+  module_id: string;
+  order_index: number;
+};
+
+type SeekTarget = {
+  moduleIndex: number;
+  lessonIndex: number;
+  slideIndex: number;
+  captionIndex: number;
+  captionOffset: number;
+  slideId: string;
+};
+
 /* ------------------------------------------------------
    IMAGE RESOLVER
 ------------------------------------------------------ */
 function resolveImage(path: string | null) {
   if (!path) return null;
   return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
+}
+
+function sumCaptionSeconds(captions: CaptionTimingRow[]) {
+  return captions.reduce((sum, c) => sum + (c.seconds ?? 0), 0);
 }
 
 /* ------------------------------------------------------
@@ -193,6 +214,12 @@ export default function CoursePlayerClient() {
   const [slides, setSlides] = useState<SlideRow[]>([]);
   const [captions, setCaptions] = useState<Record<string, CaptionRow[]>>({});
 
+  const [courseLessons, setCourseLessons] = useState<LessonRow[]>([]);
+  const [courseSlides, setCourseSlides] = useState<CourseSlideRow[]>([]);
+  const [courseCaptions, setCourseCaptions] = useState<
+    Record<string, CaptionTimingRow[]>
+  >({});
+
   const [promoOpen, setPromoOpen] = useState(false);
 
   const [slideIndex, setSlideIndex] = useState(0);
@@ -220,11 +247,288 @@ export default function CoursePlayerClient() {
   const TOTAL_REQUIRED_SECONDS = 6 * 60 * 60; // 21600
   const [showTimeline, setShowTimeline] = useState(false);
 
+  const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
+    const [canProceed, setCanProceed] = useState(false);
+    const [isPaused, setIsPaused] = useState(false);
+    // NEW — for karaoke word highlighting
+    const [currentWordIndex, setCurrentWordIndex] = useState(0);
+
+    const resetAudioElement = useCallback(() => {
+      const audio = audioRef.current;
+      if (!audio) return;
+
+      audio.pause();
+      audio.src = "";
+      audio.load();
+      audio.currentTime = 0;
+
+      // do NOT touch cancelAutoplay here
+    }, []);
+
+  const courseIndex = useMemo(() => {
+    if (!modules.length || !courseLessons.length || !courseSlides.length) {
+      return null;
+    }
+
+    const lessonsByModule = new Map<string, LessonRow[]>();
+    const slidesByLesson = new Map<number, CourseSlideRow[]>();
+
+    [...courseLessons]
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      .forEach((lesson) => {
+        const list = lessonsByModule.get(lesson.module_id) ?? [];
+        list.push(lesson);
+        lessonsByModule.set(lesson.module_id, list);
+      });
+
+    [...courseSlides]
+      .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+      .forEach((slide) => {
+        const list = slidesByLesson.get(slide.lesson_id) ?? [];
+        list.push(slide);
+        slidesByLesson.set(slide.lesson_id, list);
+      });
+
+    const moduleEntries = modules.map((module) => {
+      const moduleLessons = lessonsByModule.get(module.id) ?? [];
+      const slides = [] as Array<{
+        slideId: string;
+        lessonIndex: number;
+        slideIndex: number;
+        durationSeconds: number;
+        captions: CaptionTimingRow[];
+      }>;
+
+      let moduleDuration = 0;
+
+      moduleLessons.forEach((lesson, lessonIndex) => {
+        const lessonSlides = slidesByLesson.get(lesson.id) ?? [];
+
+        lessonSlides.forEach((slide, slideIndex) => {
+          const captionLines = courseCaptions[slide.id] ?? [];
+          const durationSeconds = sumCaptionSeconds(captionLines);
+
+          moduleDuration += durationSeconds;
+          slides.push({
+            slideId: slide.id,
+            lessonIndex,
+            slideIndex,
+            durationSeconds,
+            captions: captionLines,
+          });
+        });
+      });
+
+      return {
+        moduleId: module.id,
+        lessons: moduleLessons,
+        slides,
+        durationSeconds: moduleDuration,
+      };
+    });
+
+    const totalSeconds = moduleEntries.reduce(
+      (sum, entry) => sum + entry.durationSeconds,
+      0
+    );
+
+    return {
+      modules: moduleEntries,
+      totalSeconds,
+    };
+  }, [modules, courseLessons, courseSlides, courseCaptions]);
+
   const voiceLabel =
     VOICES.find(v => v.code === voice)?.label ?? "Unknown";
   
   const searchParams = useSearchParams();
   const router = useRouter();
+
+  const resolveCourseTime = useCallback(
+    (seconds: number): SeekTarget | null => {
+      if (!courseIndex || courseIndex.totalSeconds <= 0) {
+        return null;
+      }
+
+      let remaining = Math.min(
+        Math.max(seconds, 0),
+        courseIndex.totalSeconds
+      );
+
+      let moduleIndex = 0;
+      for (let i = 0; i < courseIndex.modules.length; i++) {
+        const duration = courseIndex.modules[i].durationSeconds;
+        if (remaining <= duration || i === courseIndex.modules.length - 1) {
+          moduleIndex = i;
+          break;
+        }
+        remaining -= duration;
+      }
+
+      const moduleEntry = courseIndex.modules[moduleIndex];
+      if (!moduleEntry || !moduleEntry.slides.length) {
+        return null;
+      }
+
+      let slideOffset = remaining;
+      let slideEntry = moduleEntry.slides[0];
+
+      for (let i = 0; i < moduleEntry.slides.length; i++) {
+        const candidate = moduleEntry.slides[i];
+        if (
+          slideOffset <= candidate.durationSeconds ||
+          i === moduleEntry.slides.length - 1
+        ) {
+          slideEntry = candidate;
+          break;
+        }
+        slideOffset -= candidate.durationSeconds;
+      }
+
+      const captionsForSlide = slideEntry.captions;
+      let captionIndex = 0;
+      let captionOffset = 0;
+
+      if (captionsForSlide.length) {
+        let captionRemaining = slideOffset;
+
+        for (let i = 0; i < captionsForSlide.length; i++) {
+          const duration = Math.max(0, captionsForSlide[i].seconds ?? 0);
+
+          if (captionRemaining <= duration || i === captionsForSlide.length - 1) {
+            captionIndex = i;
+            captionOffset = Math.min(captionRemaining, duration);
+            break;
+          }
+          captionRemaining -= duration;
+        }
+      }
+
+      return {
+        moduleIndex,
+        lessonIndex: slideEntry.lessonIndex,
+        slideIndex: slideEntry.slideIndex,
+        captionIndex,
+        captionOffset,
+        slideId: slideEntry.slideId,
+      };
+    },
+    [courseIndex]
+  );
+
+  const clampTargetToModuleEnd = useCallback(
+    (moduleIndex: number): SeekTarget | null => {
+      if (!courseIndex) return null;
+
+      const moduleEntry = courseIndex.modules[moduleIndex];
+      if (!moduleEntry || !moduleEntry.slides.length) {
+        return null;
+      }
+
+      const lastSlide = moduleEntry.slides[moduleEntry.slides.length - 1];
+      const lastCaptionIndex = Math.max(0, lastSlide.captions.length - 1);
+      const lastCaptionSeconds =
+        lastSlide.captions[lastCaptionIndex]?.seconds ?? 0;
+
+      return {
+        moduleIndex,
+        lessonIndex: lastSlide.lessonIndex,
+        slideIndex: lastSlide.slideIndex,
+        captionIndex: lastCaptionIndex,
+        captionOffset: Math.max(0, lastCaptionSeconds),
+        slideId: lastSlide.slideId,
+      };
+    },
+    [courseIndex]
+  );
+
+  const applySeekTarget = useCallback(
+    (target: SeekTarget) => {
+      const {
+        moduleIndex,
+        lessonIndex,
+        slideIndex: targetSlideIndex,
+        captionIndex,
+        captionOffset,
+        slideId,
+      } = target;
+
+      pendingSeekRef.current = target;
+
+      const moduleChanged = moduleIndex !== currentModuleIndex;
+      const lessonChanged = lessonIndex !== currentLessonIndex || moduleChanged;
+      const slideChanged = targetSlideIndex !== slideIndex || lessonChanged;
+
+      if (moduleChanged) {
+        resetAudioElement();
+        cancelAutoplay.current = false;
+        setContentReady(false);
+        setRestoredReady(false);
+        setCurrentModuleIndex(moduleIndex);
+      }
+
+      if (lessonChanged) {
+        setCurrentLessonIndex(lessonIndex);
+      }
+
+      if (slideChanged) {
+        setSlideIndex(targetSlideIndex);
+      }
+
+      if (!slideChanged) {
+        setCurrentCaptionIndex(captionIndex);
+        if (
+          audioRef.current &&
+          slideId === slides[slideIndex]?.id &&
+          currentCaptionIndex === captionIndex
+        ) {
+          audioRef.current.currentTime = captionOffset;
+          pendingSeekRef.current = null;
+        }
+      }
+
+      setCurrentWordIndex(0);
+      setCanProceed(false);
+      setIsPaused(false);
+    },
+    [
+      currentModuleIndex,
+      currentLessonIndex,
+      slideIndex,
+      slides,
+      currentCaptionIndex,
+      resetAudioElement,
+    ]
+  );
+
+  const handleScrub = useCallback(
+    (seconds: number) => {
+      if (!courseIndex) return;
+
+      const resolved = resolveCourseTime(seconds);
+      if (!resolved) return;
+
+      const maxUnlockedModuleIndex = Math.min(
+        modules.length - 1,
+        maxCompletedIndex + 1
+      );
+
+      const target =
+        resolved.moduleIndex > maxUnlockedModuleIndex
+          ? clampTargetToModuleEnd(maxUnlockedModuleIndex) ?? resolved
+          : resolved;
+
+      applySeekTarget(target);
+    },
+    [
+      courseIndex,
+      resolveCourseTime,
+      clampTargetToModuleEnd,
+      modules.length,
+      maxCompletedIndex,
+      applySeekTarget,
+    ]
+  );
 
 
 // -------------------------------------------------------------
@@ -253,18 +557,7 @@ useEffect(() => {
   }, [progressReady, contentReady]);
 
   const cancelAutoplay = useRef(false);
-  const resetAudioElement = useCallback(() => {
-  const audio = audioRef.current;
-  if (!audio) return;
-
-  audio.pause();
-  audio.src = "";
-  audio.load();
-  audio.currentTime = 0;
-
-  // do NOT touch cancelAutoplay here
-}, []);
-
+  
 function preloadAudio(url: string) {
   const a = new Audio();
   a.src = url;
@@ -378,14 +671,8 @@ useEffect(() => {
 }, [voice]);
 
 
-const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
-const [canProceed, setCanProceed] = useState(false);
-const [isPaused, setIsPaused] = useState(false);
-// NEW — for karaoke word highlighting
-const [currentWordIndex, setCurrentWordIndex] = useState(0);
-
-
 const audioRef = useRef<HTMLAudioElement | null>(null);
+const pendingSeekRef = useRef<SeekTarget | null>(null);
 
 useEffect(() => {
   const audio = audioRef.current;
@@ -671,6 +958,41 @@ useEffect(() => {
     }
   }
 
+  async function loadCourseStructure() {
+    const { data: lessonRows } = await supabase
+      .from("lessons")
+      .select("id,module_id,title,sort_order")
+      .order("sort_order", { ascending: true });
+
+    const { data: slideRows } = await supabase
+      .from("lesson_slides")
+      .select("id,lesson_id,module_id,order_index")
+      .order("order_index", { ascending: true });
+
+    const { data: captionRows } = await supabase
+      .from("slide_captions")
+      .select("id,slide_id,seconds,line_index")
+      .order("line_index", { ascending: true });
+
+    setCourseLessons(lessonRows ?? []);
+    setCourseSlides(slideRows ?? []);
+
+    const captionMap: Record<string, CaptionTimingRow[]> = {};
+
+    (captionRows ?? []).forEach((caption) => {
+      if (!captionMap[caption.slide_id]) {
+        captionMap[caption.slide_id] = [];
+      }
+      captionMap[caption.slide_id].push(caption);
+    });
+
+    Object.values(captionMap).forEach((group) => {
+      group.sort((a, b) => (a.line_index ?? 0) - (b.line_index ?? 0));
+    });
+
+    setCourseCaptions(captionMap);
+  }
+
 // ------------------------
 // PROGRESS LOADING + APPLY
 // ------------------------
@@ -932,6 +1254,10 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
+  loadCourseStructure();
+}, []);
+
+useEffect(() => {
   loadTerminalStatus();
 }, []);
 
@@ -967,9 +1293,29 @@ useEffect(() => {
   if (isFinalCourseSlide) return;
 
   resetAudioElement();
-  setCurrentCaptionIndex(0);
+  const pendingSeek = pendingSeekRef.current;
+  const activeSlideId = slides[slideIndex]?.id;
+
+  if (pendingSeek && pendingSeek.slideId === activeSlideId) {
+    setCurrentCaptionIndex(pendingSeek.captionIndex);
+  } else {
+    setCurrentCaptionIndex(0);
+  }
   setCanProceed(false);
-}, [slideIndex, isFinalCourseSlide, resetAudioElement]);
+}, [slideIndex, slides, isFinalCourseSlide, resetAudioElement]);
+
+useEffect(() => {
+  const pendingSeek = pendingSeekRef.current;
+  const activeSlide = slides[slideIndex];
+
+  if (!pendingSeek || !activeSlide || pendingSeek.slideId !== activeSlide.id) {
+    return;
+  }
+
+  if (currentCaptionIndex !== pendingSeek.captionIndex) {
+    setCurrentCaptionIndex(pendingSeek.captionIndex);
+  }
+}, [slides, captions, slideIndex, currentCaptionIndex]);
 
 useEffect(() => {
   const audio = audioRef.current;
@@ -1554,7 +1900,25 @@ return (
           setCanProceed(true)
         }
       }}
-      onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration)}
+      onLoadedMetadata={(e) => {
+        setAudioDuration(e.currentTarget.duration);
+        const pendingSeek = pendingSeekRef.current;
+        const activeSlide = slides[slideIndex];
+
+        if (
+          pendingSeek &&
+          activeSlide &&
+          pendingSeek.slideId === activeSlide.id &&
+          currentCaptionIndex === pendingSeek.captionIndex
+        ) {
+          const seekTo = Math.min(
+            pendingSeek.captionOffset,
+            e.currentTarget.duration || pendingSeek.captionOffset
+          );
+          e.currentTarget.currentTime = seekTo;
+          pendingSeekRef.current = null;
+        }
+      }}
       onEnded={async () => {
         if (isPaused) return
         const slide = slides[slideIndex]

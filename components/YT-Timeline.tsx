@@ -70,6 +70,10 @@ export default function CourseTimeline({
     if (!timelineRef.current) return
     const rect = timelineRef.current.getBoundingClientRect()
     let x = e.clientX - rect.left
+    const moduleWidth = rect.width * modulePortionRatio
+    if (x > moduleWidth) {
+      x = moduleWidth
+    }
     let pct = x / rect.width
 
     pct = Math.min(Math.max(pct, 0), 1)
@@ -94,7 +98,7 @@ export default function CourseTimeline({
     window.removeEventListener("mousemove", handleMove)
     window.removeEventListener("mouseup", handleUp)
   }
-}, [dragging, totalCourseSeconds, onScrub])
+}, [dragging, totalCourseSeconds, onScrub, modulePortionRatio])
 
 
 return (
@@ -139,6 +143,10 @@ return (
         if (!timelineRef.current) return
         const rect = timelineRef.current.getBoundingClientRect()
         let x = e.clientX - rect.left
+        const moduleWidth = rect.width * modulePortionRatio
+        if (x > moduleWidth) {
+          return
+        }
         let pct = x / rect.width
 
         pct = Math.min(Math.max(pct, 0), 1)
@@ -156,6 +164,11 @@ return (
       if (!timelineRef.current) return
       const rect = timelineRef.current.getBoundingClientRect()
         let x = e.clientX - rect.left
+        const moduleWidth = rect.width * modulePortionRatio
+        if (x > moduleWidth) {
+          setHoverSeconds(null)
+          return
+        }
         let pct = x / rect.width
 
         pct = Math.min(Math.max(pct, 0), 1)
