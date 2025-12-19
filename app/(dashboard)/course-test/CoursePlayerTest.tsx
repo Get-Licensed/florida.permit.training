@@ -502,16 +502,18 @@ export default function CoursePlayerClient() {
       if (moduleChanged) {
         resetAudioElement();
         cancelAutoplay.current = false;
-        setContentReady(false);
-        setRestoredReady(false);
+        if (!scrubActive.current) {
+          setContentReady(false);
+          setRestoredReady(false);
+        }
         setCurrentModuleIndex(moduleIndex);
       }
 
-      if (lessonChanged) {
+      if (lessonChanged && !scrubActive.current) {
         setCurrentLessonIndex(lessonIndex);
       }
 
-      if (slideChanged) {
+      if (slideChanged && !scrubActive.current) {
         setSlideIndex(targetSlideIndex);
       }
 
@@ -1263,6 +1265,10 @@ function unlockProgressGates() {
    LOAD LESSON CONTENT  (with contentReady gates)
 ------------------------------------------------------ */
 async function loadLessonContent(lessonId: number) {
+  if (scrubActive.current) {
+    console.warn("LOAD CANCELLED — scrub active");
+    return;
+  }
   if (lessonLoadInFlightRef.current === lessonId) return;
   lessonLoadInFlightRef.current = lessonId;
   console.log("LOAD_LESSON_CONTENT: start", { lessonId });
@@ -1434,7 +1440,7 @@ useEffect(() => {
   const pendingSeek = appliedSeekTargetRef.current;
   const activeSlide = slides[slideIndex];
 
-    if (pendingSeek && !contentReady) {
+  if (pendingSeek && !contentReady) {
     console.warn("CONFLICT: pending seek cannot resolve while contentReady=false", {
       pendingSeek,
       progressReady,
@@ -1446,6 +1452,17 @@ useEffect(() => {
     });
   }
 
+  if (
+    !scrubActive.current &&
+    contentReady &&
+    pendingSeekRef.current != null &&
+    appliedSeekTargetRef.current != null
+  ) {
+    const target = appliedSeekTargetRef.current;
+    pendingSeekRef.current = null;
+    applySeekTarget(target);
+    console.log("FORCED_PENDING_SEEK_RESOLVE:", target);
+  }
 
   if (!pendingSeek || !activeSlide || pendingSeek.slideId !== activeSlide.id) {
     return;
@@ -1454,7 +1471,7 @@ useEffect(() => {
   if (currentCaptionIndex !== pendingSeek.captionIndex) {
     setCurrentCaptionIndex(pendingSeek.captionIndex);
   }
-}, [slides, captions, slideIndex, currentCaptionIndex]);
+}, [slides, captions, slideIndex, currentCaptionIndex, contentReady, applySeekTarget]);
 
 useEffect(() => {
   if (scrubActive.current) return;
