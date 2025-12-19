@@ -27,6 +27,7 @@ export type CourseTimelineProps = {
   totalSeconds: number
   elapsedCourseSeconds: number
   totalCourseSeconds: number
+  moduleDurations: number[]
   onScrub?: (seconds: number) => void
   onScrubStart?: () => void
   onScrubEnd?: () => void
@@ -48,6 +49,7 @@ export default function CourseTimeline({
   totalSeconds,
   elapsedCourseSeconds,
   totalCourseSeconds,
+  moduleDurations = [],
   onScrub,
   onScrubStart,
   onScrubEnd,
@@ -60,7 +62,13 @@ export default function CourseTimeline({
   const [hoverSeconds, setHoverSeconds] = useState<number | null>(null)
   const hoverSecondsRef = useRef<number | null>(null)
   const totalSegments = modules.length + TERMINAL_SEGMENTS.length
-  const segmentWidth = totalSegments > 0 ? 100 / totalSegments : 100
+  const remainingPct =
+    totalSegments > 0 ? (TERMINAL_SEGMENTS.length / totalSegments) * 100 : 0
+  const terminalWidth =
+    TERMINAL_SEGMENTS.length > 0 ? remainingPct / TERMINAL_SEGMENTS.length : 0
+  const modulePortionRatio = 1 - remainingPct / 100
+  const totalDur =
+    moduleDurations.reduce((sum, dur) => sum + dur, 0) || totalCourseSeconds
   const pathname = typeof window !== "undefined" ? window.location.pathname : ""
   const onPaymentPage = pathname.startsWith("/payment")
   const onExamPage = pathname.startsWith("/exam")
@@ -71,14 +79,13 @@ export default function CourseTimeline({
   const rafRef = useRef<number | null>(null)
   const targetPxRef = useRef(0)
   const currentPxRef = useRef(0)
-  const modulePortionRatio =
-    modules.length / (modules.length + TERMINAL_SEGMENTS.length)
 
   const getScrubSeconds = useCallback(
     (clientX: number, clampToModuleEnd: boolean) => {
       if (!timelineRef.current) return null
       if (!modulesRef.current) return null
       if (modulePortionRatio <= 0) return null
+      if (totalDur <= 0) return null
 
       const rect = timelineRef.current.getBoundingClientRect()
       const moduleWidth = rect.width * modulePortionRatio
@@ -91,14 +98,23 @@ export default function CourseTimeline({
         x = moduleWidth
       }
 
-      let pct = x / rect.width
-      pct = Math.min(Math.max(pct, 0), 1)
-      pct = pct / modulePortionRatio
-      pct = Math.min(Math.max(pct, 0), 1)
+      let accPx = 0
+      let accSeconds = 0
 
-      return pct * totalCourseSeconds
+      for (let i = 0; i < moduleDurations.length; i++) {
+        const dur = moduleDurations[i] ?? 0
+        const segWidth = moduleWidth * (dur / totalDur)
+        if (x <= accPx + segWidth || i === moduleDurations.length - 1) {
+          const local = segWidth > 0 ? (x - accPx) / segWidth : 0
+          return accSeconds + local * dur
+        }
+        accPx += segWidth
+        accSeconds += dur
+      }
+
+      return totalDur
     },
-    [modulePortionRatio, totalCourseSeconds]
+    [moduleDurations, modulePortionRatio, totalDur]
   )
 
   const getScrubPx = useCallback(
@@ -127,13 +143,28 @@ export default function CourseTimeline({
     (seconds: number) => {
       if (!timelineRef.current) return null
       if (!modulesRef.current) return null
-      if (totalCourseSeconds <= 0) return null
+      if (totalDur <= 0) return null
 
       const rect = timelineRef.current.getBoundingClientRect()
-      const clamped = Math.min(Math.max(seconds, 0), totalCourseSeconds)
-      return (clamped / totalCourseSeconds) * modulePortionRatio * rect.width
+      const moduleWidth = rect.width * modulePortionRatio
+      const clamped = Math.min(Math.max(seconds, 0), totalDur)
+      let accPx = 0
+      let accSeconds = 0
+
+      for (let i = 0; i < moduleDurations.length; i++) {
+        const dur = moduleDurations[i] ?? 0
+        const segWidth = moduleWidth * (dur / totalDur)
+        if (clamped <= accSeconds + dur || i === moduleDurations.length - 1) {
+          const local = dur > 0 ? (clamped - accSeconds) / dur : 0
+          return accPx + local * segWidth
+        }
+        accPx += segWidth
+        accSeconds += dur
+      }
+
+      return moduleWidth
     },
-    [modulePortionRatio, totalCourseSeconds]
+    [moduleDurations, modulePortionRatio, totalDur]
   )
 
   const syncHandleTransform = useCallback((px: number) => {
@@ -331,11 +362,7 @@ return (
           bg-[#fff]/40
         "
         style={{
-        left: `${
-          (hoverSeconds / totalCourseSeconds) *
-          modulePortionRatio *
-          100
-        }%`,
+          left: `${getPxFromSeconds(hoverSeconds) ?? 0}px`,
           transform: `translate(-50%, -50%)`,
         }}
       />
@@ -351,6 +378,9 @@ return (
     const isCompleted = i <= maxCompletedIndex
     const isActive = i === currentModuleIndex
     const isUnlocked = i <= maxCompletedIndex
+    const widthPct =
+      totalDur > 0 ? ((moduleDurations[i] ?? 0) / totalDur) * 100 : 0
+    const moduleWidthPct = widthPct * modulePortionRatio
 
     let bg = "#001f40"
     let glow = "none"
@@ -364,7 +394,7 @@ return (
     return (
       <div
         key={m.id}
-        style={{ width: `${segmentWidth}%` }}
+        style={{ width: `${moduleWidthPct}%` }}
         className={`relative h-full flex items-center justify-center ${
           isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-45"
         }`}
@@ -406,7 +436,7 @@ return (
     <div
       key={seg.id}
       className="relative h-full flex flex-col items-center justify-start cursor-pointer"
-      style={{ width: `${segmentWidth}%` }}
+      style={{ width: `${terminalWidth}%` }}
       onClick={() => (window.location.href = seg.href)}
     >
       <div className="w-full flex items-center justify-center h-2 translate-y-[2.2px]">

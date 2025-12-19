@@ -354,6 +354,12 @@ export default function CoursePlayerClient() {
     };
   }, [modules, courseLessons, courseSlides, courseCaptions]);
 
+  const moduleDurationSeconds = useMemo(
+    () => courseIndex?.modules.map((module) => module.durationSeconds) ?? [],
+    [courseIndex]
+  );
+  const totalCourseSeconds = courseIndex?.totalSeconds ?? 0;
+
   const courseSlidesById = useMemo(() => {
     const map = new Map<string, CourseSlideRow>();
     courseSlides.forEach((slide) => {
@@ -895,31 +901,7 @@ for (let i = 0; i < slideIndex; i++) {
   // -----------------------------------
   // COURSE-LEVEL TOTAL TIME
   // -----------------------------------
-  const totalCourseSeconds = (() => {
-    let total = 0;
 
-    modules.forEach((mod) => {
-      const modLessons = lessons.filter(
-        (l) => l.module_id === mod.id
-      );
-
-      modLessons.forEach((lesson) => {
-        const lessonSlides = slides.filter(
-          (s) => s.lesson_id === lesson.id
-        );
-
-        lessonSlides.forEach((slide) => {
-          const caps = captions[slide.id] || [];
-          total += caps.reduce(
-            (sum, c) => sum + (c.seconds ?? 0),
-            0
-          );
-        });
-      });
-    });
-
-    return total;
-  })();
 
   // per-module totals
   useEffect(() => {
@@ -2171,7 +2153,8 @@ return (
       currentSeconds={elapsedSeconds}
       totalSeconds={totalModuleSeconds}
       elapsedCourseSeconds={elapsedCourseSeconds}
-      totalCourseSeconds={courseTotals.totalSeconds}
+      totalCourseSeconds={totalCourseSeconds}
+      moduleDurations={moduleDurationSeconds}
       onScrub={handleScrub}
       onScrubStart={handleScrubStart}
       onScrubEnd={handleScrubEnd}
