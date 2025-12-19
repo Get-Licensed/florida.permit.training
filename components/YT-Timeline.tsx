@@ -222,10 +222,10 @@ export default function CourseTimeline({
       if (sec === null) return
       if (px === null) return
       hoverSecondsRef.current = sec
-      targetPxRef.current = px
+      syncHandleTransform(px)
       if (onScrub) onScrub(sec)
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
-      if (!rafRef.current) {
+      if (!rafRef.current && !draggingRef.current) {
         rafRef.current = requestAnimationFrame(animate)
       }
     }
@@ -265,7 +265,15 @@ export default function CourseTimeline({
       window.removeEventListener("mousemove", handleMove)
       window.removeEventListener("mouseup", handleUp)
     }
-  }, [animate, getScrubPx, getScrubSeconds, onHoverResolve, onScrub, onScrubEnd])
+  }, [
+    animate,
+    getScrubPx,
+    getScrubSeconds,
+    onHoverResolve,
+    onScrub,
+    onScrubEnd,
+    syncHandleTransform,
+  ])
 
   useEffect(() => {
     return () => {
@@ -317,11 +325,11 @@ return (
       setDragging(true)
       setHoverSeconds(null)
       hoverSecondsRef.current = sec
-      targetPxRef.current = px
+      syncHandleTransform(px)
       if (onScrubStart) onScrubStart()
       if (onScrub) onScrub(sec)
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
-      if (!rafRef.current) {
+      if (!rafRef.current && !draggingRef.current) {
         rafRef.current = requestAnimationFrame(animate)
       }
     }}

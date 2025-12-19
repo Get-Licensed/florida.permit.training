@@ -492,7 +492,7 @@ export default function CoursePlayerClient() {
         slideId,
       } = target;
 
-      pendingSeekRef.current = target;
+      appliedSeekTargetRef.current = target;
 
       const moduleChanged = moduleIndex !== currentModuleIndex;
       const lessonChanged = lessonIndex !== currentLessonIndex || moduleChanged;
@@ -525,7 +525,7 @@ export default function CoursePlayerClient() {
         currentCaptionIndex === captionIndex
       ) {
         audioRef.current.currentTime = captionOffset;
-        pendingSeekRef.current = null;
+        appliedSeekTargetRef.current = null;
       }
     }
 
@@ -558,53 +558,38 @@ export default function CoursePlayerClient() {
         Math.min(courseIndex.totalSeconds, roundTo(seconds, 2))
       );
 
-      const resolved = resolveCourseTime(seekSeconds);
-      if (!resolved) return;
-
-      const maxUnlockedModuleIndex = Math.min(
-        modules.length - 1,
-        maxCompletedIndex + 1
-      );
-
-      const target =
-        resolved.moduleIndex > maxUnlockedModuleIndex
-          ? clampTargetToModuleEnd(maxUnlockedModuleIndex) ?? resolved
-          : resolved;
-
-      pendingSeekRef.current = target;
-      console.log("SCRUB_PENDING:", {
-        seconds: seekSeconds,
-        moduleIndex: target.moduleIndex,
-        slideIndex: target.slideIndex,
-        captionIndex: target.captionIndex,
-      });
-      console.log("SCRUB_RESOLVED:", {
-        moduleIndex: target.moduleIndex,
-        slideIndex: target.slideIndex,
-        captionIndex: target.captionIndex,
-      });
+      pendingSeekRef.current = seekSeconds;
     },
-    [
-      courseIndex,
-      resolveCourseTime,
-      clampTargetToModuleEnd,
-      modules.length,
-      maxCompletedIndex,
-    ]
+    [courseIndex]
   );
 
   const handleScrubEnd = useCallback(() => {
     scrubActive.current = false;
-    if (pendingSeekRef.current) {
-      console.log("SCRUB_COMMIT:", {
-        moduleIndex: pendingSeekRef.current.moduleIndex,
-        slideIndex: pendingSeekRef.current.slideIndex,
-        captionIndex: pendingSeekRef.current.captionIndex,
-      });
-      applySeekTarget(pendingSeekRef.current);
-      pendingSeekRef.current = null;
-    }
-  }, [applySeekTarget]);
+    const secs = pendingSeekRef.current;
+    pendingSeekRef.current = null;
+    if (secs === null) return;
+
+    const resolved = resolveCourseTime(secs);
+    if (!resolved) return;
+
+    const maxUnlockedModuleIndex = Math.min(
+      modules.length - 1,
+      maxCompletedIndex + 1
+    );
+
+    const target =
+      resolved.moduleIndex > maxUnlockedModuleIndex
+        ? clampTargetToModuleEnd(maxUnlockedModuleIndex) ?? resolved
+        : resolved;
+
+    applySeekTarget(target);
+  }, [
+    applySeekTarget,
+    clampTargetToModuleEnd,
+    maxCompletedIndex,
+    modules.length,
+    resolveCourseTime,
+  ]);
 
   const handleHoverResolve = useCallback(
     (seconds: number, clientX: number) => {
@@ -810,7 +795,8 @@ useEffect(() => {
 
 
 const audioRef = useRef<HTMLAudioElement | null>(null);
-const pendingSeekRef = useRef<SeekTarget | null>(null);
+const pendingSeekRef = useRef<number | null>(null);
+const appliedSeekTargetRef = useRef<SeekTarget | null>(null);
 
 useEffect(() => {
   const audio = audioRef.current;
@@ -1378,6 +1364,7 @@ useEffect(() => {
 
 useEffect(() => {
   if (!progressResolved) return;
+  if (scrubActive.current) return;
   const module = modules[currentModuleIndex];
   if (!module) return;
   loadLessons(module.id);
@@ -1385,6 +1372,7 @@ useEffect(() => {
 
 useEffect(() => {
   if (!progressResolved) return;
+  if (scrubActive.current) return;
   const l = lessons[currentLessonIndex];
   if (!l) return;
   loadLessonContent(l.id);
@@ -1408,7 +1396,7 @@ useEffect(() => {
   if (scrubActive.current) return;
 
   resetAudioElement();
-  const pendingSeek = pendingSeekRef.current;
+  const pendingSeek = appliedSeekTargetRef.current;
   const activeSlideId = slides[slideIndex]?.id;
 
   if (pendingSeek && pendingSeek.slideId === activeSlideId) {
@@ -1421,7 +1409,7 @@ useEffect(() => {
 
 useEffect(() => {
   if (scrubActive.current) return;
-  const pendingSeek = pendingSeekRef.current;
+  const pendingSeek = appliedSeekTargetRef.current;
   const activeSlide = slides[slideIndex];
 
   if (!pendingSeek || !activeSlide || pendingSeek.slideId !== activeSlide.id) {
@@ -2033,7 +2021,7 @@ return (
       onLoadedMetadata={(e) => {
         setAudioDuration(e.currentTarget.duration);
         if (scrubActive.current) return;
-        const pendingSeek = pendingSeekRef.current;
+        const pendingSeek = appliedSeekTargetRef.current;
         const activeSlide = slides[slideIndex];
 
         if (
@@ -2047,7 +2035,7 @@ return (
             e.currentTarget.duration || pendingSeek.captionOffset
           );
           e.currentTarget.currentTime = seekTo;
-          pendingSeekRef.current = null;
+          appliedSeekTargetRef.current = null;
         }
       }}
       onEnded={async () => {
