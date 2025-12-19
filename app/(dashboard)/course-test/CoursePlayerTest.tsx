@@ -97,6 +97,12 @@ function mapTimingIndexToDisplayIndex(
   return result;
 }
 
+// Called by timeline scrub
+function handleScrub(seconds: number) {
+  // temporary until full implementation
+  console.log("SCRUB TARGET:", seconds)
+}
+
 /* ------------------------------------------------------
    TYPES
 ------------------------------------------------------ */
@@ -1633,8 +1639,8 @@ return (
     `}
   >
 
-    {/* TIMELINE */}
-    <CourseTimeline
+      {/* TIMELINE */}
+      <CourseTimeline
       modules={modules}
       currentModuleIndex={currentModuleIndex}
       maxCompletedIndex={maxCompletedIndex}
@@ -1643,6 +1649,11 @@ return (
       paymentPaid={paymentPaid}
       togglePlay={togglePlay}
       isPaused={isPaused}
+      currentSeconds={elapsedSeconds}
+      totalSeconds={totalModuleSeconds}
+      elapsedCourseSeconds={elapsedCourseSeconds}
+      totalCourseSeconds={courseTotals.totalSeconds}
+      onScrub={handleScrub}
     />
 
     {/* CONTROLS – volume + CC */}
@@ -1652,6 +1663,23 @@ return (
     >
       <div className="md:max-w-6xl md:mx-auto px-4">
         <div className="flex items-center gap-4 text-[#001f40]">
+          <div
+            className="
+              h-6 px-4
+              flex items-center
+              rounded-full
+              bg-[#fff]/10
+              text-[#fff]
+              text-sm
+              tabular-nums
+              opacity-100
+              translate-x-[45px]
+              whitespace-nowrap
+            "
+          >
+            {formatTime(elapsedCourseSeconds)} /{" "}
+            {formatTime(courseTotals.totalSeconds)}
+          </div>
 
           {/* VOLUME */}
           <div
@@ -1663,7 +1691,7 @@ return (
           >
             <svg
               viewBox="0 0 24 24"
-              className="w-5 h-5 fill-white drop-shadow-sm translate-x-[35px]"
+              className="w- h-5 fill-white drop-shadow-sm translate-x-[30px]"
             >
               <path d="M5 9v6h4l5 4V5L9 9H5z" />
             </svg>
@@ -1680,12 +1708,10 @@ return (
                   setVolume(v);
                   if (audioRef.current) audioRef.current.volume = v;
                 }}
-                className="vol-range w-24 shadow-sm -translate-y-[4px] translate-x-[25px] shadow-black/10 relative z-10"
+                className="vol-range w-24 shadow-sm -translate-y-[4px] translate-x-[20px] shadow-black/10 relative z-10"
               />
             </div>
           </div>
-
-          <div></div>
 
           {/* CC + voice */}
           <div className="relative z-50">

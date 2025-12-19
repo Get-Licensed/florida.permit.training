@@ -1,5 +1,7 @@
 "use client"
 
+import { useRef, useState } from "react"
+
 type ModuleRow = {
   id: string
   title: string
@@ -20,6 +22,11 @@ export type CourseTimelineProps = {
   isPaused: boolean
   examPassed: boolean
   paymentPaid: boolean
+  currentSeconds: number
+  totalSeconds: number
+  elapsedCourseSeconds: number
+  totalCourseSeconds: number
+  onScrub?: (seconds: number) => void
 }
 
 export default function CourseTimeline({
@@ -31,12 +38,22 @@ export default function CourseTimeline({
   goToModule,
   examPassed = false,
   paymentPaid = false,
+  currentSeconds,
+  totalSeconds,
+  elapsedCourseSeconds,
+  totalCourseSeconds,
+  onScrub,
 }: CourseTimelineProps) {
+  const barRef = useRef<HTMLDivElement | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [hoverSeconds, setHoverSeconds] = useState<number | null>(null)
   const totalSegments = modules.length + TERMINAL_SEGMENTS.length
   const segmentWidth = totalSegments > 0 ? 100 / totalSegments : 100
   const pathname = typeof window !== "undefined" ? window.location.pathname : ""
   const onPaymentPage = pathname.startsWith("/payment")
   const onExamPage = pathname.startsWith("/exam")
+
+  console.log("timeline seconds", { currentSeconds, totalSeconds })
 
 return (
   <div className="fixed bottom-[145px] left-0 right-0 z-40 min-h-[6rem]">
@@ -62,10 +79,79 @@ return (
             )}
           </button>
 
-          {/* WHITE BACKGROUND CONTAINER FOR MODULES */}
-          <div className="flex-1 h-4 rounded-full bg-white/90 shadow-sm px-1 flex items-center">
+     {/* MODULE SCRUBBER */}
+<div
+  ref={barRef}
+  className="
+    flex-1 relative
+    h-3 rounded-full bg-white/90 shadow-sm px-1
+  "
+  onClick={(e) => {
+    if (!barRef.current) return
+    const rect = barRef.current.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const pct = Math.min(Math.max(x / rect.width, 0), 1)
+    const sec = pct * totalSeconds
+    if (onScrub) onScrub(sec)
+  }}
 
-  
+  onMouseMove={(e) => {
+    if (!barRef.current) return
+    const rect = barRef.current.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const pct = Math.min(Math.max(x / rect.width, 0), 1)
+    const sec = pct * totalSeconds
+    setHoverSeconds(sec)
+  }}
+
+  onMouseLeave={() => setHoverSeconds(null)}
+>
+
+  {/* SCRUB LAYER */}
+  <div className="absolute inset-0 pointer-events-none z-[9999]">
+
+    {/* main scrub handle */}
+    {totalSeconds > 0 && (
+      <div
+        className="
+          absolute top-1.5
+          w-4.5 h-4.5 rounded-full
+          shadow-md
+          border-2 border-white
+          bg-[#001f40]
+          shadow-[0_0_8px_rgba(0,0,0,0.6)]
+          z-[10000]
+        "
+        style={{
+        left: `${
+          Math.min(elapsedCourseSeconds / totalCourseSeconds, 1) * 100
+        }%`,
+        transform: `translate(-50%, -50%)`,
+        }}
+      />
+    )}
+
+    {/* ghost preview */}
+    {hoverSeconds !== null && totalSeconds > 0 && (
+      <div
+        className="
+          absolute top-1.5
+          w-4.5 h-4.5 rounded-full
+          shadow-sm
+          bg-[#fff]/40
+        "
+        style={{
+          left: `${(hoverSeconds / totalSeconds) * 100}%`,
+          transform: `translate(-50%, -50%)`,
+        }}
+      />
+    )}
+  </div>
+
+{/* MODULE BAR LAYER (modules + terminals together) */}
+<div className="relative z-[1] flex items-center h-full -translate-y-[.5px]">
+
+
             {modules.map((m, i) => {
               const isCompleted = i <= maxCompletedIndex
               const isActive = i === currentModuleIndex
@@ -125,10 +211,12 @@ return (
                 <div
                   key={seg.id}
                   style={{ width: `${segmentWidth}%` }}
-                  className="relative h-full flex flex-col items-center justify-start cursor-pointer"
+                  className="relative h-full 
+                  flex flex-col items-center justify-start 
+                  cursor-pointer"
                   onClick={() => (window.location.href = seg.href)}
                 >
-                  <div className="w-full flex items-center justify-center translate-x-[1px] translate-y-[4px] h-2">
+                  <div className="w-full flex items-center justify-center h-2 translate-y-[2.5px]">
                     <div
                       className="flex-1 h-2"
                       style={{
@@ -147,6 +235,7 @@ return (
                 </div>
               )
             })}
+          </div>
           </div>
           </div>
         </div>
