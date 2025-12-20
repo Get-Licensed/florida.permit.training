@@ -270,6 +270,22 @@ export default function CoursePlayerClient() {
     // NEW — for karaoke word highlighting
     const [currentWordIndex, setCurrentWordIndex] = useState(0);
 
+    const timelineAutoHideTimerRef = useRef<number | null>(null)
+
+    function revealTimelineFor3s() {
+      setShowTimeline(true)
+
+      if (timelineAutoHideTimerRef.current !== null) {
+        clearTimeout(timelineAutoHideTimerRef.current)
+      }
+
+      timelineAutoHideTimerRef.current = window.setTimeout(() => {
+        if (!scrubActive.current) {
+          setShowTimeline(false)
+        }
+      }, 3000)
+    }
+
     const resetAudioElement = useCallback(() => {
       if (scrubActive.current) return;
       const audio = audioRef.current;
@@ -670,6 +686,17 @@ export default function CoursePlayerClient() {
     setTooltipWidth(hoverTooltipRef.current.offsetWidth);
   }, [hoverPreview]);
 
+  useEffect(() => {
+    function handleSpace(e: KeyboardEvent) {
+      if (e.code !== "Space") return
+      e.preventDefault()
+      revealTimelineFor3s()
+      togglePlay()
+    }
+
+    window.addEventListener("keydown", handleSpace)
+    return () => window.removeEventListener("keydown", handleSpace)
+  }, [])
 
 // -------------------------------------------------------------
 // DEBUG: Core gate values (helps detect infinite steering wheel)
@@ -1979,6 +2006,7 @@ if (!initialHydrationDone) {
 
 
 function togglePlay() {
+  revealTimelineFor3s()
   const audio = audioRef.current;
   if (!audio) {
     resumePlayback();

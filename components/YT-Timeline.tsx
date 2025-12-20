@@ -94,6 +94,23 @@ export default function CourseTimeline({
     }, 0)
   }, [])
 
+  const timelineAutoHideTimerRef = useRef<number | null>(null)
+
+  function revealTimelineFor3s() {
+    if (timelineAutoHideTimerRef.current !== null) {
+      clearTimeout(timelineAutoHideTimerRef.current)
+    }
+
+    // show via callback to parent
+    if (onHoverResolve) onHoverResolve(elapsedCourseSeconds, 0)
+
+    timelineAutoHideTimerRef.current = window.setTimeout(() => {
+      if (!draggingRef.current) {
+        if (onHoverEnd) onHoverEnd()
+      }
+    }, 3000)
+  }
+
   const getScrubSeconds = useCallback(
     (clientX: number, clampToModuleEnd: boolean) => {
       if (!timelineRef.current) return null
@@ -308,21 +325,24 @@ return (
         {/* FLEX ROW: button + timeline */}
         <div className="flex items-center gap-3">
 
-          {/* PLAY / PAUSE BUTTON */}
-          <button
-            onClick={togglePlay}
-            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#fff]/10 transition"
-          >
-            {isPaused ? (
-              <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white">
-                <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
-              </svg>
-            )}
-          </button>
+        {/* PLAY / PAUSE BUTTON */} 
+        <button
+          onClick={() => {
+            revealTimelineFor3s()
+            togglePlay()
+          }}
+          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#fff]/10 transition"
+        >
+          {isPaused ? (
+            <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white">
+              <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+            </svg>
+          )}
+        </button>
 
     {/* MODULE SCRUBBER */}
     <div
@@ -347,6 +367,9 @@ return (
       }
       draggingRef.current = true
       freezeSeekRef.current = true
+      if (timelineAutoHideTimerRef.current !== null) {
+        clearTimeout(timelineAutoHideTimerRef.current)
+      }
       setDragging(true)
       setHoverSeconds(null)
       hoverSecondsRef.current = sec
@@ -358,6 +381,7 @@ return (
         rafRef.current = requestAnimationFrame(animate)
       }
     }}
+
     onMouseMove={(e) => {
       if (dragging) return
       const sec = getScrubSeconds(e.clientX, false)
