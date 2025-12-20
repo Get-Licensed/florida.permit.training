@@ -111,6 +111,11 @@ export default function CourseTimeline({
     }, 3000)
   }
 
+  const handlePlayPauseClick = () => {
+    revealTimelineFor3s()
+    togglePlay()
+  }
+
   const getScrubSeconds = useCallback(
     (clientX: number, clampToModuleEnd: boolean) => {
       if (!timelineRef.current) return null
@@ -327,10 +332,7 @@ return (
 
         {/* PLAY / PAUSE BUTTON */} 
         <button
-          onClick={() => {
-            revealTimelineFor3s()
-            togglePlay()
-          }}
+          onClick={handlePlayPauseClick}
           className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#fff]/10 transition"
         >
           {isPaused ? (

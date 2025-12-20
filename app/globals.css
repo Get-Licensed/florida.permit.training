@@ -186,3 +186,20 @@ select.voice-hidden {
 select.voice-hidden option {
   color:#001f40; /* deep blue */
 }
+
+/* -------------------------------------------------
+   PLAY BUTTON (IDLE STATE)
+--------------------------------------------------- */
+
+@keyframes idleFade {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .7;
+  }
+}
+
+.idle-fade {
+  animation: idleFade 3s ease-in-out infinite;
+}

@@ -212,6 +212,8 @@ export default function CoursePlayerClient() {
   const deepLinkConsumedRef = useRef(false);
   const scrubActive = useRef(false);
   const resumeAfterScrubRef = useRef(false);
+  const shouldAutoPlayRef = useRef(false);
+  const isPlayingRef = useRef(false);
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
   // track highest DB-completed module
@@ -265,8 +267,8 @@ export default function CoursePlayerClient() {
   const [tooltipWidth, setTooltipWidth] = useState(0);
 
   const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
-    const [canProceed, setCanProceed] = useState(false);
-    const [isPaused, setIsPaused] = useState(false);
+  const [canProceed, setCanProceed] = useState(false);
+  const [isPaused, setIsPaused] = useState(true);
     // NEW — for karaoke word highlighting
     const [currentWordIndex, setCurrentWordIndex] = useState(0);
 
@@ -605,7 +607,7 @@ export default function CoursePlayerClient() {
 
     applySeekTarget(target);
 
-    if (resumeAfterScrubRef.current) {
+    if (resumeAfterScrubRef.current && shouldAutoPlayRef.current) {
       cancelAutoplay.current = false;
       setIsPaused(false);
       isPausedRef.current = false;
@@ -667,7 +669,7 @@ export default function CoursePlayerClient() {
 
   const handleScrubStart = useCallback(() => {
     scrubActive.current = true;                  // start scrubbing
-    resumeAfterScrubRef.current = !isPausedRef.current;
+    resumeAfterScrubRef.current = !isPausedRef.current && shouldAutoPlayRef.current;
 
     // cancel any in-flight or pending seek work
     pendingSeekRef.current = null;
@@ -845,16 +847,31 @@ useEffect(() => {
   const moduleLoadInFlightRef = useRef<string | null>(null);
   const lessonLoadInFlightRef = useRef<number | null>(null);
 
+  useEffect(() => {
+  const audio = audioRef.current
+  if (!audio) return
+
+  const initialPaused =
+    audio.paused ||
+    audio.currentTime === 0 ||
+    audio.ended
+
+  setIsPaused(initialPaused)
+  isPausedRef.current = initialPaused
+}, [])
+
 useEffect(() => {
   const audio = audioRef.current;
   if (!audio) return;
 
   function handlePlay() {
     setIsPaused(false);
+    isPlayingRef.current = true;
   }
 
   function handlePause() {
     setIsPaused(true);
+    isPlayingRef.current = false;
   }
 
   audio.addEventListener("play", handlePlay);
@@ -892,6 +909,7 @@ const hardResetAudio = useCallback(() => {
 useEffect(() => {
   const unlock = () => {
     if (!audioRef.current) return;
+    if (!shouldAutoPlayRef.current) return;
     audioRef.current.play().catch(() => {});
     window.removeEventListener("click", unlock);
   };
@@ -903,7 +921,7 @@ useEffect(() => {
 //--------------------------------------------------------------------
 // RESUME ON PAUSE - RESETS SOUND
 //--------------------------------------------------------------------
-const isPausedRef = useRef(false);
+const isPausedRef = useRef(true);
 
 useEffect(() => {
   isPausedRef.current = isPaused;
@@ -997,6 +1015,7 @@ const completedModulesSeconds = modules
 const elapsedCourseSeconds =
   completedModulesSeconds + elapsedSeconds;
 
+const isIdle = isPaused && elapsedCourseSeconds === 0
 
 
 useEffect(() => {
@@ -1563,6 +1582,7 @@ if (!urls.length) {
   }
 
   if (cancelAutoplay.current) return;
+  const shouldAutoPlay = shouldAutoPlayRef.current;
 
   // SRC CHANGE
   if (audio.src !== nextUrl) {
@@ -1578,7 +1598,7 @@ if (!urls.length) {
       audio.oncanplaythrough = null;
 
       // If user paused during transition, do NOT start silent playback
-      if (isPausedRef.current || cancelAutoplay.current) {
+      if (!shouldAutoPlayRef.current || isPausedRef.current || cancelAutoplay.current) {
         audio.volume = targetVolumeRef.current;
         return;
       }
@@ -1594,7 +1614,7 @@ if (!urls.length) {
   }
 
   // SAME SRC → RESUME
-  if (!isPaused && !cancelAutoplay.current) {
+  if (shouldAutoPlay && !isPaused && !cancelAutoplay.current) {
     audio
       .play()
       .then(() => fadeToVolume(audio, targetVolumeRef.current, 120))
@@ -1662,6 +1682,7 @@ useEffect(() => {
   const a = audioRef.current;
   if (!a) return;
   if (isPaused) return;
+  if (!shouldAutoPlayRef.current) return;
 
   cancelAutoplay.current = false;
 
@@ -1926,7 +1947,7 @@ function goToModule(i: number) {
     setSlideIndex(0);
     setCurrentCaptionIndex(0);
     setCanProceed(false);
-    setIsPaused(false);
+    setIsPaused(!shouldAutoPlayRef.current);
 
     loadLessons(modules[i].id)
       .then(() => loadLessonContent(lessons[0]?.id));
@@ -1949,7 +1970,7 @@ function goToModule(i: number) {
   setCurrentCaptionIndex(0);
 
   setCanProceed(false);
-  setIsPaused(false);
+  setIsPaused(!shouldAutoPlayRef.current);
 
   router.push(`/course-test?module=${i}`);
 }
@@ -1992,6 +2013,15 @@ const pausePlayback = useCallback(() => {
   isPausedRef.current = true;
 }, [cancelFade]);
 
+const requestPlay = useCallback(() => {
+  isPlayingRef.current = true
+  resumePlayback()
+}, [resumePlayback])
+
+const requestPause = useCallback(() => {
+  isPlayingRef.current = false
+  pausePlayback()
+}, [pausePlayback])
 
 // Show steering wheel ONLY during very first load
 if (!initialHydrationDone) {
@@ -2004,20 +2034,30 @@ if (!initialHydrationDone) {
 
 // AFTER initial hydration → do NOT block the UI with the loader
 
-
 function togglePlay() {
   revealTimelineFor3s()
-  const audio = audioRef.current;
-  if (!audio) {
-    resumePlayback();
-    return;
+
+  const audio = audioRef.current
+
+  // ensure fresh refs
+  const isActuallyPlaying =
+    audio &&
+    !audio.paused &&
+    audio.currentTime > 0 &&
+    !audio.ended
+
+  if (isActuallyPlaying) {
+    shouldAutoPlayRef.current = false
+    setIsPaused(true)
+    isPausedRef.current = true
+    requestPause()
+    return
   }
 
-  if (audio.paused) {
-    resumePlayback();
-  } else {
-    pausePlayback();
-  }
+  shouldAutoPlayRef.current = true
+  setIsPaused(false)
+  isPausedRef.current = false
+  requestPlay()
 }
 
 const hoverTooltipLeft = (() => {
@@ -2059,54 +2099,62 @@ return (
     >
       <SlideView currentImage={currentImage} />
 
-      <div
-        className={`
-          absolute left-0 right-0 z-20
-          flex items-center justify-center
-          transition-opacity duration-300
-          ${isPaused ? "opacity-100" : "opacity-0 pointer-events-none"}
-        `}
-        style={{ top: "8px", bottom: "300px" }}
+    <div
+  className={`
+    absolute left-0 right-0 z-20
+    flex items-center justify-center
+    transition-opacity duration-300
+    ${isPaused ? "opacity-100" : "opacity-0 pointer-events-none"}
+  `}
+  style={{ top: "8px", bottom: "300px" }}
+>
+  {isIdle && (
+    <div className="absolute bottom-[115px] text-white font-bold text-lg">
+      Press play to begin
+    </div>
+  )}
+
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      togglePlay();
+    }}
+    className={`
+      w-20 h-20
+      rounded-full
+      bg-black/90
+      flex items-center justify-center
+      backdrop-blur-sm
+      cursor-pointer
+      transition
+      ring-4 ring-white/70
+      ${isIdle ? "idle-fade" : ""}
+      hover:bg-black/70    
+      `}
+  >
+    {isPaused ? (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-18 h-20 fill-white"
+        style={{ transform: "translateX(-1.5px)" }}
       >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            togglePlay();
-          }}
-          className="
-            w-20 h-20
-            rounded-full
-            bg-black/50
-            flex items-center justify-center
-            backdrop-blur-sm
-            hover:bg-black/50
-            transition
-          "
-        >
-          {isPaused ? (
-            <svg
-              viewBox="0 0 24 24"
-              className="w-18 h-20 fill-white"
-              style={{ transform: "translateX(-1.5px)" }}
-            >
-              <path d="M8.5 5a1.5 1.5 0 00-1.5 1.5v11a1.5 1.5 0 001.5 1.5L21.5 12z" />
-            </svg>
-          ) : (
-            <svg
-              viewBox="0 0 24 24"
-              className="w-15 h-15 fill-white"
-              style={{ transform: "translateX(-2.5px)" }}
-            >
-              <path d="M6.8 5.5a1.1 1.1 0 011.1-1.1h2.2a1.1 1.1 0 011.1 1.1v13a1.1 1.1 0 01-1.1 1.1H7.9a1.1 1.1 0 01-1.1-1.1z M14.9 5.5a1.1 1.1 0 011.1-1.1h2.2a1.1 1.1 0 011.1 1.1v13a1.1 1.1 0 01-1.1 1.1H16a1.1 1.1 0 01-1.1-1.1z" />
-            </svg>
-          )}
-        </button>
-      </div>
+        <path d="M8.5 5a1.5 1.5 0 00-1.5 1.5v11a1.5 1.5 0 001.5 1.5L21.5 12z" />
+      </svg>
+    ) : (
+      <svg
+        viewBox="0 0 24 24"
+        className="w-15 h-15 fill-white"
+        style={{ transform: "translateX(-2.5px)" }}
+      >
+        <path d="M6.8 5.5a1.1 1.1 0 011.1-1.1h2.2a1.1 1.1 0 011.1 1.1v13a1.1 1.1 0 01-1.1 1.1H7.9a1.1 1.1 0 01-1.1-1.1z M14.9 5.5a1.1 1.1 0 011.1-1.1h2.2a1.1 1.1 0 011.1 1.1v13a1.1 1.1 0 01-1.1 1.1H16a1.1 1.1 0 01-1.1-1.1z" />
+      </svg>
+    )}
+  </button>
+</div>
     </div>
 
     <audio
       ref={audioRef}
-      autoPlay
       preload="auto"
       controls={false}
       onTimeUpdate={(e) => {
@@ -2208,7 +2256,7 @@ return (
       <button
         onClick={() => {
           resetAudioElement()
-          setIsPaused(false)
+          setIsPaused(!shouldAutoPlayRef.current)
           goNext()
         }}
         className="
