@@ -19,6 +19,7 @@ export type CourseTimelineProps = {
   currentModuleIndex: number
   maxCompletedIndex: number
   goToModule?: (index: number) => void
+  allowedSeekSecondsRef: { current: number }
   togglePlay: () => void
   isPaused: boolean
   examPassed: boolean
@@ -43,6 +44,7 @@ export default function CourseTimeline({
   currentModuleIndex = 0,
   maxCompletedIndex = 0,
   goToModule,
+  allowedSeekSecondsRef,
   examPassed = false,
   paymentPaid = false,
   currentSeconds,
@@ -144,15 +146,20 @@ export default function CourseTimeline({
         const segWidth = moduleWidth * (dur / totalDur)
         if (x <= accPx + segWidth || i === moduleDurations.length - 1) {
           const local = segWidth > 0 ? (x - accPx) / segWidth : 0
-          return accSeconds + local * dur
+          let computedSeconds = accSeconds + local * dur
+          computedSeconds = Math.min(
+            computedSeconds,
+            allowedSeekSecondsRef.current
+          )
+          return computedSeconds
         }
         accPx += segWidth
         accSeconds += dur
       }
 
-      return totalDur
+      return Math.min(totalDur, allowedSeekSecondsRef.current)
     },
-    [moduleDurations, modulePortionRatio, totalDur]
+    [allowedSeekSecondsRef, moduleDurations, modulePortionRatio, totalDur]
   )
 
   const getScrubPx = useCallback(

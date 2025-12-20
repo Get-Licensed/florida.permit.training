@@ -207,6 +207,8 @@ const VOICES = [
   },
 ];
 
+export const allowedSeekSecondsRef = { current: 0 };
+
 export default function CoursePlayerClient() {
   const didApplyProgress = useRef(false);
   const deepLinkConsumedRef = useRef(false);
@@ -421,6 +423,7 @@ export default function CoursePlayerClient() {
 
   const resolveCourseTime = useCallback(
     (seconds: number): SeekTarget | null => {
+      seconds = Math.min(seconds, allowedSeekSecondsRef.current);
       if (!courseIndex || courseIndex.totalSeconds <= 0) {
         return null;
       }
@@ -564,7 +567,11 @@ export default function CoursePlayerClient() {
           slideId === slides[slideIndex]?.id &&
           currentCaptionIndex === captionIndex
         ) {
-          audioRef.current.currentTime = captionOffset;
+          const seekSeconds = Math.min(
+            captionOffset,
+            allowedSeekSecondsRef.current
+          );
+          audioRef.current.currentTime = seekSeconds;
           appliedSeekTargetRef.current = null;
           seekCommitInFlightRef.current = false;
           pendingSeekRef.current = null;
@@ -606,7 +613,10 @@ export default function CoursePlayerClient() {
         Math.min(courseIndex.totalSeconds, roundTo(seconds, 2))
       );
 
-      pendingSeekRef.current = seekSeconds;
+      pendingSeekRef.current = Math.min(
+        seekSeconds,
+        allowedSeekSecondsRef.current
+      );
     },
     [courseIndex]
   );
@@ -616,6 +626,7 @@ export default function CoursePlayerClient() {
     const secs = pendingSeekRef.current;
     pendingSeekRef.current = null;
     if (secs === null) return;
+    if (secs > allowedSeekSecondsRef.current) return;
 
     const resolved = resolveCourseTime(secs);
     if (!resolved) return;
@@ -1063,6 +1074,13 @@ const elapsedCourseSeconds =
   completedModulesSeconds + elapsedSeconds;
 
 const isIdle = isPaused && elapsedCourseSeconds === 0
+
+useEffect(() => {
+  allowedSeekSecondsRef.current = Math.max(
+    allowedSeekSecondsRef.current,
+    elapsedCourseSeconds
+  );
+}, [elapsedCourseSeconds]);
 
 
 useEffect(() => {
@@ -1597,10 +1615,11 @@ useEffect(() => {
 
   const audio = audioRef.current;
   if (audio && audio.readyState >= 1) {
-    const seekTo = Math.min(
+    let seekTo = Math.min(
       pendingSeek.captionOffset,
       audio.duration || pendingSeek.captionOffset
     );
+    seekTo = Math.min(seekTo, allowedSeekSecondsRef.current);
     audio.currentTime = seekTo;
       appliedSeekTargetRef.current = null;
       seekCommitInFlightRef.current = false;
@@ -1975,6 +1994,13 @@ const goPrev = () => {
 //--------------------------------------------------------------------
 function goToModule(i: number) {
   if (seekCommitInFlightRef.current) return;
+  const targetStartSeconds = moduleDurationSeconds
+    .slice(0, i)
+    .reduce((sum, duration) => sum + (duration ?? 0), 0);
+
+  if (targetStartSeconds > allowedSeekSecondsRef.current) {
+    return;
+  }
 
   // ✅ Always allow current module
   if (i === currentModuleIndex) {
@@ -2381,10 +2407,11 @@ return (
           pendingSeek.slideId === activeSlide.id &&
           currentCaptionIndex === pendingSeek.captionIndex
         ) {
-          const seekTo = Math.min(
+          let seekTo = Math.min(
             pendingSeek.captionOffset,
             e.currentTarget.duration || pendingSeek.captionOffset
           );
+          seekTo = Math.min(seekTo, allowedSeekSecondsRef.current);
           e.currentTarget.currentTime = seekTo;
           appliedSeekTargetRef.current = null;
           seekCommitInFlightRef.current = false;
@@ -2400,10 +2427,11 @@ return (
 
         const voiceSwitch = voiceSwitchRef.current;
         if (voiceSwitch) {
-          const seekTo = Math.min(
+          let seekTo = Math.min(
             voiceSwitch.resumeTime,
             e.currentTarget.duration || voiceSwitch.resumeTime
           );
+          seekTo = Math.min(seekTo, allowedSeekSecondsRef.current);
           e.currentTarget.currentTime = seekTo;
           if (voiceSwitch.wasPlaying) {
             cancelAutoplay.current = false;
@@ -2515,6 +2543,7 @@ return (
       currentModuleIndex={currentModuleIndex}
       maxCompletedIndex={maxCompletedIndex}
       goToModule={goToModule}
+      allowedSeekSecondsRef={allowedSeekSecondsRef}
       examPassed={examPassed}
       paymentPaid={paymentPaid}
       togglePlay={togglePlay}
