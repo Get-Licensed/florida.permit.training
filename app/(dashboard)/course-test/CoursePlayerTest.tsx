@@ -895,6 +895,7 @@
     const moduleLoadInFlightRef = useRef<string | null>(null);
     const lessonLoadInFlightRef = useRef<number | null>(null);
     const slideAdvanceTimeoutRef = useRef<number | null>(null);
+    const slideRevisionRef = useRef(0);
     const captionAdvanceInFlightRef = useRef<string | null>(null);
     const lastTimeRef = useRef(0);
     const stalledCounterRef = useRef(0);
@@ -1581,8 +1582,22 @@
     SLIDE RESET (very important)
   ------------------------------------------------------ */
 useEffect(() => {
+  slideRevisionRef.current += 1;
+
   // reset caption advance lock when slide changes
   captionAdvanceInFlightRef.current = null;
+
+  if (slideAdvanceTimeoutRef.current !== null) {
+    clearTimeout(slideAdvanceTimeoutRef.current);
+    slideAdvanceTimeoutRef.current = null;
+  }
+
+  pendingSeekRef.current = null;
+  seekCommitInFlightRef.current = false;
+  lastTimeRef.current = 0;
+  stalledCounterRef.current = 0;
+  setAudioDuration(0);
+  setCurrentWordIndex(0);
 
   // 🚫 terminal state — do not reset anything
   if (isFinalCourseSlide) return;
@@ -1599,9 +1614,6 @@ useEffect(() => {
   }
 
   setCanProceed(false);
-  slideAdvanceTimeoutRef.current = null;
-  pendingSeekRef.current = null;
-  seekCommitInFlightRef.current = false;
 }, [
   slideIndex,
   slides,
@@ -2159,10 +2171,12 @@ useEffect(() => {
     pausePlayback()
   }, [pausePlayback])
       const handleCaptionComplete = useCallback(() => {
-        const key = `${slideIndex}:${currentCaptionIndex}`;
+        const advanceRevision = slideRevisionRef.current;
+        const key = `${advanceRevision}:${slideIndex}:${currentCaptionIndex}`;
         if (captionAdvanceInFlightRef.current === key) return;
         captionAdvanceInFlightRef.current = key;
         setTimeout(() => {
+          if (advanceRevision !== slideRevisionRef.current) return;
           if (captionAdvanceInFlightRef.current === key) {
             captionAdvanceInFlightRef.current = null;
           }
@@ -2178,7 +2192,9 @@ useEffect(() => {
       if (currentCaptionIndex < last) {
         if (shouldAutoPlayRef.current && !isPausedRef.current && audio) {
           requestPause();
+          const scheduledRevision = advanceRevision;
           setTimeout(() => {
+            if (scheduledRevision !== slideRevisionRef.current) return;
             handleCaptionComplete();
           }, SLIDE_DELAY_MS);
           return;
@@ -2220,12 +2236,16 @@ useEffect(() => {
     setTimeout(() => {
       autoPausedRef.current = false;
 
-      // sync pause-state before UI paints
-      setIsPaused(false);
-      isPausedRef.current = false;
+   // allow audio buffer to reset before resuming playback
+    requestAnimationFrame(() => {
+      queueMicrotask(() => {
+        if (!audioRef.current) return
+        audioRef.current.currentTime = 0  // ensures clean start frame
+        requestPlay()
+      })
+    })
+    goNext()
 
-      requestPlay();
-      goNext();
     }, SLIDE_DELAY_MS);
   }
 
@@ -2261,10 +2281,18 @@ useEffect(() => {
 
 
     shouldAutoPlayRef.current = true
-    setIsPaused(false)
-    isPausedRef.current = false
-    requestPlay()
-  }
+      setIsPaused(false)
+      isPausedRef.current = false
+
+      // resume playback cleanly (prevents click/pop artifacts)
+      requestAnimationFrame(() => {
+        queueMicrotask(() => {
+          if (!audioRef.current) return
+          audioRef.current.currentTime = 0
+          requestPlay()
+        })
+      })
+    }
 
   const hoverTooltipLeft = (() => {
     if (!hoverPreview || !timelineHoverRef.current) return null;
@@ -2369,10 +2397,12 @@ useEffect(() => {
           const t = e.currentTarget.currentTime
           // Patch 3: advance when audio actually ends
           if (audioRef.current?.ended) {
-            const keyEnd = `${slideIndex}:${currentCaptionIndex}`
+            const advanceRevision = slideRevisionRef.current
+            const keyEnd = `${advanceRevision}:${slideIndex}:${currentCaptionIndex}`
             if (captionAdvanceInFlightRef.current !== keyEnd) {
               captionAdvanceInFlightRef.current = keyEnd
               setTimeout(() => {
+                if (advanceRevision !== slideRevisionRef.current) return
                 if (captionAdvanceInFlightRef.current === keyEnd) {
                   captionAdvanceInFlightRef.current = null
                 }
@@ -2401,10 +2431,12 @@ useEffect(() => {
               captionAdvanceInFlightRef.current === null
             ) {
               stalledCounterRef.current = 0
-              const key = `${slideIndex}:${currentCaptionIndex}`;
+              const advanceRevision = slideRevisionRef.current
+              const key = `${advanceRevision}:${slideIndex}:${currentCaptionIndex}`;
               if (captionAdvanceInFlightRef.current === key) return;
               captionAdvanceInFlightRef.current = key;
               setTimeout(() => {
+                if (advanceRevision !== slideRevisionRef.current) return
                 if (captionAdvanceInFlightRef.current === key) {
                   captionAdvanceInFlightRef.current = null;
                 }
@@ -2430,31 +2462,47 @@ useEffect(() => {
           const shifted = t + 0.08
           let wi = timings.findIndex(w => shifted < w.end)
           if (wi < 0) wi = timings.length - 1
-          setCurrentWordIndex(map[wi])
+          const computedWordIndex = map[wi] ?? 0
+          setCurrentWordIndex(computedWordIndex)
 
           const duration = active.seconds ?? 0
           // normalize audio duration to avoid drift underruns
           const rawDur = audioRef.current?.duration
           const effectiveDuration = Math.max(duration, rawDur || duration)
 
-          const drift = 0.25
+          const drift = 0.95
+          const driftGuardSeconds = 0.95
+          const driftReady =
+            effectiveDuration > 0 &&
+            audioDuration > 0 &&
+            t > driftGuardSeconds
 
           if (slideAdvanceTimeoutRef.current !== null) return
 
           const remaining = effectiveDuration - t
           
           if (
-            effectiveDuration > 0 &&
-            (remaining <= drift || currentWordIndex >= timings.length - 1) &&
-            !scrubActive.current &&
-            contentReady &&
-            pendingSeekRef.current === null &&
-            !seekCommitInFlightRef.current &&
-            captionAdvanceInFlightRef.current === null
-          ) {
+              driftReady &&
+              (
+                remaining <= drift &&
+                wi >= timings.length - 1 &&
+                t >= effectiveDuration - 0.15
+              ) &&
+              !scrubActive.current &&
+              contentReady &&
+              pendingSeekRef.current === null &&
+              !seekCommitInFlightRef.current &&
+              captionAdvanceInFlightRef.current === null
+            ) {
+
+            const advanceRevision = slideRevisionRef.current
             const scheduledSlide = slideIndex
             const scheduledCaption = currentCaptionIndex
             slideAdvanceTimeoutRef.current = window.setTimeout(() => {
+              if (advanceRevision !== slideRevisionRef.current) {
+                slideAdvanceTimeoutRef.current = null
+                return
+              }
               if (
                 scheduledSlide !== slideIndex ||
                 scheduledCaption !== currentCaptionIndex
@@ -2469,10 +2517,11 @@ useEffect(() => {
               if (pendingSeekRef.current !== null) return
               if (seekCommitInFlightRef.current) return
 
-              const key = `${slideIndex}:${currentCaptionIndex}`
+              const key = `${advanceRevision}:${slideIndex}:${currentCaptionIndex}`
               if (captionAdvanceInFlightRef.current === key) return
               captionAdvanceInFlightRef.current = key
               setTimeout(() => {
+                if (advanceRevision !== slideRevisionRef.current) return
                 if (captionAdvanceInFlightRef.current === key) {
                   captionAdvanceInFlightRef.current = null
                 }

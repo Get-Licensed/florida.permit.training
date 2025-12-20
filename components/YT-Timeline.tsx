@@ -504,7 +504,7 @@ return (
 >
   <div
     ref={playedTrackRef}
-    className="absolute left-0 top-0 bottom-0 z-[2] rounded-full pointer-events-none"
+    className="absolute left-0 top-[2px] bottom-[2px] z-[2] rounded-full pointer-events-none"
     style={{
       width: `${modulePortionRatio * 100}%`,
       background: "linear-gradient(to right, #ca5608 0px, #d1d5db 0px)",
