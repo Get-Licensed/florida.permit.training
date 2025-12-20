@@ -295,9 +295,6 @@ export default function CourseTimeline({
   setHoverSeconds(null)
   hoverSecondsRef.current = null
   if (onHoverEnd) onHoverEnd()
-    if (wasPlayingBeforeScrubRef.current) {
-  togglePlay()
-}
 }
 
     window.addEventListener("mousemove", handleMove)

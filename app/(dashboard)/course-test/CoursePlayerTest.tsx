@@ -613,7 +613,7 @@ export default function CoursePlayerClient() {
 
     applySeekTarget(target);
 
-    if (resumeAfterScrubRef.current && shouldAutoPlayRef.current) {
+    if (resumeAfterScrubRef.current) {
       cancelAutoplay.current = false;
       setIsPaused(false);
       isPausedRef.current = false;
@@ -674,16 +674,17 @@ export default function CoursePlayerClient() {
   }, []);
 
   const handleScrubStart = useCallback(() => {
-    scrubActive.current = true;                  // start scrubbing
-    resumeAfterScrubRef.current = !isPausedRef.current && shouldAutoPlayRef.current;
-
+    scrubActive.current = true; // start scrubbing
+    // record whether autoplay+playing was active BEFORE temporary pause
+    resumeAfterScrubRef.current =
+      shouldAutoPlayRef.current && !isPausedRef.current;
     // cancel any in-flight or pending seek work
     pendingSeekRef.current = null;
     appliedSeekTargetRef.current = null;
     seekCommitInFlightRef.current = false;
-    pendingSeekRef.current = null;
+    // temporary scrub-pause
     cancelAutoplay.current = true;
-    shouldAutoPlayRef.current = false;
+    // remove: shouldAutoPlayRef.current = false    ← delete permanently
     setIsPaused(true);
     isPausedRef.current = true;
   }, []);
