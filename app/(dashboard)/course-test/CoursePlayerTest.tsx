@@ -434,16 +434,20 @@
     const router = useRouter();
 
     const resolveCourseTime = useCallback(
-      (seconds: number): SeekTarget | null => {
-        seconds = Math.min(seconds, allowedSeekSecondsRef.current);
+      (
+        seconds: number,
+        maxSeconds = allowedSeekSecondsRef.current
+      ): SeekTarget | null => {
         if (!courseIndex || courseIndex.totalSeconds <= 0) {
           return null;
         }
 
-        let remaining = Math.min(
+        const clampedSeconds = Math.min(
           Math.max(seconds, 0),
-          courseIndex.totalSeconds
+          Math.min(maxSeconds, courseIndex.totalSeconds)
         );
+
+        let remaining = clampedSeconds;
 
         let moduleIndex = 0;
         for (let i = 0; i < courseIndex.modules.length; i++) {
@@ -672,8 +676,21 @@
       (seconds: number, clientX: number) => {
         if (!courseIndex) return;
 
-        const target = resolveCourseTime(seconds);
+        const target = resolveCourseTime(seconds, courseIndex.totalSeconds);
         if (!target) return;
+
+        const maxUnlockedModuleIndex = Math.min(
+          modules.length - 1,
+          maxCompletedIndex + 1
+        );
+
+        if (target.moduleIndex > maxUnlockedModuleIndex) {
+          if (hoverDebounceRef.current) {
+            clearTimeout(hoverDebounceRef.current);
+          }
+          setHoverPreview(null);
+          return;
+        }
 
         const rect = timelineHoverRef.current?.getBoundingClientRect();
         if (!rect || rect.width <= 0) return;
@@ -705,6 +722,8 @@
         resolveCourseTime,
         courseSlidesById,
         captionPreviewBySlideId,
+        maxCompletedIndex,
+        modules.length,
       ]
     );
 
@@ -2213,7 +2232,6 @@ useEffect(() => {
         setCurrentCaptionIndex(i => i + 1);
 
         if (shouldAutoPlayRef.current && !isPausedRef.current && audio) {
-          audio.currentTime = 0;
           audio.play().catch(() => {});
         }
 
@@ -2250,7 +2268,6 @@ useEffect(() => {
     requestAnimationFrame(() => {
       queueMicrotask(() => {
         if (!audioRef.current) return
-        audioRef.current.currentTime = 0  // ensures clean start frame
         requestPlay()
       })
     })
@@ -2298,7 +2315,6 @@ useEffect(() => {
       requestAnimationFrame(() => {
         queueMicrotask(() => {
           if (!audioRef.current) return
-          audioRef.current.currentTime = 0
           requestPlay()
         })
       })

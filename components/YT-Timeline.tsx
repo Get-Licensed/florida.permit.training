@@ -166,6 +166,41 @@ export default function CourseTimeline({
     [allowedSeekSecondsRef, moduleDurations, modulePortionRatio, totalDur]
   )
 
+  const getHoverSeconds = useCallback(
+    (clientX: number) => {
+      if (!timelineRef.current) return null
+      if (!modulesRef.current) return null
+      if (modulePortionRatio <= 0) return null
+      if (totalDur <= 0) return null
+
+      const rect = timelineRef.current.getBoundingClientRect()
+      const moduleWidth = rect.width * modulePortionRatio
+      if (moduleWidth <= 0) return null
+
+      let x = clientX - rect.left
+      if (x < 0) x = 0
+      if (x > moduleWidth) return null
+
+      let accPx = 0
+      let accSeconds = 0
+
+      for (let i = 0; i < moduleDurations.length; i++) {
+        const dur = moduleDurations[i] ?? 0
+        const segWidth = moduleWidth * (dur / totalDur)
+        if (x <= accPx + segWidth || i === moduleDurations.length - 1) {
+          const local = segWidth > 0 ? (x - accPx) / segWidth : 0
+          const computedSeconds = accSeconds + local * dur
+          return Math.min(computedSeconds, totalDur)
+        }
+        accPx += segWidth
+        accSeconds += dur
+      }
+
+      return totalDur
+    },
+    [moduleDurations, modulePortionRatio, totalDur]
+  )
+
   const getScrubPx = useCallback(
     (clientX: number, clampToModuleEnd: boolean) => {
       if (!timelineRef.current) return null
@@ -442,7 +477,7 @@ return (
 
     onMouseMove={(e) => {
       if (dragging) return
-      const sec = getScrubSeconds(e.clientX, false)
+      const sec = getHoverSeconds(e.clientX)
       if (sec === null) {
         setHoverSeconds(null)
         if (onHoverEnd) onHoverEnd()
