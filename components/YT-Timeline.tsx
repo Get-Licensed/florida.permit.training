@@ -82,6 +82,8 @@ export default function CourseTimeline({
   const freezeSeekRef = useRef(false)
   const suppressModuleClickRef = useRef(false)
   const suppressModuleClickTimeoutRef = useRef<number | null>(null)
+  // remember play state across scrub
+  const wasPlayingBeforeScrubRef = useRef(false)
 
   const releaseSuppressModuleClick = useCallback(() => {
     if (suppressModuleClickTimeoutRef.current !== null) {
@@ -218,9 +220,9 @@ export default function CourseTimeline({
     }
 
     const dx = targetPxRef.current - currentPxRef.current
-    currentPxRef.current += dx * 0.25
+    currentPxRef.current += dx * 0.15
 
-    if (Math.abs(dx) > 0.2) {
+    if (Math.abs(dx) > 0.05) {
       handleRef.current.style.transform = `translate(${currentPxRef.current}px, -50%) translateX(-50%)`
       rafRef.current = requestAnimationFrame(animate)
     } else {
@@ -293,6 +295,9 @@ export default function CourseTimeline({
   setHoverSeconds(null)
   hoverSecondsRef.current = null
   if (onHoverEnd) onHoverEnd()
+    if (wasPlayingBeforeScrubRef.current) {
+  togglePlay()
+}
 }
 
     window.addEventListener("mousemove", handleMove)
@@ -369,6 +374,7 @@ return (
       }
       draggingRef.current = true
       freezeSeekRef.current = true
+      wasPlayingBeforeScrubRef.current = !isPaused
       if (timelineAutoHideTimerRef.current !== null) {
         clearTimeout(timelineAutoHideTimerRef.current)
       }

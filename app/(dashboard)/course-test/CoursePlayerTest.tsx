@@ -213,6 +213,7 @@ export default function CoursePlayerClient() {
   const scrubActive = useRef(false);
   const resumeAfterScrubRef = useRef(false);
   const shouldAutoPlayRef = useRef(false);
+  const autoPausedRef = useRef(false);
   const isPlayingRef = useRef(false);
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
@@ -550,6 +551,11 @@ export default function CoursePlayerClient() {
           audioRef.current.currentTime = captionOffset;
           appliedSeekTargetRef.current = null;
           seekCommitInFlightRef.current = false;
+          pendingSeekRef.current = null;
+          cancelAutoplay.current = true;
+          shouldAutoPlayRef.current = false;
+          setIsPaused(true);
+          isPausedRef.current = true;
         }
       }
 
@@ -675,6 +681,11 @@ export default function CoursePlayerClient() {
     pendingSeekRef.current = null;
     appliedSeekTargetRef.current = null;
     seekCommitInFlightRef.current = false;
+    pendingSeekRef.current = null;
+    cancelAutoplay.current = true;
+    shouldAutoPlayRef.current = false;
+    setIsPaused(true);
+    isPausedRef.current = true;
   }, []);
 
   useEffect(() => {
@@ -848,6 +859,8 @@ useEffect(() => {
   const lessonLoadInFlightRef = useRef<number | null>(null);
   const slideAdvanceTimeoutRef = useRef<number | null>(null);
   const captionAdvanceInFlightRef = useRef(false);
+  const lastTimeRef = useRef(0);
+  const stalledCounterRef = useRef(0);
 
 // Reset autoplay intent on first mount
 useEffect(() => {
@@ -1504,6 +1517,10 @@ useEffect(() => {
     setCurrentCaptionIndex(0);
   }
   setCanProceed(false);
+  slideAdvanceTimeoutRef.current = null;
+  captionAdvanceInFlightRef.current = false;
+  pendingSeekRef.current = null;
+  seekCommitInFlightRef.current = false;
 }, [slideIndex, slides, isFinalCourseSlide, resetAudioElement]);
 
 useEffect(() => {
@@ -1556,7 +1573,7 @@ useEffect(() => {
     audio.currentTime = seekTo;
       appliedSeekTargetRef.current = null;
       seekCommitInFlightRef.current = false;
-
+      pendingSeekRef.current = null;
       cancelAutoplay.current = true;
       shouldAutoPlayRef.current = false;
       setIsPaused(true);
@@ -2042,27 +2059,33 @@ const handleCaptionComplete = useCallback(() => {
   if (!caps.length) return
 
   const last = caps.length - 1
-
-  if (currentCaptionIndex < last) {
-    setCurrentCaptionIndex(i => i + 1)
-
-    if (shouldAutoPlayRef.current && !isPausedRef.current && audio) {
-      audio.currentTime = 0
-      audio.play().catch(() => {})
-    }
-    return
-  }
-
-    setCanProceed(true)
-
-      if (!isFinalSlideOfModule) {
-      if (shouldAutoPlayRef.current && !cancelAutoplay.current) {
-        goNext()
-      } else {
-        setCanProceed(true)
+    if (currentCaptionIndex < last) {
+      if (shouldAutoPlayRef.current && !isPausedRef.current && audio) {
+        requestPause();
+        setTimeout(() => {
+          handleCaptionComplete();
+        }, SLIDE_DELAY_MS);
+        return;
       }
+
+      setCurrentCaptionIndex(i => i + 1);
+
+      if (shouldAutoPlayRef.current && !isPausedRef.current && audio) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      }
+
+      return;
     }
 
+    // no more caption – allow Continue button
+    setCanProceed(true);
+
+    if (!isFinalSlideOfModule) {
+      if (shouldAutoPlayRef.current && !cancelAutoplay.current) {
+        delayedGoNext();     // delayed slide advance
+      } 
+    }
 
 }, [
   captions,
@@ -2071,6 +2094,24 @@ const handleCaptionComplete = useCallback(() => {
   currentCaptionIndex,
   goNext
 ])
+
+const SLIDE_DELAY_MS = 1200; // adjust delay
+
+function delayedGoNext() {
+  autoPausedRef.current = true;
+  requestPause();
+
+  setTimeout(() => {
+    autoPausedRef.current = false;
+
+    // sync pause-state before UI paints
+    setIsPaused(false);
+    isPausedRef.current = false;
+
+    requestPlay();
+    goNext();
+  }, SLIDE_DELAY_MS);
+}
 
 // Show steering wheel ONLY during very first load
 if (!initialHydrationDone) {
@@ -2153,8 +2194,10 @@ return (
     absolute left-0 right-0 z-20
     flex items-center justify-center
     transition-opacity duration-300
-    ${isPaused ? "opacity-100" : "opacity-0 pointer-events-none"}
-  `}
+    ${(isPausedRef.current && !autoPausedRef.current)
+      ? "opacity-100"
+      : "opacity-0 pointer-events-none"}
+      `}
   style={{ top: "8px", bottom: "300px" }}
 >
   {isIdle && (
@@ -2209,6 +2252,20 @@ return (
       onTimeUpdate={(e) => {
         const t = e.currentTarget.currentTime
         setAudioTime(t)
+        if (!isPausedRef.current) {
+          if (lastTimeRef.current === t) {
+            stalledCounterRef.current++
+          } else {
+            stalledCounterRef.current = 0
+          }
+
+          lastTimeRef.current = t
+
+          if (stalledCounterRef.current > 6) { // ~600–700ms
+            stalledCounterRef.current = 0
+            handleCaptionComplete()
+          }
+        }
 
         const slideK = slides[slideIndex]
         if (!slideK) return
@@ -2237,8 +2294,17 @@ return (
         if (slideAdvanceTimeoutRef.current !== null) return;
 
         // BLOCK advance until fully loadable
-        if (duration > 0 && t >= duration - drift) {
+        if (duration > 0 && (duration - t) <= drift) {
+          const scheduledSlide = slideIndex
+          const scheduledCaption = currentCaptionIndex
           slideAdvanceTimeoutRef.current = window.setTimeout(() => {
+            if (
+              scheduledSlide !== slideIndex ||
+              scheduledCaption !== currentCaptionIndex
+            ) {
+              slideAdvanceTimeoutRef.current = null
+              return
+            }
             slideAdvanceTimeoutRef.current = null;
 
             // HARD guard — cannot advance if scrub, seeking, or load in progress
@@ -2289,6 +2355,11 @@ return (
           e.currentTarget.currentTime = seekTo;
           appliedSeekTargetRef.current = null;
           seekCommitInFlightRef.current = false;
+          pendingSeekRef.current = null;
+          cancelAutoplay.current = true;
+          shouldAutoPlayRef.current = false;
+          setIsPaused(true);
+          isPausedRef.current = true;
         }
       }}
           />
