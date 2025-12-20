@@ -615,17 +615,24 @@ useEffect(() => {
     return;
   }
 
-  const data = await res.json();
+    const data = await res.json();
 
-  console.log("COURSE STATUS RESPONSE:", data);
+    console.log("COURSE STATUS RESPONSE:", data);
 
-  setExamPassed(data.exam_passed === true);
+    // SAFETY GUARD: null or undefined response
+    if (!data) {
+      setExamPassed(false);
+      setPaymentPaid(false);
+      return;
+    }
 
-  setPaymentPaid(
-    data.status === "completed_paid" ||
-    data.status === "dmv_submitted"
-  );
-}
+    setExamPassed(Boolean(data.exam_passed));
+
+    setPaymentPaid(
+      data.status === "completed_paid" ||
+      data.status === "dmv_submitted"
+    );
+  }
 
 
   /* ------------------------------------------------------

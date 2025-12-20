@@ -302,6 +302,22 @@ export default function CoursePlayerClient() {
       // do NOT touch cancelAutoplay here
     }, []);
 
+    const switchVoice = useCallback(
+      (newVoiceId: string) => {
+        if (newVoiceId === voice) return;
+        const wasPlaying =
+          shouldAutoPlayRef.current && !isPausedRef.current;
+        const resumeTime = audioRef.current
+          ? audioRef.current.currentTime
+          : 0;
+
+        cancelAutoplay.current = true;
+        voiceSwitchRef.current = { resumeTime, wasPlaying };
+        setVoice(newVoiceId);
+      },
+      [voice]
+    );
+
   const courseIndex = useMemo(() => {
     if (!modules.length || !courseLessons.length || !courseSlides.length) {
       return null;
@@ -552,6 +568,7 @@ export default function CoursePlayerClient() {
           appliedSeekTargetRef.current = null;
           seekCommitInFlightRef.current = false;
           pendingSeekRef.current = null;
+          voiceSwitchRef.current = null;
           if (!resumeAfterScrubRef.current) {
             cancelAutoplay.current = true;
             shouldAutoPlayRef.current = false;
@@ -855,6 +872,10 @@ useEffect(() => {
 
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceSwitchRef = useRef<{
+    resumeTime: number;
+    wasPlaying: boolean;
+  } | null>(null);
   const pendingSeekRef = useRef<number | null>(null);
   const appliedSeekTargetRef = useRef<SeekTarget | null>(null);
   const seekCommitInFlightRef = useRef(false);
@@ -1128,7 +1149,14 @@ useEffect(() => {
 
   console.log("COURSE STATUS RESPONSE:", data);
 
-  setExamPassed(data.exam_passed === true);
+  // SAFETY GUARD: null or undefined response
+  if (!data) {
+    setExamPassed(false);
+    setPaymentPaid(false);
+    return;
+  }
+
+  setExamPassed(Boolean(data.exam_passed));
 
   setPaymentPaid(
     data.status === "completed_paid" ||
@@ -1615,7 +1643,7 @@ useEffect(() => {
     preloadAudio(urls[currentCaptionIndex + 1]!);
   }
 
-  if (cancelAutoplay.current) return;
+  if (cancelAutoplay.current && !voiceSwitchRef.current) return;
   const shouldAutoPlay = shouldAutoPlayRef.current;
 
   // SRC CHANGE
@@ -2367,6 +2395,29 @@ return (
             setIsPaused(true);
             isPausedRef.current = true;
           }
+          return;
+        }
+
+        const voiceSwitch = voiceSwitchRef.current;
+        if (voiceSwitch) {
+          const seekTo = Math.min(
+            voiceSwitch.resumeTime,
+            e.currentTarget.duration || voiceSwitch.resumeTime
+          );
+          e.currentTarget.currentTime = seekTo;
+          if (voiceSwitch.wasPlaying) {
+            cancelAutoplay.current = false;
+            if (e.currentTarget.volume === 0) {
+              e.currentTarget.volume = targetVolumeRef.current;
+            }
+            e.currentTarget.play().catch(() => {});
+            isPausedRef.current = false;
+            setIsPaused(false);
+          } else {
+            isPausedRef.current = true;
+            setIsPaused(true);
+          }
+          voiceSwitchRef.current = null;
         }
       }}
           />
@@ -2543,7 +2594,7 @@ return (
 
             <select
               value={voice}
-              onChange={(e) => setVoice(e.target.value)}
+              onChange={(e) => switchVoice(e.target.value)}
               className="
                 voice-hidden
                 h-10 pl-8 pr-10

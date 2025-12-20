@@ -26,14 +26,16 @@ export async function GET(req: Request) {
     )
     .eq("user_id", user.id)
     .eq("course_id", "FL_PERMIT_TRAINING")
-    .single();
+    .maybeSingle();
 
-  if (error) {
+  // if error and not the "no row found" code, return server error
+  if (error && error.code !== "PGRST116") {
     return Response.json(
       { error: "Failed to load course status" },
       { status: 500 }
     );
   }
 
-  return Response.json(data);
+  // return null when no row exists
+  return Response.json(data ?? null);
 }

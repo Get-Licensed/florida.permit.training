@@ -15,33 +15,42 @@ export function usePermitStatus() {
 
     async function run() {
       try {
-        // 1️⃣ Get user
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user || !alive) return;
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-        // 2️⃣ Try to load existing row
+        if (!alive || !user) {
+          setLoading(false);
+          return;
+        }
+
+        // allow null/no row
         const { data, error } = await supabase
           .from("course_status")
           .select("completed_at, exam_passed, paid_at")
           .eq("user_id", user.id)
           .eq("course_id", "FL_PERMIT_TRAINING")
-          .single();
+          .maybeSingle(); // safe version
 
-        // 3️⃣ Row does not exist → create it
-        if (error && error.code === "PGRST116") {
+        // if row missing → create with defaults
+        if (!data && (!error || error.code === "PGRST116")) {
           await supabase.from("course_status").insert({
             user_id: user.id,
             course_id: "FL_PERMIT_TRAINING",
           });
-          return; // next render will re-fetch
+          setCourseComplete(false);
+          setExamPassed(false);
+          setPaid(false);
+          setLoading(false);
+          return;
         }
 
-        if (!data || !alive) return;
+        if (!alive) return;
 
-        // 4️⃣ Apply state
-        setCourseComplete(Boolean(data.completed_at));
-        setExamPassed(Boolean(data.exam_passed));
-        setPaid(Boolean(data.paid_at));
+        // read fields safely
+        setCourseComplete(Boolean(data?.completed_at));
+        setExamPassed(Boolean(data?.exam_passed));
+        setPaid(Boolean(data?.paid_at));
       } catch (e) {
         console.error("usePermitStatus error", e);
       } finally {
