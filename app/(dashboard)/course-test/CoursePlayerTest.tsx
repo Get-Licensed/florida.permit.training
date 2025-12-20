@@ -40,6 +40,7 @@
     if (!words.length) return [];
 
     const SPEED = 1.0;
+    const MIN_WORD_DURATION = totalSeconds * 0.015;
 
     const weights = words.map((w) => {
       const isPunct = /[.,!?;:]/.test(w);
@@ -59,12 +60,20 @@
 
     let cursor = 0;
 
-    return weights.map((wt) => {
+    let timings = weights.map((wt, i) => {
       const dur = (wt / totalWeight) * scaledTotal;
       const start = cursor;
       cursor += dur;
-      return { start, end: cursor };
+      const end = i === weights.length - 1 ? scaledTotal : cursor;
+      return { start, end };
     });
+
+    timings = timings.map((t) => {
+      const paddedEnd = Math.max(t.end, t.start + MIN_WORD_DURATION);
+      return { start: t.start, end: paddedEnd };
+    });
+
+    return timings;
   }
 
   function mapTimingIndexToDisplayIndex(
@@ -78,20 +87,21 @@
       const tw = timingWords[i];
       const dw = displayWords[dIndex] ?? "";
 
-      // timing word belongs to current display word
-      if (dw.startsWith(tw) || dw.includes(tw)) {
+      // punctuation belongs to current display index
+      if (/^[.,!?;:]$/.test(tw)) {
         result.push(dIndex);
+        continue;
       }
-      // punctuation belongs to displayWords[dIndex]
-      else if (/[.,!?;:]/.test(tw)) {
+
+      // normal matching
+      if (dw.startsWith(tw)) {
         result.push(dIndex);
-        continue; // do not advance dIndex
+        continue;
       }
-      // next display word
-      else {
-        dIndex++;
-        result.push(dIndex);
-      }
+
+      // fallback – increment display index, but clamp at end
+      dIndex = Math.min(dIndex + 1, displayWords.length - 1);
+      result.push(dIndex);
     }
 
     return result;
