@@ -39,7 +39,7 @@ function tokenizeForTiming(text: string): string[] {
 function computeWordTimings(totalSeconds: number, words: string[]) {
   if (!words.length) return [];
 
-  const SPEED = .98;
+  const SPEED = 1.0;
 
   const weights = words.map((w) => {
     const isPunct = /[.,!?;:]/.test(w);
@@ -846,6 +846,16 @@ useEffect(() => {
   const seekCommitInFlightRef = useRef(false);
   const moduleLoadInFlightRef = useRef<string | null>(null);
   const lessonLoadInFlightRef = useRef<number | null>(null);
+  const slideAdvanceTimeoutRef = useRef<number | null>(null);
+  const captionAdvanceInFlightRef = useRef(false);
+
+// Reset autoplay intent on first mount
+useEffect(() => {
+  shouldAutoPlayRef.current = false;
+  cancelAutoplay.current = true;
+  isPausedRef.current = true;
+  setIsPaused(true);
+}, []);
 
   useEffect(() => {
   const audio = audioRef.current
@@ -1544,8 +1554,13 @@ useEffect(() => {
       audio.duration || pendingSeek.captionOffset
     );
     audio.currentTime = seekTo;
-    appliedSeekTargetRef.current = null;
-    seekCommitInFlightRef.current = false;
+      appliedSeekTargetRef.current = null;
+      seekCommitInFlightRef.current = false;
+
+      cancelAutoplay.current = true;
+      shouldAutoPlayRef.current = false;
+      setIsPaused(true);
+      isPausedRef.current = true;
   }
 }, [contentReady, slides, slideIndex, currentCaptionIndex]);
 
@@ -1560,19 +1575,16 @@ useEffect(() => {
   const caps = captions[slide.id] || [];
   const urls = caps.map(c => resolveVoiceUrl(c, voice)).filter(Boolean);
 
-if (!urls.length) {
-  if (!isFinalSlideOfModule) {
+  if (!urls.length) {
     setCanProceed(true);
+    return;
   }
-  return;
-}
+
 
 
   const nextUrl = urls[currentCaptionIndex];
-  if (!nextUrl) {
-    if (!isFinalSlideOfModule) {
-      setCanProceed(true);
-    }
+    if (!nextUrl) {
+    setCanProceed(true);
     return;
   }
 
@@ -2022,6 +2034,43 @@ const requestPause = useCallback(() => {
   isPlayingRef.current = false
   pausePlayback()
 }, [pausePlayback])
+const handleCaptionComplete = useCallback(() => {
+  const slide = slides[slideIndex]
+  const caps = slide ? captions[slide.id] || [] : []
+  const audio = audioRef.current
+
+  if (!caps.length) return
+
+  const last = caps.length - 1
+
+  if (currentCaptionIndex < last) {
+    setCurrentCaptionIndex(i => i + 1)
+
+    if (shouldAutoPlayRef.current && !isPausedRef.current && audio) {
+      audio.currentTime = 0
+      audio.play().catch(() => {})
+    }
+    return
+  }
+
+    setCanProceed(true)
+
+      if (!isFinalSlideOfModule) {
+      if (shouldAutoPlayRef.current && !cancelAutoplay.current) {
+        goNext()
+      } else {
+        setCanProceed(true)
+      }
+    }
+
+
+}, [
+  captions,
+  slides,
+  slideIndex,
+  currentCaptionIndex,
+  goNext
+])
 
 // Show steering wheel ONLY during very first load
 if (!initialHydrationDone) {
@@ -2048,11 +2097,11 @@ function togglePlay() {
 
   if (isActuallyPlaying) {
     shouldAutoPlayRef.current = false
-    setIsPaused(true)
-    isPausedRef.current = true
+    cancelAutoplay.current = true
     requestPause()
     return
   }
+
 
   shouldAutoPlayRef.current = true
   setIsPaused(false)
@@ -2160,35 +2209,67 @@ return (
       onTimeUpdate={(e) => {
         const t = e.currentTarget.currentTime
         setAudioTime(t)
+
         const slideK = slides[slideIndex]
-        if (slideK) {
-          const capsK = captions[slideK.id] || []
-          const activeLine = capsK[currentCaptionIndex]
-          if (activeLine) {
-            const displayWords = tokenizeCaption(activeLine.caption)
-            const timingWords = tokenizeForTiming(activeLine.caption)
-            const timings = computeWordTimings(activeLine.seconds ?? 0, timingWords)
-            const map = mapTimingIndexToDisplayIndex(timingWords, displayWords)
-            const lead = 0.08
-            const shifted = t + lead
-            let wi = timings.findIndex((w) => shifted < w.end)
-            if (wi === -1) wi = timings.length - 1
-            setCurrentWordIndex(map[wi])
-          }
+        if (!slideK) return
+
+        const capsK = captions[slideK.id] || []
+        const active = capsK[currentCaptionIndex]
+        if (!active) return
+
+        const timingWords = tokenizeForTiming(active.caption)
+        const timings = computeWordTimings(active.seconds ?? 0, timingWords)
+        const map = mapTimingIndexToDisplayIndex(
+          timingWords,
+          tokenizeCaption(active.caption)
+        )
+
+        const shifted = t + 0.08
+        let wi = timings.findIndex(w => shifted < w.end)
+        if (wi < 0) wi = timings.length - 1
+        setCurrentWordIndex(map[wi])
+
+        const duration = active.seconds ?? 0;
+
+        const drift = 0.25;
+
+        // BLOCK duplicate advance if timeout pending
+        if (slideAdvanceTimeoutRef.current !== null) return;
+
+        // BLOCK advance until fully loadable
+        if (duration > 0 && t >= duration - drift) {
+          slideAdvanceTimeoutRef.current = window.setTimeout(() => {
+            slideAdvanceTimeoutRef.current = null;
+
+            // HARD guard — cannot advance if scrub, seeking, or load in progress
+            if (scrubActive.current) return;
+            if (!contentReady) return;
+            if (pendingSeekRef.current !== null) return;
+            if (seekCommitInFlightRef.current) return;
+
+            // prevent duplicate caption advances in same tick
+            if (captionAdvanceInFlightRef.current) return;
+            captionAdvanceInFlightRef.current = true;
+            setTimeout(() => {
+              captionAdvanceInFlightRef.current = false;
+            }, 0);
+
+            // verify still on same caption
+            const activeSlide = slides[slideIndex];
+            if (!activeSlide) return;
+
+            const caps = captions[activeSlide.id] || [];
+            if (!caps.length) return;
+
+            // CAPTION ADVANCE
+            if (currentCaptionIndex < caps.length) {
+              handleCaptionComplete();
+            }
+          }, 220);
         }
-        const slide = slides[slideIndex]
-        const caps = slide ? captions[slide.id] || [] : []
-        const cur = caps[currentCaptionIndex]
-        if (
-          cur &&
-          !canProceed &&
-          !isFinalSlideOfModule &&
-          (cur.seconds ?? 0) > 0 &&
-          t >= (cur.seconds ?? 0) - 0.75
-        ) {
-          setCanProceed(true)
-        }
-      }}
+
+        }}
+          
       onLoadedMetadata={(e) => {
         setAudioDuration(e.currentTarget.duration);
         if (scrubActive.current) return;
@@ -2210,36 +2291,7 @@ return (
           seekCommitInFlightRef.current = false;
         }
       }}
-      onEnded={async () => {
-        if (isPaused) return
-        if (scrubActive.current) return
-        const slide = slides[slideIndex]
-        if (!slide) return
-        const caps = captions[slide.id] || []
-        const urls = caps
-          .map((c) => resolveVoiceUrl(c, voice))
-          .filter(Boolean) as string[]
-        await recordSlideComplete(currentModuleIndex, currentLessonIndex, slideIndex)
-        await updateModuleProgress(currentModuleIndex)
-        if (currentCaptionIndex < urls.length - 1) {
-          setCurrentCaptionIndex((i) => i + 1)
-          return
-        }
-        setCanProceed(true)
-        if (isFinalCourseSlide) {
-          await markCourseCompletedOnce()
-          setTimeout(() => {
-            window.location.href = "/my-permit"
-          }, 300)
-          return
-        }
-        if (!urls.length) {
-          if (!isFinalSlideOfModule) setCanProceed(true)
-          return
-        }
-        if (!isFinalSlideOfModule && !isPaused) goNext()
-      }}
-    />
+          />
 
     <div
       className={`
@@ -2261,12 +2313,14 @@ return (
         }}
         className="
           px-12 py-5
-          rounded-xl
-          bg-[#000]/30
-          border-[5px] border-[#fff]
-          text-[#fff] font-semibold text-xl
-          shadow-md
+          rounded-full
+          bg-black/90
+          text-white font-semibold text-xl
+          ring-4 ring-white/70
+          backdrop-blur-sm
           cursor-pointer
+          transition
+          hover:bg-black/70
         "
       >
         Continue
