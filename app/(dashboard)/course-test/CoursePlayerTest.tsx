@@ -552,10 +552,12 @@ export default function CoursePlayerClient() {
           appliedSeekTargetRef.current = null;
           seekCommitInFlightRef.current = false;
           pendingSeekRef.current = null;
-          cancelAutoplay.current = true;
-          shouldAutoPlayRef.current = false;
-          setIsPaused(true);
-          isPausedRef.current = true;
+          if (!resumeAfterScrubRef.current) {
+            cancelAutoplay.current = true;
+            shouldAutoPlayRef.current = false;
+            setIsPaused(true);
+            isPausedRef.current = true;
+          }
         }
       }
 
@@ -1575,10 +1577,12 @@ useEffect(() => {
       appliedSeekTargetRef.current = null;
       seekCommitInFlightRef.current = false;
       pendingSeekRef.current = null;
-      cancelAutoplay.current = true;
-      shouldAutoPlayRef.current = false;
-      setIsPaused(true);
-      isPausedRef.current = true;
+      if (!resumeAfterScrubRef.current) {
+        cancelAutoplay.current = true;
+        shouldAutoPlayRef.current = false;
+        setIsPaused(true);
+        isPausedRef.current = true;
+      }
   }
 }, [contentReady, slides, slideIndex, currentCaptionIndex]);
 
@@ -2357,10 +2361,12 @@ return (
           appliedSeekTargetRef.current = null;
           seekCommitInFlightRef.current = false;
           pendingSeekRef.current = null;
-          cancelAutoplay.current = true;
-          shouldAutoPlayRef.current = false;
-          setIsPaused(true);
-          isPausedRef.current = true;
+          if (!resumeAfterScrubRef.current) {
+            cancelAutoplay.current = true;
+            shouldAutoPlayRef.current = false;
+            setIsPaused(true);
+            isPausedRef.current = true;
+          }
         }
       }}
           />
