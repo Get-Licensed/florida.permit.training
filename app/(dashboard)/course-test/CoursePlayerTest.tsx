@@ -211,6 +211,7 @@ export const allowedSeekSecondsRef = { current: 0 };
 
 export default function CoursePlayerClient() {
   const didApplyProgress = useRef(false);
+  const playedSecondsRef = useRef(0);
   const deepLinkConsumedRef = useRef(false);
   const scrubActive = useRef(false);
   const resumeAfterScrubRef = useRef(false);
@@ -268,6 +269,7 @@ export default function CoursePlayerClient() {
   const timelineHoverRef = useRef<HTMLDivElement | null>(null);
   const hoverTooltipRef = useRef<HTMLDivElement | null>(null);
   const [tooltipWidth, setTooltipWidth] = useState(0);
+  const [timelineVersion, setTimelineVersion] = useState(0);
 
   const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
   const [canProceed, setCanProceed] = useState(false);
@@ -1080,6 +1082,10 @@ useEffect(() => {
     allowedSeekSecondsRef.current,
     elapsedCourseSeconds
   );
+  playedSecondsRef.current = Math.max(
+    playedSecondsRef.current,
+    elapsedCourseSeconds
+  );
 }, [elapsedCourseSeconds]);
 
 
@@ -1245,12 +1251,11 @@ useEffect(() => {
   loadProgress();
 }, [modules]);
 
-async function loadProgress() {
+async function loadProgressFromDB() {
   const user = await supabase.auth.getUser();
 
   if (!user?.data?.user) {
-    applyProgress([], []);
-    return;
+    return { modRows: [], slideRows: [] };
   }
 
   const { data: modRows } = await supabase
@@ -1265,7 +1270,12 @@ async function loadProgress() {
     .eq("user_id", user.data.user.id)
     .eq("course_id", "FL_PERMIT_TRAINING");
 
-  applyProgress(modRows ?? [], slideRows ?? []);
+  return { modRows: modRows ?? [], slideRows: slideRows ?? [] };
+}
+
+async function loadProgress() {
+  const { modRows, slideRows } = await loadProgressFromDB();
+  applyProgress(modRows, slideRows);
 }
 
 function applyProgress(
@@ -1355,6 +1365,25 @@ setSlideIndex(last.slide_index ?? 0);
 unlockProgressGates();
 
 }
+
+const refreshStatusAndProgress = useCallback(async () => {
+  const { modRows } = await loadProgressFromDB();
+  const completedModules = modRows.filter(m => m?.completed);
+  const maxCompletedModuleIndex = completedModules.length
+    ? Math.max(...completedModules.map(m => m.module_index ?? 0))
+    : 0;
+
+  setMaxCompletedIndex(maxCompletedModuleIndex);
+  allowedSeekSecondsRef.current = Math.max(
+    allowedSeekSecondsRef.current,
+    elapsedCourseSeconds
+  );
+  playedSecondsRef.current = Math.max(
+    playedSecondsRef.current,
+    elapsedCourseSeconds
+  );
+  setTimelineVersion((v) => v + 1);
+}, [elapsedCourseSeconds]);
 
 // ----------------------------------
 // CENTRALIZED GATE UNLOCK
@@ -1860,6 +1889,10 @@ await supabase
   )
   .select()
   .throwOnError();
+
+  if (completed) {
+    await refreshStatusAndProgress();
+  }
 }
 //--------------------------------------------------------------------
 // SAFE DISPLAY VALUES FOR CURRENT UI
@@ -2539,11 +2572,13 @@ return (
 
       {/* TIMELINE */}
     <CourseTimeline
+      key={timelineVersion}
       modules={modules}
       currentModuleIndex={currentModuleIndex}
       maxCompletedIndex={maxCompletedIndex}
       goToModule={goToModule}
       allowedSeekSecondsRef={allowedSeekSecondsRef}
+      playedSecondsRef={playedSecondsRef}
       examPassed={examPassed}
       paymentPaid={paymentPaid}
       togglePlay={togglePlay}

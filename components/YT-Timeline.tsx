@@ -20,6 +20,7 @@ export type CourseTimelineProps = {
   maxCompletedIndex: number
   goToModule?: (index: number) => void
   allowedSeekSecondsRef: { current: number }
+  playedSecondsRef?: { current: number }
   togglePlay: () => void
   isPaused: boolean
   examPassed: boolean
@@ -45,6 +46,7 @@ export default function CourseTimeline({
   maxCompletedIndex = 0,
   goToModule,
   allowedSeekSecondsRef,
+  playedSecondsRef,
   examPassed = false,
   paymentPaid = false,
   currentSeconds,
@@ -86,6 +88,8 @@ export default function CourseTimeline({
   const suppressModuleClickTimeoutRef = useRef<number | null>(null)
   // remember play state across scrub
   const wasPlayingBeforeScrubRef = useRef(false)
+  const playedTrackRef = useRef<HTMLDivElement | null>(null)
+  const playedSecondsRefResolved = playedSecondsRef ?? allowedSeekSecondsRef
 
   const releaseSuppressModuleClick = useCallback(() => {
     if (suppressModuleClickTimeoutRef.current !== null) {
@@ -212,13 +216,40 @@ export default function CourseTimeline({
     [moduleDurations, modulePortionRatio, totalDur]
   )
 
+  const updatePlayedTrack = useCallback(() => {
+    if (!playedTrackRef.current) return
+    const rect = timelineRef.current?.getBoundingClientRect()
+    const timelineWidth = rect ? rect.width * modulePortionRatio : 0
+    const scrubberPositionPx = Math.max(
+      0,
+      Math.min(currentPxRef.current, timelineWidth)
+    )
+    const playedWidth =
+      timelineWidth > 0 && totalCourseSeconds > 0
+        ? Math.min(
+            (playedSecondsRefResolved.current / totalCourseSeconds) *
+              timelineWidth,
+            scrubberPositionPx
+          )
+        : 0
+    const clampedPlayed = Math.max(0, Math.min(timelineWidth, playedWidth))
+    playedTrackRef.current.style.background = `linear-gradient(to right, #ca5608 ${clampedPlayed}px, #d1d5db ${clampedPlayed}px)`
+  }, [
+    allowedSeekSecondsRef,
+    modulePortionRatio,
+    playedSecondsRefResolved,
+    timelineRef,
+    totalCourseSeconds,
+  ])
+
   const syncHandleTransform = useCallback((px: number) => {
     currentPxRef.current = px
     targetPxRef.current = px
     if (handleRef.current) {
       handleRef.current.style.transform = `translate(${px}px, -50%) translateX(-50%)`
     }
-  }, [])
+    updatePlayedTrack()
+  }, [updatePlayedTrack])
 
   const animate = useCallback(() => {
     if (!timelineRef.current || !handleRef.current) {
@@ -262,6 +293,21 @@ export default function CourseTimeline({
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
   }, [elapsedCourseSeconds, getPxFromSeconds, syncHandleTransform, totalDur])
+
+  useEffect(() => {
+    let frame: number | null = null
+
+    const tick = () => {
+      updatePlayedTrack()
+      frame = requestAnimationFrame(tick)
+    }
+
+    frame = requestAnimationFrame(tick)
+
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame)
+    }
+  }, [updatePlayedTrack])
 
   useEffect(() => {
     function handleMove(e: MouseEvent) {
@@ -456,6 +502,14 @@ return (
   className="relative z-[1] flex items-center h-full flex-1 -translate-y-[.5px]"
   style={{ minWidth: 0 }}
 >
+  <div
+    ref={playedTrackRef}
+    className="absolute left-0 top-0 bottom-0 z-[2] rounded-full pointer-events-none"
+    style={{
+      width: `${modulePortionRatio * 100}%`,
+      background: "linear-gradient(to right, #ca5608 0px, #d1d5db 0px)",
+    }}
+  />
   {modules.map((m, i) => {
     const isCompleted = i <= maxCompletedIndex
     const isActive = i === currentModuleIndex
@@ -477,7 +531,7 @@ return (
       <div
         key={m.id}
         style={{ width: `${moduleWidthPct}%` }}
-        className={`relative h-full flex items-center justify-center ${
+        className={`relative z-[1] h-full flex items-center justify-center ${
           isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-45"
         }`}
         onClick={() => {
