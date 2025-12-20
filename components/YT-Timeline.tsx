@@ -138,7 +138,10 @@ export default function CourseTimeline({
       let x = clientX - rect.left
       if (x < 0) x = 0
       if (x > moduleWidth) {
-        if (!clampToModuleEnd) return null
+        // allow hover beyond locked seek boundary
+        if (!clampToModuleEnd) {
+          x = moduleWidth
+        }
         x = moduleWidth
       }
 
@@ -151,17 +154,21 @@ export default function CourseTimeline({
         if (x <= accPx + segWidth || i === moduleDurations.length - 1) {
           const local = segWidth > 0 ? (x - accPx) / segWidth : 0
           let computedSeconds = accSeconds + local * dur
-          computedSeconds = Math.min(
-            computedSeconds,
-            allowedSeekSecondsRef.current
-          )
-          return computedSeconds
+          // 1: hover mode => allow full duration for preview
+          // 2: seek commit mode => clamp to allowed boundary
+          const clampedHover = Math.min(computedSeconds, totalDur)
+
+          return clampToModuleEnd
+            ? Math.min(computedSeconds, allowedSeekSecondsRef.current)
+            : clampedHover
         }
         accPx += segWidth
         accSeconds += dur
       }
 
-      return Math.min(totalDur, allowedSeekSecondsRef.current)
+      return clampToModuleEnd
+        ? Math.min(totalDur, allowedSeekSecondsRef.current)
+        : totalDur
     },
     [allowedSeekSecondsRef, moduleDurations, modulePortionRatio, totalDur]
   )
@@ -477,6 +484,19 @@ return (
 
     onMouseMove={(e) => {
       if (dragging) return
+      const rect = timelineRef.current?.getBoundingClientRect()
+      const pad = 10
+      const within =
+        rect &&
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top - pad &&
+        e.clientY <= rect.bottom + pad
+      if (!within) {
+        setHoverSeconds(null)
+        if (onHoverEnd) onHoverEnd()
+        return
+      }
       const sec = getHoverSeconds(e.clientX)
       if (sec === null) {
         setHoverSeconds(null)
@@ -486,9 +506,20 @@ return (
       setHoverSeconds(sec)
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
        }}
-      onMouseLeave={() => {
-        if (!dragging) setHoverSeconds(null)
-        if (!dragging && onHoverEnd) onHoverEnd()
+      onMouseLeave={(e) => {
+        if (dragging) return
+        const rect = timelineRef.current?.getBoundingClientRect()
+        const pad = 10
+        const within =
+          rect &&
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top - pad &&
+          e.clientY <= rect.bottom + pad
+        if (!within) {
+          setHoverSeconds(null)
+          if (onHoverEnd) onHoverEnd()
+        }
       }}
     >
 
@@ -567,7 +598,7 @@ return (
         key={m.id}
         style={{ width: `${moduleWidthPct}%` }}
         className={`relative z-[1] h-full flex items-center justify-center ${
-          isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-45"
+          isUnlocked ? "cursor-pointer" : "cursor-pointer opacity-45"
         }`}
         onClick={() => {
           if (suppressModuleClickRef.current) return

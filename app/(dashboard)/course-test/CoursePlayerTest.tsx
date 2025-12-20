@@ -679,19 +679,6 @@
         const target = resolveCourseTime(seconds, courseIndex.totalSeconds);
         if (!target) return;
 
-        const maxUnlockedModuleIndex = Math.min(
-          modules.length - 1,
-          maxCompletedIndex + 1
-        );
-
-        if (target.moduleIndex > maxUnlockedModuleIndex) {
-          if (hoverDebounceRef.current) {
-            clearTimeout(hoverDebounceRef.current);
-          }
-          setHoverPreview(null);
-          return;
-        }
-
         const rect = timelineHoverRef.current?.getBoundingClientRect();
         if (!rect || rect.width <= 0) return;
 
@@ -722,8 +709,6 @@
         resolveCourseTime,
         courseSlidesById,
         captionPreviewBySlideId,
-        maxCompletedIndex,
-        modules.length,
       ]
     );
 
@@ -2663,24 +2648,24 @@ useEffect(() => {
       className="fixed z-[999999] pointer-events-none transition-opacity duration-60"
       style={{
         left: hoverTooltipLeft,
-        bottom: 220,
+        bottom: 240,
         opacity: 1,
       }}
     >
-      <div className="w-44 rounded-lg bg-black/90 p-2 text-white shadow-lg">
+      <div className="w-[375px] h-[250px] rounded-lg bg-black/90 p-3 text-white shadow-xl backdrop-blur-sm">
         {hoverPreview.imgUrl ? (
           <img
             src={hoverPreview.imgUrl}
             alt=""
-            className="mb-2 h-20 w-full rounded-md object-cover transition-opacity duration-150"
+            className="mb-3 h-[170px] w-full rounded-md object-cover transition-opacity duration-150"
           />
         ) : (
-          <div className="mb-2 h-20 w-full rounded-md bg-white/10" />
+          <div className="mb-3 h-[170px] w-full rounded-md bg-white/10" />
         )}
-        <div className="line-clamp-1 text-[11px] leading-snug">
+        <div className="line-clamp-1 text-[13px] leading-snug">
           {hoverPreview.text ?? ""}
         </div>
-        <div className="mt-1 text-[11px] tabular-nums text-white/80">
+        <div className="mt-2 text-[12px] tabular-nums text-white/80">
           {hoverPreview.timeLabel}
         </div>
       </div>
