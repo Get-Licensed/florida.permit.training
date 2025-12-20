@@ -895,7 +895,7 @@
     const moduleLoadInFlightRef = useRef<string | null>(null);
     const lessonLoadInFlightRef = useRef<number | null>(null);
     const slideAdvanceTimeoutRef = useRef<number | null>(null);
-    const captionAdvanceInFlightRef = useRef(false);
+    const captionAdvanceInFlightRef = useRef<string | null>(null);
     const lastTimeRef = useRef(0);
     const stalledCounterRef = useRef(0);
 
@@ -1582,7 +1582,7 @@
   ------------------------------------------------------ */
 useEffect(() => {
   // reset caption advance lock when slide changes
-  captionAdvanceInFlightRef.current = false;
+  captionAdvanceInFlightRef.current = null;
 
   // 🚫 terminal state — do not reset anything
   if (isFinalCourseSlide) return;
@@ -1608,6 +1608,14 @@ useEffect(() => {
   isFinalCourseSlide,
   resetAudioElement
 ]);
+
+  useEffect(() => {
+    captionAdvanceInFlightRef.current = null;
+  }, [slideIndex]);
+
+  useEffect(() => {
+    captionAdvanceInFlightRef.current = null;
+  }, [currentCaptionIndex]);
   useEffect(() => {
     if (scrubActive.current) return;
     const pendingSeek = appliedSeekTargetRef.current;
@@ -2151,12 +2159,13 @@ useEffect(() => {
     pausePlayback()
   }, [pausePlayback])
       const handleCaptionComplete = useCallback(() => {
-
-        // === reentrancy lock (stops double-trigger) ===
-        if (captionAdvanceInFlightRef.current) return;
-        captionAdvanceInFlightRef.current = true;
+        const key = `${slideIndex}:${currentCaptionIndex}`;
+        if (captionAdvanceInFlightRef.current === key) return;
+        captionAdvanceInFlightRef.current = key;
         setTimeout(() => {
-          captionAdvanceInFlightRef.current = false;
+          if (captionAdvanceInFlightRef.current === key) {
+            captionAdvanceInFlightRef.current = null;
+          }
         }, 0);
 
         const slide = slides[slideIndex]
@@ -2358,6 +2367,21 @@ useEffect(() => {
         controls={false}
         onTimeUpdate={(e) => {
           const t = e.currentTarget.currentTime
+          // Patch 3: advance when audio actually ends
+          if (audioRef.current?.ended) {
+            const keyEnd = `${slideIndex}:${currentCaptionIndex}`
+            if (captionAdvanceInFlightRef.current !== keyEnd) {
+              captionAdvanceInFlightRef.current = keyEnd
+              setTimeout(() => {
+                if (captionAdvanceInFlightRef.current === keyEnd) {
+                  captionAdvanceInFlightRef.current = null
+                }
+                handleCaptionComplete()
+              }, 0)
+            }
+            return
+          }
+
           setAudioTime(t)
           if (!isPausedRef.current) {
             if (lastTimeRef.current === t) {
@@ -2374,10 +2398,18 @@ useEffect(() => {
               contentReady &&
               pendingSeekRef.current === null &&
               !seekCommitInFlightRef.current &&
-              !captionAdvanceInFlightRef.current
+              captionAdvanceInFlightRef.current === null
             ) {
               stalledCounterRef.current = 0
-              handleCaptionComplete()
+              const key = `${slideIndex}:${currentCaptionIndex}`;
+              if (captionAdvanceInFlightRef.current === key) return;
+              captionAdvanceInFlightRef.current = key;
+              setTimeout(() => {
+                if (captionAdvanceInFlightRef.current === key) {
+                  captionAdvanceInFlightRef.current = null;
+                }
+                handleCaptionComplete();
+              }, 0);
             }
           }
 
@@ -2400,22 +2432,25 @@ useEffect(() => {
           if (wi < 0) wi = timings.length - 1
           setCurrentWordIndex(map[wi])
 
-          const duration = active.seconds ?? 0;
+          const duration = active.seconds ?? 0
+          // normalize audio duration to avoid drift underruns
+          const rawDur = audioRef.current?.duration
+          const effectiveDuration = Math.max(duration, rawDur || duration)
 
-          const drift = 0.25;
+          const drift = 0.25
 
-          // BLOCK duplicate advance if timeout pending
-          if (slideAdvanceTimeoutRef.current !== null) return;
+          if (slideAdvanceTimeoutRef.current !== null) return
 
-          // BLOCK advance until fully loadable
+          const remaining = effectiveDuration - t
+          
           if (
-            duration > 0 &&
-            (duration - t) <= drift &&
+            effectiveDuration > 0 &&
+            (remaining <= drift || currentWordIndex >= timings.length - 1) &&
             !scrubActive.current &&
             contentReady &&
             pendingSeekRef.current === null &&
             !seekCommitInFlightRef.current &&
-            !captionAdvanceInFlightRef.current
+            captionAdvanceInFlightRef.current === null
           ) {
             const scheduledSlide = slideIndex
             const scheduledCaption = currentCaptionIndex
@@ -2427,33 +2462,33 @@ useEffect(() => {
                 slideAdvanceTimeoutRef.current = null
                 return
               }
-              slideAdvanceTimeoutRef.current = null;
+              slideAdvanceTimeoutRef.current = null
 
-              // HARD guard — cannot advance if scrub, seeking, or load in progress
-              if (scrubActive.current) return;
-              if (!contentReady) return;
-              if (pendingSeekRef.current !== null) return;
-              if (seekCommitInFlightRef.current) return;
+              if (scrubActive.current) return
+              if (!contentReady) return
+              if (pendingSeekRef.current !== null) return
+              if (seekCommitInFlightRef.current) return
 
-              // prevent duplicate caption advances in same tick
-              if (captionAdvanceInFlightRef.current) return;
-              captionAdvanceInFlightRef.current = true;
+              const key = `${slideIndex}:${currentCaptionIndex}`
+              if (captionAdvanceInFlightRef.current === key) return
+              captionAdvanceInFlightRef.current = key
               setTimeout(() => {
-                captionAdvanceInFlightRef.current = false;
-              }, 0);
+                if (captionAdvanceInFlightRef.current === key) {
+                  captionAdvanceInFlightRef.current = null
+                }
+                handleCaptionComplete()
+              }, 0)
 
-              // verify still on same caption
-              const activeSlide = slides[slideIndex];
-              if (!activeSlide) return;
+              const activeSlide = slides[slideIndex]
+              if (!activeSlide) return
 
-              const caps = captions[activeSlide.id] || [];
-              if (!caps.length) return;
+              const caps = captions[activeSlide.id] || []
+              if (!caps.length) return
 
-              // CAPTION ADVANCE
               if (currentCaptionIndex < caps.length) {
-                handleCaptionComplete();
+                return
               }
-            }, 220);
+            }, 220)
           }
 
           }}
