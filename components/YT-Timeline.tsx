@@ -86,6 +86,12 @@ export default function CourseTimeline({
   const freezeSeekRef = useRef(false)
   const suppressModuleClickRef = useRef(false)
   const suppressModuleClickTimeoutRef = useRef<number | null>(null)
+ // Promo box
+  const [showPromoBox, setShowPromoBox] = useState(false);
+  const [promoX, setPromoX] = useState<number | null>(null);
+  const [mobilePromoOpen, setMobilePromoOpen] = useState(false);
+  const mobileSheetRef = useRef<HTMLDivElement>(null);
+
   // remember play state across scrub
   const wasPlayingBeforeScrubRef = useRef(false)
   const playedTrackRef = useRef<HTMLDivElement | null>(null)
@@ -619,53 +625,144 @@ return (
     )
   })}
 
-{TERMINAL_SEGMENTS.map((seg, i) => {
-  const isLast = i === TERMINAL_SEGMENTS.length - 1
+                {TERMINAL_SEGMENTS.map((seg, i) => {
+                  const isLast = i === TERMINAL_SEGMENTS.length - 1
 
-  let bg = "#001f40"
-  let glow = "none"
+                  let bg = "#001f40"
+                  let glow = "none"
 
-  if (seg.id === "exam") {
-    bg = examPassed ? "#ca5608" : "#001f40"
-    if (onExamPage) glow = examPassed ? "0 0 6px #ca5608" : "0 0 6px #001f40"
-  }
+                  if (seg.id === "exam") {
+                    bg = examPassed ? "#ca5608" : "#001f40"
+                    if (onExamPage) glow = examPassed ? "0 0 6px #ca5608" : "0 0 6px #001f40"
+                  }
 
-  if (seg.id === "payment") {
-    bg = paymentPaid ? "#ca5608" : "#001f40"
-    if (onPaymentPage) glow = paymentPaid ? "0 0 6px #ca5608" : "0 0 6px #001f40"
-  }
+                  if (seg.id === "payment") {
+                    bg = paymentPaid ? "#ca5608" : "#001f40"
+                    if (onPaymentPage) glow = paymentPaid ? "0 0 6px #ca5608" : "0 0 6px #001f40"
+                  }
 
-  return (
-    <div
-      key={seg.id}
-      className="relative h-full flex flex-col items-center justify-start cursor-pointer"
-      style={{ width: `${terminalWidth}%` }}
-      onClick={() => (window.location.href = seg.href)}
-    >
-      <div className="w-full flex items-center justify-center h-2 translate-y-[2.2px]">
-        <div
-          className="flex-1 h-2"
-          style={{
-            backgroundColor: bg,
-            boxShadow: glow,
-            borderTopRightRadius: isLast ? 999 : 0,
-            borderBottomRightRadius: isLast ? 999 : 0,
-          }}
-        />
-        {!isLast && <div className="w-[2px] h-full" />}
-      </div>
+                  const isFinalActions = seg.id === "payment" || seg.id === "exam"
 
-      <div className="mt-3 text-[9px] font-medium text-[#fff] text-center opacity-80 px-1">
-        {seg.label}
-      </div>
-    </div>
-  )
-})}
+                  return (
+                    <div
+                      key={seg.id}
+                      className="relative h-full flex flex-col items-center justify-start cursor-pointer"
+                      style={{ width: `${terminalWidth}%` }}
+                      onClick={() => (window.location.href = seg.href)}
+
+                      /* PROMO HOVER EVENTS (phase-2 wiring) */
+                      onMouseEnter={(e) => {
+                        if (isFinalActions) {
+                          setShowPromoBox(true)
+                          setPromoX(e.clientX)
+                        }
+                      }}
+                      onMouseMove={(e) => {
+                        if (isFinalActions) setPromoX(e.clientX)
+                      }}
+                      onMouseLeave={() => {
+                        if (isFinalActions) setShowPromoBox(false)
+                      }}
+                    >
+                      <div className="w-full flex items-center justify-center h-2 translate-y-[2.2px]">
+                        <div
+                          className="flex-1 h-2"
+                          style={{
+                            backgroundColor: bg,
+                            boxShadow: glow,
+                            borderTopRightRadius: isLast ? 999 : 0,
+                            borderBottomRightRadius: isLast ? 999 : 0,
+                          }}
+                        />
+                        {!isLast && <div className="w-[2px] h-full" />}
+                      </div>
+
+                      <div className="mt-3 text-[9px] font-medium text-[#fff] text-center opacity-80 px-1">
+                        {seg.label}
+                      </div>
+                    </div>
+                  )
+                })}
              </div>
            </div>
           </div>
         </div>
       </div>
+{showPromoBox && promoX !== null && (
+  <div
+    className="fixed z-[999999] pointer-events-none transition-opacity duration-100"
+    style={{
+      left: promoX - 187.5,
+      bottom: 240,
+      width: 375,
+      height: 250,
+    }}
+  >
+    <div
+      className="
+        w-full h-full
+        rounded-lg bg-black/90 shadow-xl
+        backdrop-blur-sm text-white p-4
+        pointer-events-auto overflow-hidden
+        flex flex-col justify-center items-center gap-6
+      "
+    >
+      {/* top group */}
+      <div className="flex flex-col items-center justify-center">
+
+        {/* column labels */}
+        <div className="flex items-start text-[14px] font-semibold uppercase tracking-wide mb-1">
+          <span
+            className="text-center w-[120px]"
+            style={{ transform: 'translateX(-20px)' }}
+          >
+            Exam
+          </span>
+
+          <span
+            className="text-center w-[120px]"
+            style={{ transform: 'translateX(20px)' }}
+          >
+            Payment
+          </span>
+        </div>
+
+        {/* column details */}
+        <div className="flex justify-center items-start gap-4 text-[12px] leading-snug relative w-full max-w-[320px]">
+
+          <div className="text-center w-[150px]">
+            ✔ 40 questions<br />
+            ✔ 80% to pass<br />
+            ✔ Unlimited retakes
+          </div>
+
+         <div className="text-center w-[150px]">
+            ✔ $59.95 one-time fee <br />
+            ✔ Verified submission of<br />
+            course + exam to FL DMV
+          </div>
+        </div>
+      </div>
+
+      {/* divider */}
+      <div className="border-b border-white/30 w-full" />
+
+      {/* DMV section */}
+      <div className="flex flex-col items-center justify-center text-center leading-snug">
+        <p className="text-[14px] font-semibold uppercase tracking-wide mb-1">
+          DMV Photo Appointment
+        </p>
+
+        <p className="text-[12px]">What to bring:</p>
+
+        <p className="text-[12px] mt-1 leading-snug">
+          ✔ $48 Card/Check  ✔ 2 Proofs of Address  ✔ 2 Proofs of ID
+        </p>
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   )
 }
