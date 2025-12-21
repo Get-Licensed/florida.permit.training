@@ -3026,57 +3026,33 @@ useEffect(() => {
     SUBCOMPONENTS
   ============================================================ */
 
-  function SlideView({ currentImage }: { currentImage: string | null }) {
-    const [loaded, setLoaded] = useState(false);
-    const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
+function SlideView({ currentImage }: { currentImage: string | null }) {
+  const [src, setSrc] = useState<string | null>(null)
 
-    useEffect(() => {
-      setLoaded(false);
-      setResolvedSrc(null);
+  useEffect(() => {
+    if (!currentImage) return
 
-      if (!currentImage) return;
+    const img = new Image()
+    img.onload = () => {
+      // only swap when loaded
+      setSrc(currentImage)
+    }
+    img.src = currentImage
+  }, [currentImage])
 
-      const img = new Image();
-      img.onload = () => {
-        setResolvedSrc(currentImage);
-        setLoaded(true);
-      };
-      img.src = currentImage;
-    }, [currentImage]);
-
-    return (
-      <div className="absolute inset-0 flex items-center justify-center z-10 bg-white">
-        {/* SKELETON / PLACEHOLDER */}
-        <div
-          className={`
-            absolute inset-0
-            transition-opacity duration-300
-            ${loaded ? "opacity-0" : "opacity-100"}
-          `}
-          style={{
-            background:
-              "linear-gradient(to bottom, #909090ff 0%, #ffffffff 45%, #ffffff 100%)",
-          }}
+  return (
+    <div className="absolute inset-0">
+      {src && (
+        <img
+          key={src}
+          src={src}
+          className="absolute inset-0 w-full h-full object-cover"
+          draggable={false}
         />
-
-        {/* IMAGE — rendered ONLY after load */}
-        {resolvedSrc && (
-          <img
-            src={resolvedSrc}
-            draggable={false}
-            decoding="async"
-            className="
-              absolute inset-0
-              w-full h-full
-              object-cover object-center
-              transition-opacity duration-500
-              opacity-100
-            "
-          />
-        )}
-      </div>
-    );
-  }
+      )}
+    </div>
+  )
+}
 
   /* -----------------------------------------------------------
     FOOTER NAV  (Module → Lesson → Slide/Question)
