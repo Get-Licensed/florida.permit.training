@@ -63,6 +63,13 @@ export default function CourseTimeline({
   onHoverEnd,
   timelineContainerRef,
 }: CourseTimelineProps) {
+  type ScrubberReleaseFix = "none" | "A" | "B" | "C"
+  // Switch between options: "A" (hide timeline), "B" (freeze sync), "C" (both).
+  const SCRUBBER_RELEASE_FIX: ScrubberReleaseFix = "C" as ScrubberReleaseFix
+  const enableTimelineHide =
+    SCRUBBER_RELEASE_FIX === "A" || SCRUBBER_RELEASE_FIX === "C"
+  const enableFreezeElapsedSync =
+    SCRUBBER_RELEASE_FIX === "B" || SCRUBBER_RELEASE_FIX === "C"
   const [dragging, setDragging] = useState(false)
   const draggingRef = useRef(false)
   const hoverSecondsRef = useRef<number | null>(null)
@@ -87,6 +94,7 @@ export default function CourseTimeline({
   const targetPxRef = useRef(0)
   const currentPxRef = useRef(0)
   const freezeSeekRef = useRef(false)
+  const freezeElapsedSyncRef = useRef(false)
   const ignoreElapsedTimeRef = useRef(false)
   const suppressModuleClickRef = useRef(false)
   const suppressModuleClickTimeoutRef = useRef<number | null>(null)
@@ -96,6 +104,9 @@ export default function CourseTimeline({
   const [promoX, setPromoX] = useState<number | null>(null);
   const [mobilePromoOpen, setMobilePromoOpen] = useState(false);
   const mobileSheetRef = useRef<HTMLDivElement>(null);
+  const [timelineHidden, setTimelineHidden] = useState(false)
+  const timelineHiddenTimeoutRef = useRef<number | null>(null)
+  const freezeElapsedTimeoutRef = useRef<number | null>(null)
 
   // remember play state across scrub
   const wasPlayingBeforeScrubRef = useRef(false)
@@ -297,6 +308,7 @@ export default function CourseTimeline({
   }, [getPxFromSeconds, totalSeconds])
 
   const updatePlayedTrack = useCallback(() => {
+    if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) return
     if (!playedTrackRef.current) return
     const rect = timelineRef.current?.getBoundingClientRect()
     const timelineWidth = rect ? rect.width * modulePortionRatio : 0
@@ -323,6 +335,7 @@ export default function CourseTimeline({
   ])
 
   const syncHandleTransform = useCallback((px: number) => {
+    if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) return
     currentPxRef.current = px
     targetPxRef.current = px
     if (handleRef.current) {
@@ -332,6 +345,10 @@ export default function CourseTimeline({
   }, [updatePlayedTrack])
 
   const animate = useCallback(() => {
+    if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) {
+      rafRef.current = null
+      return
+    }
     if (!timelineRef.current || !handleRef.current) {
       rafRef.current = null
       return
@@ -355,6 +372,7 @@ export default function CourseTimeline({
     if (ignoreElapsedTimeRef.current) return
     if (draggingRef.current) return
     if (freezeSeekRef.current) return
+    if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) return
     if (totalDur <= 0) return
     const px = getPxFromSeconds(elapsedCourseSeconds)
     if (px === null) return
@@ -365,6 +383,7 @@ export default function CourseTimeline({
     const handleResize = () => {
       if (draggingRef.current) return
       if (freezeSeekRef.current) return
+      if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) return
       if (totalDur <= 0) return
       const px = getPxFromSeconds(elapsedCourseSeconds)
       if (px === null) return
@@ -413,6 +432,20 @@ export default function CourseTimeline({
       draggingRef.current = false
       document.body.style.userSelect = ""
 
+      if (enableTimelineHide) {
+        setTimelineHidden(true)
+        if (timelineHiddenTimeoutRef.current !== null) {
+          window.clearTimeout(timelineHiddenTimeoutRef.current)
+        }
+      }
+
+      if (enableFreezeElapsedSync) {
+        freezeElapsedSyncRef.current = true
+        if (freezeElapsedTimeoutRef.current !== null) {
+          window.clearTimeout(freezeElapsedTimeoutRef.current)
+        }
+      }
+
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current)
         rafRef.current = null
@@ -421,16 +454,35 @@ export default function CourseTimeline({
       ignoreElapsedTimeRef.current = false
       freezeSeekRef.current = false
 
-      const px = getPxFromSeconds(elapsedCourseSeconds)
-      if (px !== null) {
-        targetPxRef.current = px
-        if (!rafRef.current) {
-          rafRef.current = requestAnimationFrame(animate)
+      if (!(enableFreezeElapsedSync && freezeElapsedSyncRef.current)) {
+        const px = getPxFromSeconds(elapsedCourseSeconds)
+        if (px !== null) {
+          targetPxRef.current = px
+          if (!rafRef.current) {
+            rafRef.current = requestAnimationFrame(animate)
+          }
         }
       }
 
       if (onScrubEnd) onScrubEnd()
       releaseSuppressModuleClick()
+
+      if (enableFreezeElapsedSync) {
+        const freezeDelayMs =
+          SCRUBBER_RELEASE_FIX === "C" ? 200 : 200
+        freezeElapsedTimeoutRef.current = window.setTimeout(() => {
+          freezeElapsedSyncRef.current = false
+          if (SCRUBBER_RELEASE_FIX === "C") {
+            setTimelineHidden(false)
+          }
+        }, freezeDelayMs)
+      }
+
+      if (enableTimelineHide && SCRUBBER_RELEASE_FIX === "A") {
+        timelineHiddenTimeoutRef.current = window.setTimeout(() => {
+          setTimelineHidden(false)
+        }, 160)
+      }
 
       setDragging(false)
       hoverSecondsRef.current = null
@@ -467,6 +519,12 @@ export default function CourseTimeline({
       if (suppressModuleClickTimeoutRef.current !== null) {
         window.clearTimeout(suppressModuleClickTimeoutRef.current)
       }
+      if (timelineHiddenTimeoutRef.current !== null) {
+        window.clearTimeout(timelineHiddenTimeoutRef.current)
+      }
+      if (freezeElapsedTimeoutRef.current !== null) {
+        window.clearTimeout(freezeElapsedTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -497,12 +555,17 @@ return (
     {/* MODULE SCRUBBER */}
     <div
       ref={timelineRef}
-      className="
+      className={`
         flex-1 relative
         h-3 rounded-full bg-white/90 shadow-sm px-1
-        select-none cursor-pointer  
-      "
-    onMouseDown={(e) => {
+        select-none cursor-pointer
+        ${enableTimelineHide
+          ? timelineHidden
+            ? "opacity-0 pointer-events-none transition-opacity duration-100"
+            : "opacity-100 transition-opacity duration-100"
+          : ""}
+      `}
+      onMouseDown={(e) => {
       if (e.button !== 0) return
       const sec = getScrubSeconds(e.clientX, false)
       const px = getScrubPx(e.clientX, false)
