@@ -87,8 +87,10 @@ export default function CourseTimeline({
   const targetPxRef = useRef(0)
   const currentPxRef = useRef(0)
   const freezeSeekRef = useRef(false)
+  const ignoreElapsedTimeRef = useRef(false)
   const suppressModuleClickRef = useRef(false)
   const suppressModuleClickTimeoutRef = useRef<number | null>(null)
+  const railRectRef = useRef<DOMRect | null>(null)
  // Promo box
   const [showPromoBox, setShowPromoBox] = useState(false);
   const [promoX, setPromoX] = useState<number | null>(null);
@@ -144,7 +146,8 @@ export default function CourseTimeline({
       if (modulePortionRatio <= 0) return null
       if (totalDur <= 0) return null
 
-      const rect = timelineRef.current.getBoundingClientRect()
+      const rect =
+        railRectRef.current ?? timelineRef.current.getBoundingClientRect()
       const moduleWidth = rect.width * modulePortionRatio
       if (moduleWidth <= 0) return null
 
@@ -227,7 +230,8 @@ export default function CourseTimeline({
       if (!modulesRef.current) return null
       if (modulePortionRatio <= 0) return null
 
-      const rect = timelineRef.current.getBoundingClientRect()
+      const rect =
+        railRectRef.current ?? timelineRef.current.getBoundingClientRect()
       const moduleWidth = rect.width * modulePortionRatio
       if (moduleWidth <= 0) return null
 
@@ -348,6 +352,7 @@ export default function CourseTimeline({
   }, [])
 
   useEffect(() => {
+    if (ignoreElapsedTimeRef.current) return
     if (draggingRef.current) return
     if (freezeSeekRef.current) return
     if (totalDur <= 0) return
@@ -393,39 +398,46 @@ export default function CourseTimeline({
       if (sec === null) return
       if (px === null) return
       hoverSecondsRef.current = sec
-      syncHandleTransform(px)
+      targetPxRef.current = px
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(animate)
+      }
       scheduleHoverPreviewUpdate()
       if (onScrub) onScrub(sec)
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
-      if (!rafRef.current && !draggingRef.current) {
-        rafRef.current = requestAnimationFrame(animate)
-      }
     }
 
     function handleUp() {
-  if (!draggingRef.current) return
+      if (!draggingRef.current) return
 
-  draggingRef.current = false
-  document.body.style.userSelect = ""
+      draggingRef.current = false
+      document.body.style.userSelect = ""
 
-  if (rafRef.current) {
-    cancelAnimationFrame(rafRef.current)
-    rafRef.current = null
-  }
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
 
-  freezeSeekRef.current = false
+      ignoreElapsedTimeRef.current = false
+      freezeSeekRef.current = false
 
-  const px = getPxFromSeconds(elapsedCourseSeconds)
-  if (px !== null) syncHandleTransform(px)
+      const px = getPxFromSeconds(elapsedCourseSeconds)
+      if (px !== null) {
+        targetPxRef.current = px
+        if (!rafRef.current) {
+          rafRef.current = requestAnimationFrame(animate)
+        }
+      }
 
-  if (onScrubEnd) onScrubEnd()
-  releaseSuppressModuleClick()
+      if (onScrubEnd) onScrubEnd()
+      releaseSuppressModuleClick()
 
-  setDragging(false)
-  hoverSecondsRef.current = null
-  scheduleHoverPreviewUpdate()
-  if (onHoverEnd) onHoverEnd()
-}
+      setDragging(false)
+      hoverSecondsRef.current = null
+      railRectRef.current = null
+      scheduleHoverPreviewUpdate()
+      if (onHoverEnd) onHoverEnd()
+    }
 
     window.addEventListener("mousemove", handleMove)
     window.addEventListener("mouseup", handleUp)
@@ -505,20 +517,23 @@ return (
       }
       draggingRef.current = true
       freezeSeekRef.current = true
+      ignoreElapsedTimeRef.current = true
+      railRectRef.current =
+        timelineRef.current?.getBoundingClientRect() ?? null
       wasPlayingBeforeScrubRef.current = !isPaused
       if (timelineAutoHideTimerRef.current !== null) {
         clearTimeout(timelineAutoHideTimerRef.current)
       }
       setDragging(true)
       hoverSecondsRef.current = sec
-      syncHandleTransform(px)
+      targetPxRef.current = px
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(animate)
+      }
       scheduleHoverPreviewUpdate()
       if (onScrubStart) onScrubStart()
       if (onScrub) onScrub(sec)
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
-      if (!rafRef.current && !draggingRef.current) {
-        rafRef.current = requestAnimationFrame(animate)
-      }
     }}
 
     onMouseMove={(e) => {
