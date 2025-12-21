@@ -8,105 +8,6 @@
   import { useSearchParams } from "next/navigation";
   import { useRouter } from "next/navigation";
   import Loader from "@/components/loader";
-
-
-
-  /* ------------------------------------------------------
-    KARAOKE HELPERS  (MOVE THESE OUTSIDE THE COMPONENT)
-  ------------------------------------------------------ */
-
-  function tokenizeCaption(text: string): string[] {
-    if (!text) return [];
-
-    // Split words but KEEP punctuation attached
-    return text
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-  }
-
-  function tokenizeForTiming(text: string): string[] {
-    if (!text) return [];
-
-    // separate punctuation *only for timing*
-    return text
-      .trim()
-      .replace(/([.,!?;:])/g, " $1 ")
-      .split(/\s+/)
-      .filter(Boolean);
-  }
-
-  function computeWordTimings(totalSeconds: number, words: string[]) {
-    if (!words.length) return [];
-
-    const SPEED = 1.0;
-    const MIN_WORD_DURATION = totalSeconds * 0.015;
-
-    const weights = words.map((w) => {
-      const isPunct = /[.,!?;:]/.test(w);
-
-      if (isPunct) {
-        if (w === ".") return 14; // long pause
-        if (w === ",") return 6;  // medium pause
-        return 4;                 // other punctuation
-      }
-
-      // normal words: weight proportional to length
-      return Math.max(2, Math.min(w.length * 1.1, 8));
-    });
-
-    const totalWeight = weights.reduce((a, b) => a + b, 0);
-    const scaledTotal = totalSeconds * SPEED;
-
-    let cursor = 0;
-
-    let timings = weights.map((wt, i) => {
-      const dur = (wt / totalWeight) * scaledTotal;
-      const start = cursor;
-      cursor += dur;
-      const end = i === weights.length - 1 ? scaledTotal : cursor;
-      return { start, end };
-    });
-
-    timings = timings.map((t) => {
-      const paddedEnd = Math.max(t.end, t.start + MIN_WORD_DURATION);
-      return { start: t.start, end: paddedEnd };
-    });
-
-    return timings;
-  }
-
-  function mapTimingIndexToDisplayIndex(
-    timingWords: string[],
-    displayWords: string[]
-  ) {
-    let dIndex = 0;
-    let result: number[] = [];
-
-    for (let i = 0; i < timingWords.length; i++) {
-      const tw = timingWords[i];
-      const dw = displayWords[dIndex] ?? "";
-
-      // punctuation belongs to current display index
-      if (/^[.,!?;:]$/.test(tw)) {
-        result.push(dIndex);
-        continue;
-      }
-
-      // normal matching
-      if (dw.startsWith(tw)) {
-        result.push(dIndex);
-        continue;
-      }
-
-      // fallback – increment display index, but clamp at end
-      dIndex = Math.min(dIndex + 1, displayWords.length - 1);
-      result.push(dIndex);
-    }
-
-    return result;
-  }
-
   /* ------------------------------------------------------
     TYPES
   ------------------------------------------------------ */
@@ -136,10 +37,6 @@
     caption: string;
     seconds: number;
     line_index: number;
-    published_audio_url_a: string | null;
-    published_audio_url_d: string | null;
-    published_audio_url_j: string | null;
-    published_audio_url_o: string | null;
   };
 
   type CaptionTimingRow = {
@@ -162,8 +59,6 @@
     moduleIndex: number;
     lessonIndex: number;
     slideIndex: number;
-    captionIndex: number;
-    captionOffset: number;
     slideId: string;
   };
 
@@ -182,54 +77,13 @@
   /* ------------------------------------------------------
     MAIN PLAYER
   ------------------------------------------------------ */
-  const VOICES = [
-    {
-      code: "en-US-Neural2-A",
-      label: "John",
-      urlKey: "published_audio_url_a",
-      hashKey: "caption_hash_a",
-    },
-    {
-      code: "en-US-Neural2-D",
-      label: "Paul",
-      urlKey: "published_audio_url_d",
-      hashKey: "caption_hash_d",
-    },
-    {
-      code: "en-US-Neural2-I",
-      label: "Ringo",
-      urlKey: "published_audio_url_o",
-      hashKey: "caption_hash_o",
-    },
-    {
-      code: "en-US-Neural2-J",
-      label: "George",
-      urlKey: "published_audio_url_j",
-      hashKey: "caption_hash_j",
-    },
-  ];
-
   export const allowedSeekSecondsRef = { current: 0 };
 
   export default function CoursePlayerClient() {
     const didApplyProgress = useRef(false);
     const playedSecondsRef = useRef(0);
-    const deepLinkConsumedRef = useRef(false);
     const scrubActive = useRef(false);
-    const resumeAfterScrubRef = useRef(false);
-    const shouldAutoPlayRef = useRef(false);
-    const autoPausedRef = useRef(false);
-    const isPlayingRef = useRef(false);
-    const [muted, setMuted] = useState(false)
-    const toggleMute = useCallback(() => {
-      console.log("MUTE_CLICK");
-      setMuted(prev => {
-        const next = !prev;
-        const audio = audioRef.current;
-        if (audio) audio.muted = next;
-        return next;
-      });
-    }, []);
+    const scrubSeekSecondsRef = useRef<number | null>(null);
 
     // module and lesson tracking
     const [modules, setModules] = useState<ModuleRow[]>([]);
@@ -250,34 +104,17 @@
     const [courseCaptions, setCourseCaptions] = useState<
       Record<string, CaptionTimingRow[]>
     >({});
-    const [promoOpen, setPromoOpen] = useState(false);
     const [slideIndex, setSlideIndex] = useState(0);
-    // audio controls
-    const [volume, setVolume] = useState(0.8);
-    const [voice, setVoice] = useState("en-US-Neural2-D");
-    const [audioTime, setAudioTime] = useState(0);
-    const [audioDuration, setAudioDuration] = useState(0);
-     // keep mute state synced with the real audio
-   useEffect(() => {
-     if (!audioRef.current) return
-     audioRef.current.muted = muted
-      }, [muted])
 
-    // loading
-    const [loading, setLoading] = useState(true);
     const [restoredReady, setRestoredReady] = useState(false)
     const [initialHydrationDone, setInitialHydrationDone] = useState(false);
 
-    const [showPlayFlash, setShowPlayFlash] = useState(false);
-    const playFlashTimer = useRef<number | null>(null);
     // final actions
     const [examPassed, setExamPassed] = useState(false);
     const [paymentPaid, setPaymentPaid] = useState(false);
 
 
     const [moduleTotals, setModuleTotals] = useState<Record<string, number>>({});
-    const COURSE_ID = "FL_PERMIT_TRAINING";
-    const TOTAL_REQUIRED_SECONDS = 6 * 60 * 60; // 21600
     const [showTimeline, setShowTimeline] = useState(false);
     const thumbCacheRef = useRef(new Map<string, string>());
     const hoverTooltipRafRef = useRef<number | null>(null);
@@ -296,10 +133,8 @@
     const hoverTooltipTimeRef = useRef<HTMLDivElement | null>(null);
     const [timelineVersion, setTimelineVersion] = useState(0);
 
-    const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
     const [canProceed, setCanProceed] = useState(false);
     const [isPaused, setIsPaused] = useState(true);
-    const [currentWordIndex, setCurrentWordIndex] = useState(0);
 
     const timelineAutoHideTimerRef = useRef<number | null>(null)
     // NAV STATE
@@ -331,35 +166,6 @@
           }
         }, 3000)
       }
-
-      const resetAudioElement = useCallback(() => {
-        if (scrubActive.current) return;
-        const audio = audioRef.current;
-        if (!audio) return;
-
-        audio.pause();
-        audio.src = "";
-        audio.load();
-        audio.currentTime = 0;
-
-        // do NOT touch cancelAutoplay here
-      }, []);
-
-      const switchVoice = useCallback(
-        (newVoiceId: string) => {
-          if (newVoiceId === voice) return;
-          const wasPlaying =
-            shouldAutoPlayRef.current && !isPausedRef.current;
-          const resumeTime = audioRef.current
-            ? audioRef.current.currentTime
-            : 0;
-
-          cancelAutoplay.current = true;
-          voiceSwitchRef.current = { resumeTime, wasPlaying };
-          setVoice(newVoiceId);
-        },
-        [voice]
-      );
 
     const courseIndex = useMemo(() => {
       if (!modules.length || !courseLessons.length || !courseSlides.length) {
@@ -497,9 +303,6 @@
       };
     }, [courseSlides]);
 
-    const voiceLabel =
-      VOICES.find(v => v.code === voice)?.label ?? "Unknown";
-    
     const searchParams = useSearchParams();
     const router = useRouter();
 
@@ -549,31 +352,10 @@
           slideOffset -= candidate.durationSeconds;
         }
 
-        const captionsForSlide = slideEntry.captions;
-        let captionIndex = 0;
-        let captionOffset = 0;
-
-        if (captionsForSlide.length) {
-          let captionRemaining = slideOffset;
-
-          for (let i = 0; i < captionsForSlide.length; i++) {
-            const duration = Math.max(0, captionsForSlide[i].seconds ?? 0);
-
-            if (captionRemaining <= duration || i === captionsForSlide.length - 1) {
-              captionIndex = i;
-              captionOffset = Math.min(captionRemaining, duration);
-              break;
-            }
-            captionRemaining -= duration;
-          }
-        }
-
         return {
           moduleIndex,
           lessonIndex: slideEntry.lessonIndex,
           slideIndex: slideEntry.slideIndex,
-          captionIndex,
-          captionOffset,
           slideId: slideEntry.slideId,
         };
       },
@@ -590,16 +372,10 @@
         }
 
         const lastSlide = moduleEntry.slides[moduleEntry.slides.length - 1];
-        const lastCaptionIndex = Math.max(0, lastSlide.captions.length - 1);
-        const lastCaptionSeconds =
-          lastSlide.captions[lastCaptionIndex]?.seconds ?? 0;
-
         return {
           moduleIndex,
           lessonIndex: lastSlide.lessonIndex,
           slideIndex: lastSlide.slideIndex,
-          captionIndex: lastCaptionIndex,
-          captionOffset: Math.max(0, lastCaptionSeconds),
           slideId: lastSlide.slideId,
         };
       },
@@ -609,25 +385,18 @@
     const applySeekTarget = useCallback(
       (target: SeekTarget) => {
         if (scrubActive.current) return;
-        seekCommitInFlightRef.current = true;
         const {
           moduleIndex,
           lessonIndex,
           slideIndex: targetSlideIndex,
-          captionIndex,
-          captionOffset,
           slideId,
         } = target;
-
-        appliedSeekTargetRef.current = target;
 
         const moduleChanged = moduleIndex !== currentModuleIndex;
         const lessonChanged = lessonIndex !== currentLessonIndex || moduleChanged;
         const slideChanged = targetSlideIndex !== slideIndex || lessonChanged;
 
         if (moduleChanged) {
-          resetAudioElement();
-          cancelAutoplay.current = false;
           if (!scrubActive.current) {
             setContentReady(false);
             setRestoredReady(false);
@@ -643,45 +412,15 @@
           setSlideIndex(targetSlideIndex);
         }
 
-        if (!slideChanged) {
-          setCurrentCaptionIndex(captionIndex);
-
-          // allow continuous-time scrubs: only overwrite when not scrubbing
-          if (
-            !scrubActive.current &&
-            audioRef.current &&
-            slideId === slides[slideIndex]?.id &&
-            currentCaptionIndex === captionIndex
-          ) {
-            const seekSeconds = Math.min(
-              captionOffset,
-              allowedSeekSecondsRef.current
-            );
-            audioRef.current.currentTime = seekSeconds;
-            appliedSeekTargetRef.current = null;
-            seekCommitInFlightRef.current = false;
-            pendingSeekRef.current = null;
-            voiceSwitchRef.current = null;
-            if (!resumeAfterScrubRef.current) {
-              cancelAutoplay.current = true;
-              shouldAutoPlayRef.current = false;
-              setIsPaused(true);
-              isPausedRef.current = true;
-            }
-          }
+        if (!slideChanged && slideId === slides[slideIndex]?.id) {
+          setCanProceed(true);
         }
-
-
-        setCurrentWordIndex(0);
-        setCanProceed(false);
       },
       [
         currentModuleIndex,
         currentLessonIndex,
         slideIndex,
         slides,
-        currentCaptionIndex,
-        resetAudioElement,
       ]
     );
 
@@ -699,7 +438,7 @@
           Math.min(courseIndex.totalSeconds, roundTo(seconds, 2))
         );
 
-        pendingSeekRef.current = Math.min(
+        scrubSeekSecondsRef.current = Math.min(
           seekSeconds,
           allowedSeekSecondsRef.current
         );
@@ -709,8 +448,8 @@
 
     const handleScrubEnd = useCallback(() => {
       scrubActive.current = false;
-      const secs = pendingSeekRef.current;
-      pendingSeekRef.current = null;
+      const secs = scrubSeekSecondsRef.current;
+      scrubSeekSecondsRef.current = null;
       if (secs === null) return;
       if (secs > allowedSeekSecondsRef.current) return;
 
@@ -729,11 +468,6 @@
 
       applySeekTarget(target);
 
-      if (resumeAfterScrubRef.current) {
-        cancelAutoplay.current = false;
-        setIsPaused(false);
-        isPausedRef.current = false;
-      }
     }, [
       applySeekTarget,
       clampTargetToModuleEnd,
@@ -840,18 +574,8 @@
 
     const handleScrubStart = useCallback(() => {
       scrubActive.current = true; // start scrubbing
-      // record whether autoplay+playing was active BEFORE temporary pause
-      resumeAfterScrubRef.current =
-        shouldAutoPlayRef.current && !isPausedRef.current;
-      // cancel any in-flight or pending seek work
-      pendingSeekRef.current = null;
-      appliedSeekTargetRef.current = null;
-      seekCommitInFlightRef.current = false;
-      // temporary scrub-pause
-      cancelAutoplay.current = true;
-      // remove: shouldAutoPlayRef.current = false    ← delete permanently
+      scrubSeekSecondsRef.current = null;
       setIsPaused(true);
-      isPausedRef.current = true;
     }, []);
 
     useEffect(() => {
@@ -873,9 +597,6 @@
         // prevent space scrolling
         if (e.code === "Space" || e.code === "Enter") {
           e.preventDefault()
-
-          resetAudioElement()
-          setIsPaused(!shouldAutoPlayRef.current)
           goNext()
         }
       }
@@ -909,14 +630,6 @@
       }
     }, [progressReady, contentReady]);
 
-    const cancelAutoplay = useRef(false);
-    
-  function preloadAudio(url: string) {
-    const a = new Audio();
-    a.src = url;
-    a.preload = "auto";  // Tells browser to decode early
-  }
-
   // ------------------------------------------------------
   // COURSE COMPLETION
   // ------------------------------------------------------
@@ -936,206 +649,8 @@
     }
   }
 
-  // ------------------------------------------------------
-  // AUDIO FADE HELPERS (HTMLAudioElement ONLY)
-  // ------------------------------------------------------
-  const fadeFrameRef = useRef<number | null>(null);
-  const targetVolumeRef = useRef(volume);
-
-  const cancelFade = useCallback(() => {
-    if (fadeFrameRef.current !== null) {
-      cancelAnimationFrame(fadeFrameRef.current);
-      fadeFrameRef.current = null;
-    }
-  }, []);
-
-  const fadeToVolume = useCallback(
-    (audio: HTMLAudioElement, target: number, duration = 140) => {
-      cancelFade();
-
-      const start = performance.now();
-      const initial = audio.volume;
-
-      const clamp = (v: number) => Math.min(1, Math.max(0, v));
-
-      if (duration <= 0) {
-        audio.volume = clamp(target);
-        return;
-      }
-
-      const step = (now: number) => {
-        const p = Math.min((now - start) / duration, 1);
-
-        const raw = initial + (target - initial) * p;
-        audio.volume = clamp(raw);
-
-        if (p < 1) {
-          fadeFrameRef.current = requestAnimationFrame(step);
-        } else {
-          fadeFrameRef.current = null;
-        }
-      };
-
-      fadeFrameRef.current = requestAnimationFrame(step);
-    },
-    [cancelFade]
-  );
-
-  // keep ref in sync with slider
-  useEffect(() => {
-    targetVolumeRef.current = volume;
-  }, [volume]);
-
-  // cleanup on unmount
-  useEffect(() => cancelFade, [cancelFade]);
-
-  //--------------------------------------------------------------------
-  // VOICE URL RESOLVER (UPDATED)
-  //--------------------------------------------------------------------
-  function resolveVoiceUrl(first: CaptionRow | undefined, voiceCode: string) {
-    if (!first) return null;
-
-    switch (voiceCode) {
-      case "en-US-Neural2-A":
-        return first.published_audio_url_a;
-      case "en-US-Neural2-D":
-        return first.published_audio_url_d;
-      case "en-US-Neural2-I":
-        return first.published_audio_url_o;
-      case "en-US-Neural2-J":
-        return first.published_audio_url_j;
-      default:
-        return null;
-    }
-  }
-
-
-  // load saved voice on mount
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem("course_voice");
-    if (saved) setVoice(saved);
-  }, []);
-
-  // save voice whenever it changes
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("course_voice", voice);
-  }, [voice]);
-
-
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-    const voiceSwitchRef = useRef<{
-      resumeTime: number;
-      wasPlaying: boolean;
-    } | null>(null);
-    const pendingSeekRef = useRef<number | null>(null);
-    const appliedSeekTargetRef = useRef<SeekTarget | null>(null);
-    const seekCommitInFlightRef = useRef(false);
     const moduleLoadInFlightRef = useRef<string | null>(null);
     const lessonLoadInFlightRef = useRef<number | null>(null);
-    const slideAdvanceTimeoutRef = useRef<number | null>(null);
-    const slideRevisionRef = useRef(0);
-    const captionAdvanceInFlightRef = useRef<string | null>(null);
-    const lastTimeRef = useRef(0);
-    const stalledCounterRef = useRef(0);
-
-  // Reset autoplay intent on first mount
-  useEffect(() => {
-    shouldAutoPlayRef.current = false;
-    cancelAutoplay.current = true;
-    isPausedRef.current = true;
-    setIsPaused(true);
-  }, []);
-
-    useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    const initialPaused =
-      audio.paused ||
-      audio.currentTime === 0 ||
-      audio.ended
-
-    setIsPaused(initialPaused)
-    isPausedRef.current = initialPaused
-  }, [])
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    function handlePlay() {
-      setIsPaused(false);
-      isPlayingRef.current = true;
-    }
-
-    function handlePause() {
-      setIsPaused(true);
-      isPlayingRef.current = false;
-    }
-
-    audio.addEventListener("play", handlePlay);
-    audio.addEventListener("pause", handlePause);
-
-    return () => {
-      audio.removeEventListener("play", handlePlay);
-      audio.removeEventListener("pause", handlePause);
-    };
-  }, []);
-
-
-  const hardResetAudio = useCallback(() => {
-    if (scrubActive.current) return;
-    cancelFade();
-
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    audio.pause();
-    audio.currentTime = 0;
-
-    // clear buffer completely
-    audio.src = "";
-    audio.load();
-
-    audio.volume = targetVolumeRef.current;
-    audio.oncanplay = null;
-  }, [cancelFade]);
-
-
-  //--------------------------------------------------------------------
-  // UNLOCK AUTOPLAY ON FIRST USER GESTURE
-  //--------------------------------------------------------------------
-  useEffect(() => {
-    const unlock = () => {
-      if (!audioRef.current) return;
-      if (!shouldAutoPlayRef.current) return;
-      audioRef.current.play().catch(() => {});
-      window.removeEventListener("click", unlock);
-    };
-    window.addEventListener("click", unlock);
-    return () => window.removeEventListener("click", unlock);
-  }, []);
-
-
-  //--------------------------------------------------------------------
-  // RESUME ON PAUSE - RESETS SOUND
-  //--------------------------------------------------------------------
-  const isPausedRef = useRef(true);
-
-  useEffect(() => {
-    isPausedRef.current = isPaused;
-  }, [isPaused]);
-
-  //--------------------------------------------------------------------
-  // RESTORE AUTOPLAY AFTER PROGRESS RESTORE
-  //--------------------------------------------------------------------
-  useEffect(() => {
-    if (restoredReady && contentReady) {
-      cancelAutoplay.current = false;
-    }
-  }, [restoredReady, contentReady]);
 
 
   //-----------------------------------
@@ -1156,19 +671,6 @@
     sec += caps.reduce((s, c) => s + (c.seconds ?? 0), 0);
   }
 
-
-    const slide = slides[slideIndex];
-    if (!slide) return sec;
-
-    const caps = captions[slide.id] || [];
-    for (let j = 0; j < currentCaptionIndex; j++) {
-      sec += (caps[j]?.seconds ?? 0);
-    }
-
-    const cur = caps[currentCaptionIndex];
-    if (cur) {
-      sec += Math.min(audioTime, cur.seconds ?? 0);
-    }
 
     return sec;
   })();
@@ -1580,13 +1082,6 @@
       // reset content-ready for this lesson load
       setContentReady(false);
 
-      // stop any audio in progress
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-        audioRef.current.src = "";
-      }
-
       // clear existing content
       setSlides([]);
       setCaptions({});
@@ -1609,11 +1104,7 @@
           slide_id,
           caption,
           seconds,
-          line_index,
-          published_audio_url_d,
-          published_audio_url_a,
-          published_audio_url_j,
-          published_audio_url_o
+          line_index
         `)
         .in("slide_id", slideIds)
         .order("line_index", { ascending: true });
@@ -1642,9 +1133,6 @@
         console.log("FRESH MODULE LOAD → enabling contentReady immediately");
         setContentReady(true);
       }
-
-      // finished loading lesson data
-      setLoading(false);
 
       // ------------------------------------------------------
       // If restoring from saved progress, wait and then unlock.
@@ -1702,215 +1190,11 @@
     }
   }, [restoredReady, slides, captions]);
 
-  /* ------------------------------------------------------
-    SLIDE RESET (very important)
-  ------------------------------------------------------ */
-useEffect(() => {
-  slideRevisionRef.current += 1;
-
-  // reset caption advance lock when slide changes
-  captionAdvanceInFlightRef.current = null;
-
-  if (slideAdvanceTimeoutRef.current !== null) {
-    clearTimeout(slideAdvanceTimeoutRef.current);
-    slideAdvanceTimeoutRef.current = null;
-  }
-
-  pendingSeekRef.current = null;
-  seekCommitInFlightRef.current = false;
-  lastTimeRef.current = 0;
-  stalledCounterRef.current = 0;
-  setAudioDuration(0);
-  setCurrentWordIndex(0);
-
-  // 🚫 terminal state — do not reset anything
-  if (isFinalCourseSlide) return;
-  if (scrubActive.current) return;
-
-  resetAudioElement();
-  const pendingSeek = appliedSeekTargetRef.current;
-  const activeSlideId = slides[slideIndex]?.id;
-
-  if (pendingSeek && pendingSeek.slideId === activeSlideId) {
-    setCurrentCaptionIndex(pendingSeek.captionIndex);
-  } else {
-    setCurrentCaptionIndex(0);
-  }
-
-  setCanProceed(false);
-}, [
-  slideIndex,
-  slides,
-  isFinalCourseSlide,
-  resetAudioElement
-]);
-
   useEffect(() => {
-    captionAdvanceInFlightRef.current = null;
-  }, [slideIndex]);
-
-  useEffect(() => {
-    captionAdvanceInFlightRef.current = null;
-  }, [currentCaptionIndex]);
-  useEffect(() => {
-    if (scrubActive.current) return;
-    const pendingSeek = appliedSeekTargetRef.current;
-    const activeSlide = slides[slideIndex];
-
-    if (pendingSeek && !contentReady) {
-      console.warn("CONFLICT: pending seek cannot resolve while contentReady=false", {
-        pendingSeek,
-        progressReady,
-        contentReady,
-        restoredReady,
-        initialHydrationDone,
-        slideIndex,
-        moduleIndex: currentModuleIndex,
-      });
-    }
-
-    if (!pendingSeek || !activeSlide || pendingSeek.slideId !== activeSlide.id) {
-      return;
-    }
-
-    if (currentCaptionIndex !== pendingSeek.captionIndex) {
-      setCurrentCaptionIndex(pendingSeek.captionIndex);
-    }
-  }, [slides, captions, slideIndex, currentCaptionIndex, contentReady]);
-
-  useEffect(() => {
-    if (scrubActive.current) return;
     if (!contentReady) return;
-    const pendingSeek = appliedSeekTargetRef.current;
-    if (!pendingSeek) return;
-
-    const activeSlide = slides[slideIndex];
-    if (!activeSlide || pendingSeek.slideId !== activeSlide.id) {
-      return;
-    }
-
-    if (currentCaptionIndex !== pendingSeek.captionIndex) {
-      setCurrentCaptionIndex(pendingSeek.captionIndex);
-    }
-
-    const audio = audioRef.current;
-    if (audio && audio.readyState >= 1) {
-      let seekTo = Math.min(
-        pendingSeek.captionOffset,
-        audio.duration || pendingSeek.captionOffset
-      );
-      seekTo = Math.min(seekTo, allowedSeekSecondsRef.current);
-      audio.currentTime = seekTo;
-        appliedSeekTargetRef.current = null;
-        seekCommitInFlightRef.current = false;
-        pendingSeekRef.current = null;
-        if (!resumeAfterScrubRef.current) {
-          cancelAutoplay.current = true;
-          shouldAutoPlayRef.current = false;
-          setIsPaused(true);
-          isPausedRef.current = true;
-        }
-    }
-  }, [contentReady, slides, slideIndex, currentCaptionIndex]);
-
-  useEffect(() => {
-    if (scrubActive.current) return;
-    const audio = audioRef.current;
-    if (!audio || !contentReady) return;
-
-    const slide = slides[slideIndex];
-    if (!slide) return;
-
-    const caps = captions[slide.id] || [];
-    const urls = caps.map(c => resolveVoiceUrl(c, voice)).filter(Boolean);
-
-    if (!urls.length) {
-      setCanProceed(true);
-      return;
-    }
-
-
-
-    const nextUrl = urls[currentCaptionIndex];
-      if (!nextUrl) {
-      setCanProceed(true);
-      return;
-    }
-
-    // preload next caption
-    if (currentCaptionIndex + 1 < urls.length) {
-      preloadAudio(urls[currentCaptionIndex + 1]!);
-    }
-
-    if (cancelAutoplay.current && !voiceSwitchRef.current) return;
-    const shouldAutoPlay = shouldAutoPlayRef.current;
-
-    // SRC CHANGE
-    if (audio.src !== nextUrl) {
-      cancelFade();
-
-      audio.pause();
-      audio.currentTime = 0;
-      audio.src = nextUrl;
-
-      audio.volume = 0; // HARD SILENCE BEFORE PLAY
-
-      audio.oncanplaythrough = () => {
-        audio.oncanplaythrough = null;
-
-        // If user paused during transition, do NOT start silent playback
-        if (!shouldAutoPlayRef.current || isPausedRef.current || cancelAutoplay.current) {
-          audio.volume = targetVolumeRef.current;
-          return;
-        }
-
-        audio
-          .play()
-          .then(() => fadeToVolume(audio, targetVolumeRef.current))
-          .catch(() => {});
-      };
-
-      audio.load();
-      return;
-    }
-
-    // SAME SRC → RESUME
-    if (shouldAutoPlay && !isPaused && !cancelAutoplay.current) {
-      audio
-        .play()
-        .then(() => fadeToVolume(audio, targetVolumeRef.current, 120))
-        .catch(() => {});
-    }
-  }, [
-    slideIndex,
-    currentCaptionIndex,
-    captions,
-    voice,
-    slides,
-    contentReady,
-    isPaused,
-    isFinalSlideOfModule,
-    fadeToVolume,
-    cancelFade
-  ]);
-
-  /* ------------------------------------------------------
-    PAUSE
-  ------------------------------------------------------ */
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-
-    if (isPaused) {
-      cancelAutoplay.current = true; // stop any in-flight transition play
-      cancelFade();                  // stop fade animations
-      a.pause();
-
-      // If we paused while volume was forced to 0 for a transition,
-      // restore it so resume can't be silent.
-      if (a.volume === 0) a.volume = targetVolumeRef.current;
-    }
-  }, [isPaused, cancelFade]);
+    if (!slides[slideIndex]) return;
+    setCanProceed(true);
+  }, [contentReady, slideIndex, slides]);
 
 
   /* ------------------------------------------------------
@@ -1935,27 +1219,6 @@ useEffect(() => {
       window.removeEventListener("blur", handleBlur);
     };
   }, []);
-
-  /* ------------------------------------------------------
-    RESUME
-  ------------------------------------------------------ */
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-    if (isPaused) return;
-    if (!shouldAutoPlayRef.current) return;
-
-    cancelAutoplay.current = false;
-
-    // If we were stuck at 0 volume, bring it back with a fade.
-    if (a.volume === 0) a.volume = 0.001;
-
-    setTimeout(() => {
-      a.play()
-        .then(() => fadeToVolume(a, targetVolumeRef.current, 120))
-        .catch(() => {});
-    }, 50);
-  }, [isPaused, fadeToVolume]);
 
 
   /* ------------------------------------------------------
@@ -2054,10 +1317,6 @@ useEffect(() => {
     ? resolveImage(currentSlide.image_path)
     : null;
 
-  const captionText = currentSlide
-    ? (captions[currentSlide.id] || []).map(c => c.caption).join("\n")
-    : "";
-
   /* ------------------------------------------------------
     NAVIGATION  (FULL REPLACEMENT — FINAL SAFE VERSION)
   ------------------------------------------------------ */
@@ -2098,13 +1357,8 @@ useEffect(() => {
   if (currentModuleIndex < modules.length - 1) {
     const nextModule = currentModuleIndex + 1;
 
-    resetAudioElement();
-    cancelAutoplay.current = false;
-
     setSlides([]);
     setCaptions({});
-    setCurrentCaptionIndex(0);
-    setCurrentWordIndex(0);
 
     setContentReady(false);
     setRestoredReady(false);
@@ -2145,39 +1399,10 @@ useEffect(() => {
 
 
   //--------------------------------------------------------------------
-  // backward navigation  (NO QUIZ)
-  //--------------------------------------------------------------------
-  const goPrev = () => {
-
-    // previous slide in same lesson
-    if (slideIndex > 0) {
-      setSlideIndex(slideIndex - 1);
-      return;
-    }
-
-    // go to last slide of previous lesson
-    if (currentLessonIndex > 0) {
-      const newLessonIndex = currentLessonIndex - 1;
-      setCurrentLessonIndex(newLessonIndex);
-      setSlideIndex(0); // will update after lesson loads
-      return;
-    }
-
-    // go to previous module (start at lesson 0, slide 0)
-    if (currentModuleIndex > 0) {
-      const newModuleIndex = currentModuleIndex - 1;
-      setCurrentModuleIndex(newModuleIndex);
-      setCurrentLessonIndex(0);
-      setSlideIndex(0);
-      return;
-    }
-  };
-
-  //--------------------------------------------------------------------
   // jump to module only if user has unlocked it (GUARDED)
   //--------------------------------------------------------------------
   function goToModule(i: number) {
-    if (seekCommitInFlightRef.current) return;
+    if (scrubActive.current) return;
     const targetStartSeconds = moduleDurationSeconds
       .slice(0, i)
       .reduce((sum, duration) => sum + (duration ?? 0), 0);
@@ -2209,17 +1434,13 @@ useEffect(() => {
     if (i === currentModuleIndex) {
       console.log("HARD MODULE RELOAD");
 
-      resetAudioElement();
-      cancelAutoplay.current = false;
-
       setContentReady(false);
       setRestoredReady(true);
 
       setCurrentLessonIndex(0);
       setSlideIndex(0);
-      setCurrentCaptionIndex(0);
       setCanProceed(false);
-      setIsPaused(!shouldAutoPlayRef.current);
+      setIsPaused(true);
 
       loadLessons(modules[i].id)
         .then(() => loadLessonContent(lessons[0]?.id));
@@ -2230,145 +1451,17 @@ useEffect(() => {
     // ------------------------------
     // REAL MODULE SWITCH
     // ------------------------------
-    resetAudioElement();
-    cancelAutoplay.current = false;
-
     setContentReady(false);
     setRestoredReady(false);
 
     setCurrentModuleIndex(i);
     setCurrentLessonIndex(0);
     setSlideIndex(0);
-    setCurrentCaptionIndex(0);
 
     setCanProceed(false);
-    setIsPaused(!shouldAutoPlayRef.current);
+    setIsPaused(true);
 
     router.push(`/course-test?module=${i}`);
-  }
-
-  const resumePlayback = useCallback(() => {
-    const audio = audioRef.current;
-    cancelAutoplay.current = false;
-    setIsPaused(false);
-    isPausedRef.current = false;
-
-    if (audio) {
-      if (audio.volume === 0) audio.volume = 0.001;
-      audio
-        .play()
-        .then(() => fadeToVolume(audio, targetVolumeRef.current, 120))
-        .catch(() => {});
-    }
-
-    setShowPlayFlash(true);
-
-    if (playFlashTimer.current) {
-      clearTimeout(playFlashTimer.current);
-    }
-
-    playFlashTimer.current = window.setTimeout(() => {
-      setShowPlayFlash(false);
-    }, 450);
-  }, [fadeToVolume]);
-
-  const pausePlayback = useCallback(() => {
-    const audio = audioRef.current;
-    cancelAutoplay.current = true;
-    cancelFade();
-    if (audio) {
-      audio.pause();
-      if (audio.volume === 0) audio.volume = targetVolumeRef.current;
-    }
-
-    setIsPaused(true);
-    isPausedRef.current = true;
-  }, [cancelFade]);
-
-  const requestPlay = useCallback(() => {
-    isPlayingRef.current = true
-    resumePlayback()
-  }, [resumePlayback])
-
-  const requestPause = useCallback(() => {
-    isPlayingRef.current = false
-    pausePlayback()
-  }, [pausePlayback])
-      const handleCaptionComplete = useCallback(() => {
-        const advanceRevision = slideRevisionRef.current;
-        const key = `${advanceRevision}:${slideIndex}:${currentCaptionIndex}`;
-        if (captionAdvanceInFlightRef.current === key) return;
-        captionAdvanceInFlightRef.current = key;
-        setTimeout(() => {
-          if (advanceRevision !== slideRevisionRef.current) return;
-          if (captionAdvanceInFlightRef.current === key) {
-            captionAdvanceInFlightRef.current = null;
-          }
-        }, 0);
-
-        const slide = slides[slideIndex]
-        const caps = slide ? captions[slide.id] || [] : []
-        const audio = audioRef.current
-
-    if (!caps.length) return
-
-    const last = caps.length - 1
-      if (currentCaptionIndex < last) {
-        if (shouldAutoPlayRef.current && !isPausedRef.current && audio) {
-          requestPause();
-          const scheduledRevision = advanceRevision;
-          setTimeout(() => {
-            if (scheduledRevision !== slideRevisionRef.current) return;
-            handleCaptionComplete();
-          }, SLIDE_DELAY_MS);
-          return;
-        }
-
-        setCurrentCaptionIndex(i => i + 1);
-
-        if (shouldAutoPlayRef.current && !isPausedRef.current && audio) {
-          audio.play().catch(() => {});
-        }
-
-        return;
-      }
-
-      // no more caption – allow Continue button
-      setCanProceed(true);
-
-      if (!isFinalSlideOfModule) {
-        if (shouldAutoPlayRef.current && !cancelAutoplay.current) {
-          delayedGoNext();     // delayed slide advance
-        } 
-      }
-
-  }, [
-    captions,
-    slides,
-    slideIndex,
-    currentCaptionIndex,
-    goNext
-  ])
-
-  const SLIDE_DELAY_MS = 1200; // adjust delay
-
-  function delayedGoNext() {
-    autoPausedRef.current = true;
-    requestPause();
-
-    setTimeout(() => {
-      autoPausedRef.current = false;
-   
-   // allow audio buffer to reset before resuming playback
-    requestAnimationFrame(() => {
-      queueMicrotask(() => {
-        if (!audioRef.current) return
-        requestPlay()
-      })
-    })
-    goNext()
-
-    }, SLIDE_DELAY_MS);
   }
 
   // Show steering wheel ONLY during very first load
@@ -2384,36 +1477,8 @@ useEffect(() => {
 
   function togglePlay() {
     revealTimelineFor3s()
-
-    const audio = audioRef.current
-
-    // ensure fresh refs
-    const isActuallyPlaying =
-      audio &&
-      !audio.paused &&
-      audio.currentTime > 0 &&
-      !audio.ended
-
-    if (isActuallyPlaying) {
-      shouldAutoPlayRef.current = false
-      cancelAutoplay.current = true
-      requestPause()
-      return
-    }
-
-
-    shouldAutoPlayRef.current = true
-      setIsPaused(false)
-      isPausedRef.current = false
-
-      // resume playback cleanly (prevents click/pop artifacts)
-      requestAnimationFrame(() => {
-        queueMicrotask(() => {
-          if (!audioRef.current) return
-          requestPlay()
-        })
-      })
-    }
+    setIsPaused((prev) => !prev)
+  }
 
   return (
     <div className="relative min-h-screen bg-white flex flex-col">
@@ -2446,7 +1511,7 @@ useEffect(() => {
       absolute left-0 right-0 z-[50]
       flex items-center justify-center
       transition-opacity duration-300
-      ${(isPausedRef.current && !autoPausedRef.current)
+      ${isPaused
         ? "opacity-100"
         : "opacity-0 pointer-events-none"}
         `}
@@ -2497,214 +1562,6 @@ useEffect(() => {
   </div>
       </div>
 
-      <audio
-        ref={audioRef}
-        preload="auto"
-        controls={false}
-        onTimeUpdate={(e) => {
-          const t = e.currentTarget.currentTime
-          // Patch 3: advance when audio actually ends
-          if (audioRef.current?.ended) {
-            const advanceRevision = slideRevisionRef.current
-            const keyEnd = `${advanceRevision}:${slideIndex}:${currentCaptionIndex}`
-            if (captionAdvanceInFlightRef.current !== keyEnd) {
-              captionAdvanceInFlightRef.current = keyEnd
-              setTimeout(() => {
-                if (advanceRevision !== slideRevisionRef.current) return
-                if (captionAdvanceInFlightRef.current === keyEnd) {
-                  captionAdvanceInFlightRef.current = null
-                }
-                handleCaptionComplete()
-              }, 0)
-            }
-            return
-          }
-
-          setAudioTime(t)
-          if (!isPausedRef.current) {
-            if (lastTimeRef.current === t) {
-              stalledCounterRef.current++
-            } else {
-              stalledCounterRef.current = 0
-            }
-
-            lastTimeRef.current = t
-
-            if (
-              stalledCounterRef.current > 6 &&
-              !scrubActive.current &&
-              contentReady &&
-              pendingSeekRef.current === null &&
-              !seekCommitInFlightRef.current &&
-              captionAdvanceInFlightRef.current === null
-            ) {
-              stalledCounterRef.current = 0
-              const advanceRevision = slideRevisionRef.current
-              const key = `${advanceRevision}:${slideIndex}:${currentCaptionIndex}`;
-              if (captionAdvanceInFlightRef.current === key) return;
-              captionAdvanceInFlightRef.current = key;
-              setTimeout(() => {
-                if (advanceRevision !== slideRevisionRef.current) return
-                if (captionAdvanceInFlightRef.current === key) {
-                  captionAdvanceInFlightRef.current = null;
-                }
-                handleCaptionComplete();
-              }, 0);
-            }
-          }
-
-          const slideK = slides[slideIndex]
-          if (!slideK) return
-
-          const capsK = captions[slideK.id] || []
-          const active = capsK[currentCaptionIndex]
-          if (!active) return
-
-          const timingWords = tokenizeForTiming(active.caption)
-          const timings = computeWordTimings(active.seconds ?? 0, timingWords)
-          const map = mapTimingIndexToDisplayIndex(
-            timingWords,
-            tokenizeCaption(active.caption)
-          )
-
-          const shifted = t + 0.08
-          let wi = timings.findIndex(w => shifted < w.end)
-          if (wi < 0) wi = timings.length - 1
-          const computedWordIndex = map[wi] ?? 0
-          setCurrentWordIndex(computedWordIndex)
-
-          const duration = active.seconds ?? 0
-          // normalize audio duration to avoid drift underruns
-          const rawDur = audioRef.current?.duration
-          const effectiveDuration = Math.max(duration, rawDur || duration)
-
-          const drift = 0.95
-          const driftGuardSeconds = 0.95
-          const driftReady =
-            effectiveDuration > 0 &&
-            audioDuration > 0 &&
-            t > driftGuardSeconds
-
-          if (slideAdvanceTimeoutRef.current !== null) return
-
-          const remaining = effectiveDuration - t
-          
-          if (
-              driftReady &&
-              (
-                remaining <= drift &&
-                wi >= timings.length - 1 &&
-                t >= effectiveDuration - 0.15
-              ) &&
-              !scrubActive.current &&
-              contentReady &&
-              pendingSeekRef.current === null &&
-              !seekCommitInFlightRef.current &&
-              captionAdvanceInFlightRef.current === null
-            ) {
-
-            const advanceRevision = slideRevisionRef.current
-            const scheduledSlide = slideIndex
-            const scheduledCaption = currentCaptionIndex
-            slideAdvanceTimeoutRef.current = window.setTimeout(() => {
-              if (advanceRevision !== slideRevisionRef.current) {
-                slideAdvanceTimeoutRef.current = null
-                return
-              }
-              if (
-                scheduledSlide !== slideIndex ||
-                scheduledCaption !== currentCaptionIndex
-              ) {
-                slideAdvanceTimeoutRef.current = null
-                return
-              }
-              slideAdvanceTimeoutRef.current = null
-
-              if (scrubActive.current) return
-              if (!contentReady) return
-              if (pendingSeekRef.current !== null) return
-              if (seekCommitInFlightRef.current) return
-
-              const key = `${advanceRevision}:${slideIndex}:${currentCaptionIndex}`
-              if (captionAdvanceInFlightRef.current === key) return
-              captionAdvanceInFlightRef.current = key
-              setTimeout(() => {
-                if (advanceRevision !== slideRevisionRef.current) return
-                if (captionAdvanceInFlightRef.current === key) {
-                  captionAdvanceInFlightRef.current = null
-                }
-                handleCaptionComplete()
-              }, 0)
-
-              const activeSlide = slides[slideIndex]
-              if (!activeSlide) return
-
-              const caps = captions[activeSlide.id] || []
-              if (!caps.length) return
-
-              if (currentCaptionIndex < caps.length) {
-                return
-              }
-            }, 220)
-          }
-
-          }}
-            
-        onLoadedMetadata={(e) => {
-          setAudioDuration(e.currentTarget.duration);
-          if (scrubActive.current) return;
-          const pendingSeek = appliedSeekTargetRef.current;
-          const activeSlide = slides[slideIndex];
-
-          if (
-            pendingSeek &&
-            activeSlide &&
-            pendingSeek.slideId === activeSlide.id &&
-            currentCaptionIndex === pendingSeek.captionIndex
-          ) {
-            let seekTo = Math.min(
-              pendingSeek.captionOffset,
-              e.currentTarget.duration || pendingSeek.captionOffset
-            );
-            seekTo = Math.min(seekTo, allowedSeekSecondsRef.current);
-            e.currentTarget.currentTime = seekTo;
-            appliedSeekTargetRef.current = null;
-            seekCommitInFlightRef.current = false;
-            pendingSeekRef.current = null;
-            if (!resumeAfterScrubRef.current) {
-              cancelAutoplay.current = true;
-              shouldAutoPlayRef.current = false;
-              setIsPaused(true);
-              isPausedRef.current = true;
-            }
-            return;
-          }
-
-          const voiceSwitch = voiceSwitchRef.current;
-          if (voiceSwitch) {
-            let seekTo = Math.min(
-              voiceSwitch.resumeTime,
-              e.currentTarget.duration || voiceSwitch.resumeTime
-            );
-            seekTo = Math.min(seekTo, allowedSeekSecondsRef.current);
-            e.currentTarget.currentTime = seekTo;
-            if (voiceSwitch.wasPlaying) {
-              cancelAutoplay.current = false;
-              if (e.currentTarget.volume === 0) {
-                e.currentTarget.volume = targetVolumeRef.current;
-              }
-              e.currentTarget.play().catch(() => {});
-              isPausedRef.current = false;
-              setIsPaused(false);
-            } else {
-              isPausedRef.current = true;
-              setIsPaused(true);
-            }
-            voiceSwitchRef.current = null;
-          }
-        }}
-            />
-
       <div
         className={`
           fixed bottom-[250px] left-0 right-0
@@ -2719,8 +1576,6 @@ useEffect(() => {
       >
         <button
           onClick={() => {
-            resetAudioElement()
-            setIsPaused(!shouldAutoPlayRef.current)
             goNext()
           }}
           className="
@@ -2825,10 +1680,8 @@ useEffect(() => {
         thumbCacheRef={thumbCacheRef}
       />
 
-      {/* CONTROLS – volume + CC */}
       <div
-        className="fixed bottom-[160px] left-0 right-0 z-[200] pointer-events-auto"
-        onClick={(e) => e.stopPropagation()}
+        className="fixed bottom-[160px] left-0 right-0 z-[200] pointer-events-none"
       >
         <div className="md:max-w-6xl md:mx-auto px-4">
           <div className="flex items-center gap-4 text-[#001f40]">
@@ -2849,120 +1702,6 @@ useEffect(() => {
               {formatTime(elapsedCourseSeconds)} /{" "}
               {formatTime(courseTotals.totalSeconds)}
             </div>
-
-            {/* VOLUME */}
-            <div
-              className="
-                h-10 px-4
-                flex items-center gap-2
-                rounded-full
-              "
-            >
-             <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  toggleMute()
-                }}
-                className="cursor-pointer translate-x-[20px]"
-              >
-                {muted ? (
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="w-5 h-5 fill-white drop-shadow-sm"
-                  >
-                    <path d="M5 9v6h4l5 4V5L9 9H5z" />
-                    <line x1="18" y1="6" x2="22" y2="10" stroke="white" strokeWidth="2"/>
-                    <line x1="22" y1="6" x2="18" y2="10" stroke="white" strokeWidth="2"/>
-                  </svg>
-                ) : (
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="w-5 h-5 fill-white drop-shadow-sm"
-                  >
-                    <path d="M5 9v6h4l5 4V5L9 9H5z" />
-                    <path d="M15 8a4 4 0 010 8" stroke="white" strokeWidth="2" fill="none"/>
-                    <path d="M17 6a6 6 0 010 12" stroke="white" strokeWidth="2" fill="none"/>
-                  </svg>
-                )}
-              </button>
-              <div className="relative w-24">
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={volume}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setVolume(v);
-                    if (audioRef.current) audioRef.current.volume = v;
-                  }}
-                  className="vol-range w-24 shadow-sm -translate-y-[4px] translate-x-[20px] shadow-black/10 relative z-10"
-                />
-              </div>
-            </div>
-
-            {/* CC + voice */}
-            <div className="relative z-50">
-
-              <select
-                value={voice}
-                onChange={(e) => switchVoice(e.target.value)}
-                className="
-                  voice-hidden
-                  h-10 pl-8 pr-10
-                  rounded-full
-                  text-xs
-                  outline-none
-                  cursor-pointer
-                  appearance-none
-                  pl-[20px]
-                  w-20
-                "
-              >
-                {VOICES.map((v) => (
-                  <option key={v.code} value={v.code}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-
-              <div
-                className="
-                  pointer-events-none absolute inset-0 flex items-center
-                  pl-2 text-white text-xs font-medium
-                  z-10
-                "
-              >
-                <span
-                  className="
-                    inline-flex items-center justify-center
-                    border-2 border-white
-                    bg-black/60
-                    px-1 py-[2px] mx-1
-                    text-xs leading-none
-                    rounded-sm
-                    font-bold
-                  "
-                >
-                  CC
-                </span>
-                {voiceLabel}
-              </div>
-
-              <svg
-                className="
-                  pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 translate-x-[30px]
-                  w-4 h-4 fill-white opacity-80
-                  z-[999]
-                "
-                viewBox="0 0 24 24"
-              >
-                <path d="M7 10l5 5 5-5z" />
-              </svg>
-
-            </div>
-
           </div>
         </div>
       </div>
@@ -2971,30 +1710,8 @@ useEffect(() => {
   </div>
 
 
-  {/* unchanged footer nav */}
-  <FooterNav
-    goPrev={goPrev}
-    goNext={goNext}
-    slideIndex={slideIndex}
-    totalSlides={totalSlides}
-    audioTime={audioTime}
-    audioDuration={audioDuration}
-    captionText={captionText}
-    currentModuleIndex={currentModuleIndex}
-    currentLessonIndex={currentLessonIndex}
-    captions={captions}
-    slides={slides}
-    currentCaptionIndex={currentCaptionIndex}
-    currentWordIndex={currentWordIndex}
-  />
     </div>
     );
-  }
-
-  // safe numeric display used by FooterNav + Timeline
-  function safeTime(v: any) {
-    const n = Number(v);
-    return isFinite(n) ? n.toFixed(1) : "0.0";
   }
 
   function formatTime(seconds: number) {
@@ -3054,98 +1771,3 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
     </div>
   )
 }
-
-  /* -----------------------------------------------------------
-    FOOTER NAV  (Module → Lesson → Slide/Question)
-  ----------------------------------------------------------- */
-  function FooterNav({
-    goPrev,
-    goNext,
-    slideIndex,
-    totalSlides,
-    audioTime,
-    audioDuration,
-    captionText,
-    currentModuleIndex,
-    currentLessonIndex,
-    captions,
-    slides,
-    currentCaptionIndex,
-    currentWordIndex
-  }: any) {
-
-    function statusText() {
-      const at = Number(audioTime ?? 0).toFixed(1);
-      const ad = Number(audioDuration ?? 0).toFixed(1);
-
-      return `Module ${currentModuleIndex + 1} → Lesson ${
-        currentLessonIndex + 1
-      } | Slide ${slideIndex + 1} of ${totalSlides} | ${at}s / ${ad}s`;
-    }
-
-    const currentSlide = slides?.[slideIndex] || null;
-
-    return (
-      <div className="fixed bottom-[0px] left-0 right-0 bg-white border-t shadow-inner h-[150px] z-50">
-        <div className="h-full max-w-6xl mx-auto px-6 flex items-start justify-between relative pt-4 text-[#001f40]">
-
-          {/* KARAOKE CAPTIONS */}
-          <KaraokeCaption
-            captions={captions}
-            currentSlide={currentSlide}
-            currentWordIndex={currentWordIndex}
-          />
-
-        </div>
-      </div>
-    );
-  }
-
-  /* -----------------------------------------------------------
-    KARAOKE CAPTION RENDERER
-  ----------------------------------------------------------- */
-  function KaraokeCaption({
-    captions,
-    currentSlide,
-    currentWordIndex
-  }: any) {
-
-    if (!currentSlide) return null;
-
-    const fullText = (captions[currentSlide.id] || [])
-      .map((c: any) => c.caption.trim())
-      .join(" ")
-      .replace(/\s+/g, " ");
-
-    const words = tokenizeCaption(fullText);
-
-    return (
-      <div
-        className="
-          text-xl leading-[32px]
-          whitespace-normal
-          text-center
-          text-[#001f40]
-          w-full px-5 mx-auto
-        "
-        style={{
-          minWidth: 0,          
-          maxWidth: "100%",
-          overflow: "visible",
-          wordBreak: "normal",
-          overflowWrap: "break-word",
-          hyphens: "none"
-        }}
-      >
-        {words.map((word: string, wi: number) => (
-  <span
-    key={wi}
-    style={{ display: "inline" }}
-    className={wi === currentWordIndex ? "text-[#ca5608]" : "opacity-80"}
-  >
-    {word + " "}
-  </span>
-        ))}
-      </div>
-    );
-  }
