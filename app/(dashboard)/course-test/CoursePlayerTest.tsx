@@ -228,9 +228,17 @@
     const shouldAutoPlayRef = useRef(false);
     const autoPausedRef = useRef(false);
     const isPlayingRef = useRef(false);
-    const audioCtxRef = useRef<AudioContext | null>(null);
-    const gainRef = useRef<GainNode | null>(null);
-    const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+    const [muted, setMuted] = useState(false)
+    const toggleMute = useCallback(() => {
+      console.log("MUTE_CLICK");
+      setMuted(prev => {
+        const next = !prev;
+        const audio = audioRef.current;
+        if (audio) audio.muted = next;
+        return next;
+      });
+    }, []);
+
     // module and lesson tracking
     const [modules, setModules] = useState<ModuleRow[]>([]);
     const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
@@ -253,10 +261,16 @@
     const [promoOpen, setPromoOpen] = useState(false);
     const [slideIndex, setSlideIndex] = useState(0);
     // audio controls
-    const [volume, setVolume] = useState(1);
+    const [volume, setVolume] = useState(0.8);
     const [voice, setVoice] = useState("en-US-Neural2-D");
     const [audioTime, setAudioTime] = useState(0);
     const [audioDuration, setAudioDuration] = useState(0);
+     // keep mute state synced with the real audio
+   useEffect(() => {
+     if (!audioRef.current) return
+     audioRef.current.muted = muted
+      }, [muted])
+
     // loading
     const [loading, setLoading] = useState(true);
     const [restoredReady, setRestoredReady] = useState(false)
@@ -841,62 +855,58 @@
     }
   }
 
-// ------------------------------------------------------
-// AUDIO FADE HELPERS  (GainNode-based)
-// ------------------------------------------------------
-const fadeFrameRef = useRef<number | null>(null);
-const targetVolumeRef = useRef(volume);
+  // ------------------------------------------------------
+  // AUDIO FADE HELPERS (HTMLAudioElement ONLY)
+  // ------------------------------------------------------
+  const fadeFrameRef = useRef<number | null>(null);
+  const targetVolumeRef = useRef(volume);
 
-const cancelFade = useCallback(() => {
-  if (fadeFrameRef.current !== null) {
-    cancelAnimationFrame(fadeFrameRef.current);
-    fadeFrameRef.current = null;
-  }
-}, []);
-
-const fadeToVolume = useCallback(
-  (target: number, duration = 140) => {
-    cancelFade();
-
-    if (!gainRef.current) return;
-
-    const start = performance.now();
-    const initial = gainRef.current.gain.value;
-
-    // allow boosted loudness
-    const clamp = (v: number) => Math.min(1.8, Math.max(0, v));
-
-    if (duration <= 0) {
-      gainRef.current.gain.value = clamp(target);
-      return;
+  const cancelFade = useCallback(() => {
+    if (fadeFrameRef.current !== null) {
+      cancelAnimationFrame(fadeFrameRef.current);
+      fadeFrameRef.current = null;
     }
-    console.log(gainRef.current.gain.value)
+  }, []);
 
-    const step = (now: number) => {
-      const p = Math.min((now - start) / duration, 1);
-      const raw = initial + (target - initial) * p;
+  const fadeToVolume = useCallback(
+    (audio: HTMLAudioElement, target: number, duration = 140) => {
+      cancelFade();
 
-      gainRef.current!.gain.value = clamp(raw);
+      const start = performance.now();
+      const initial = audio.volume;
 
-      if (p < 1) {
-        fadeFrameRef.current = requestAnimationFrame(step);
-      } else {
-        fadeFrameRef.current = null;
+      const clamp = (v: number) => Math.min(1, Math.max(0, v));
+
+      if (duration <= 0) {
+        audio.volume = clamp(target);
+        return;
       }
-    };
 
-    fadeFrameRef.current = requestAnimationFrame(step);
-  },
-  [cancelFade]
-);
+      const step = (now: number) => {
+        const p = Math.min((now - start) / duration, 1);
 
-// keep ref in sync with slider UI volume
-useEffect(() => {
-  targetVolumeRef.current = volume;
-}, [volume]);
+        const raw = initial + (target - initial) * p;
+        audio.volume = clamp(raw);
 
-// cleanup fade on unmount
-useEffect(() => cancelFade, [cancelFade]);
+        if (p < 1) {
+          fadeFrameRef.current = requestAnimationFrame(step);
+        } else {
+          fadeFrameRef.current = null;
+        }
+      };
+
+      fadeFrameRef.current = requestAnimationFrame(step);
+    },
+    [cancelFade]
+  );
+
+  // keep ref in sync with slider
+  useEffect(() => {
+    targetVolumeRef.current = volume;
+  }, [volume]);
+
+  // cleanup on unmount
+  useEffect(() => cancelFade, [cancelFade]);
 
   //--------------------------------------------------------------------
   // VOICE URL RESOLVER (UPDATED)
@@ -971,25 +981,6 @@ useEffect(() => cancelFade, [cancelFade]);
   }, [])
 
   useEffect(() => {
-  const audio = audioRef.current
-  if (!audio) return
-  if (audioCtxRef.current) return     // prevent duplicate graph setups
-
-  const ctx = new AudioContext()
-  const source = ctx.createMediaElementSource(audio)
-  const gain = ctx.createGain()
-
-  source.connect(gain).connect(ctx.destination)
-
-  audioCtxRef.current = ctx
-  gainRef.current = gain
-  sourceRef.current = source
-
-  // default volume
-  gain.gain.value = 1.0
-}, [])
-
-  useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -1012,23 +1003,25 @@ useEffect(() => cancelFade, [cancelFade]);
     };
   }, []);
 
-    const hardResetAudio = useCallback(() => {
-      if (scrubActive.current) return;
-      cancelFade();
 
-      const audio = audioRef.current;
-      if (!audio) return;
+  const hardResetAudio = useCallback(() => {
+    if (scrubActive.current) return;
+    cancelFade();
 
-      audio.pause();
-      audio.currentTime = 0;
+    const audio = audioRef.current;
+    if (!audio) return;
 
-      // clear buffer completely
-      audio.src = "";
-      audio.load();
+    audio.pause();
+    audio.currentTime = 0;
 
-      audio.oncanplay = null;
+    // clear buffer completely
+    audio.src = "";
+    audio.load();
 
-    }, [cancelFade]);
+    audio.volume = targetVolumeRef.current;
+    audio.oncanplay = null;
+  }, [cancelFade]);
+
 
   //--------------------------------------------------------------------
   // UNLOCK AUTOPLAY ON FIRST USER GESTURE
@@ -1771,7 +1764,7 @@ useEffect(() => {
     if (cancelAutoplay.current && !voiceSwitchRef.current) return;
     const shouldAutoPlay = shouldAutoPlayRef.current;
 
-   // SRC CHANGE
+    // SRC CHANGE
     if (audio.src !== nextUrl) {
       cancelFade();
 
@@ -1779,26 +1772,20 @@ useEffect(() => {
       audio.currentTime = 0;
       audio.src = nextUrl;
 
-      // force silent state
-      if (gainRef.current) {
-        gainRef.current.gain.value = 0;
-      }
+      audio.volume = 0; // HARD SILENCE BEFORE PLAY
 
       audio.oncanplaythrough = () => {
         audio.oncanplaythrough = null;
 
-        // if user paused during transition → restore gain instantly but don't play
-       if (!shouldAutoPlayRef.current || isPausedRef.current || cancelAutoplay.current) {
-          if (gainRef.current) {
-            gainRef.current.gain.value = volume   // immediate reflect slider
-          }
-          return
+        // If user paused during transition, do NOT start silent playback
+        if (!shouldAutoPlayRef.current || isPausedRef.current || cancelAutoplay.current) {
+          audio.volume = targetVolumeRef.current;
+          return;
         }
-
 
         audio
           .play()
-          .then(() => fadeToVolume(targetVolumeRef.current))
+          .then(() => fadeToVolume(audio, targetVolumeRef.current))
           .catch(() => {});
       };
 
@@ -1806,12 +1793,11 @@ useEffect(() => {
       return;
     }
 
-
     // SAME SRC → RESUME
     if (shouldAutoPlay && !isPaused && !cancelAutoplay.current) {
       audio
         .play()
-        .then(() => fadeToVolume(targetVolumeRef.current, 120))
+        .then(() => fadeToVolume(audio, targetVolumeRef.current, 120))
         .catch(() => {});
     }
   }, [
@@ -1841,10 +1827,8 @@ useEffect(() => {
 
       // If we paused while volume was forced to 0 for a transition,
       // restore it so resume can't be silent.
-    if (gainRef.current) {
-      gainRef.current.gain.value = targetVolumeRef.current;
-    } 
-   }
+      if (a.volume === 0) a.volume = targetVolumeRef.current;
+    }
   }, [isPaused, cancelFade]);
 
 
@@ -1882,9 +1866,12 @@ useEffect(() => {
 
     cancelAutoplay.current = false;
 
+    // If we were stuck at 0 volume, bring it back with a fade.
+    if (a.volume === 0) a.volume = 0.001;
+
     setTimeout(() => {
       a.play()
-      .then(() => fadeToVolume(targetVolumeRef.current, 120))
+        .then(() => fadeToVolume(a, targetVolumeRef.current, 120))
         .catch(() => {});
     }, 50);
   }, [isPaused, fadeToVolume]);
@@ -2186,12 +2173,10 @@ useEffect(() => {
     isPausedRef.current = false;
 
     if (audio) {
+      if (audio.volume === 0) audio.volume = 0.001;
       audio
         .play()
-        .then(() => {
-          // fade gain node instead of audio.volume
-          fadeToVolume(targetVolumeRef.current, 120);
-        })
+        .then(() => fadeToVolume(audio, targetVolumeRef.current, 120))
         .catch(() => {});
     }
 
@@ -2207,22 +2192,17 @@ useEffect(() => {
   }, [fadeToVolume]);
 
   const pausePlayback = useCallback(() => {
-  const audio = audioRef.current;
-  cancelAutoplay.current = true;
-  cancelFade();
-
-  if (audio) {
-    audio.pause();
-
-    if (gainRef.current) {
-      gainRef.current.gain.value = targetVolumeRef.current;
+    const audio = audioRef.current;
+    cancelAutoplay.current = true;
+    cancelFade();
+    if (audio) {
+      audio.pause();
+      if (audio.volume === 0) audio.volume = targetVolumeRef.current;
     }
-  }
 
-  setIsPaused(true);
-  isPausedRef.current = true;
-}, [cancelFade]);
-
+    setIsPaused(true);
+    isPausedRef.current = true;
+  }, [cancelFade]);
 
   const requestPlay = useCallback(() => {
     isPlayingRef.current = true
@@ -2297,7 +2277,7 @@ useEffect(() => {
 
     setTimeout(() => {
       autoPausedRef.current = false;
-
+   
    // allow audio buffer to reset before resuming playback
     requestAnimationFrame(() => {
       queueMicrotask(() => {
@@ -2321,42 +2301,38 @@ useEffect(() => {
 
   // AFTER initial hydration → do NOT block the UI with the loader
 
-    function togglePlay() {
-    revealTimelineFor3s();
+  function togglePlay() {
+    revealTimelineFor3s()
 
-    const audio = audioRef.current;
+    const audio = audioRef.current
 
+    // ensure fresh refs
     const isActuallyPlaying =
       audio &&
       !audio.paused &&
       audio.currentTime > 0 &&
-      !audio.ended;
+      !audio.ended
 
     if (isActuallyPlaying) {
-      shouldAutoPlayRef.current = false;
-      cancelAutoplay.current = true;
-      requestPause();
-      return;
+      shouldAutoPlayRef.current = false
+      cancelAutoplay.current = true
+      requestPause()
+      return
     }
 
-    shouldAutoPlayRef.current = true;
-    setIsPaused(false);
-    isPausedRef.current = false;
 
-    requestAnimationFrame(() => {
-      queueMicrotask(() => {
-        if (!audioRef.current) return;
+    shouldAutoPlayRef.current = true
+      setIsPaused(false)
+      isPausedRef.current = false
 
-        // IMPORTANT: resume AudioContext first time user interacts
-        if (audioCtxRef.current?.state === "suspended") {
-          audioCtxRef.current.resume();
-        }
-
-        requestPlay();
-      });
-    });
-  }
-
+      // resume playback cleanly (prevents click/pop artifacts)
+      requestAnimationFrame(() => {
+        queueMicrotask(() => {
+          if (!audioRef.current) return
+          requestPlay()
+        })
+      })
+    }
 
   const hoverTooltipLeft = (() => {
     if (!hoverPreview || !timelineHoverRef.current) return null;
@@ -2399,7 +2375,7 @@ useEffect(() => {
 
       <div
     className={`
-      absolute left-0 right-0 z-20
+      absolute left-0 right-0 z-[50]
       flex items-center justify-center
       transition-opacity duration-300
       ${(isPausedRef.current && !autoPausedRef.current)
@@ -2646,9 +2622,9 @@ useEffect(() => {
             e.currentTarget.currentTime = seekTo;
             if (voiceSwitch.wasPlaying) {
               cancelAutoplay.current = false;
-            if (gainRef.current) {
-              gainRef.current.gain.value = targetVolumeRef.current;
-            }
+              if (e.currentTarget.volume === 0) {
+                e.currentTarget.volume = targetVolumeRef.current;
+              }
               e.currentTarget.play().catch(() => {});
               isPausedRef.current = false;
               setIsPaused(false);
@@ -2743,7 +2719,7 @@ useEffect(() => {
         transition-all duration-300 ease-out
         ${showTimeline
           ? "opacity-100 translate-y-0"
-          : "opacity-0 translate-y-3 pointer-events-none"
+          : "opacity-0 translate-y-3"
         }
       `}
     >
@@ -2776,7 +2752,7 @@ useEffect(() => {
 
       {/* CONTROLS – volume + CC */}
       <div
-        className="fixed bottom-[160px] left-0 right-0 z-40 pointer-events-auto"
+        className="fixed bottom-[160px] left-0 right-0 z-[200] pointer-events-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="md:max-w-6xl md:mx-auto px-4">
@@ -2807,27 +2783,44 @@ useEffect(() => {
                 rounded-full
               "
             >
-              <svg
-                viewBox="0 0 24 24"
-                className="w- h-5 fill-white drop-shadow-sm translate-x-[30px]"
+             <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleMute()
+                }}
+                className="cursor-pointer translate-x-[20px]"
               >
-                <path d="M5 9v6h4l5 4V5L9 9H5z" />
-              </svg>
-
+                {muted ? (
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5 fill-white drop-shadow-sm"
+                  >
+                    <path d="M5 9v6h4l5 4V5L9 9H5z" />
+                    <line x1="18" y1="6" x2="22" y2="10" stroke="white" strokeWidth="2"/>
+                    <line x1="22" y1="6" x2="18" y2="10" stroke="white" strokeWidth="2"/>
+                  </svg>
+                ) : (
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5 fill-white drop-shadow-sm"
+                  >
+                    <path d="M5 9v6h4l5 4V5L9 9H5z" />
+                    <path d="M15 8a4 4 0 010 8" stroke="white" strokeWidth="2" fill="none"/>
+                    <path d="M17 6a6 6 0 010 12" stroke="white" strokeWidth="2" fill="none"/>
+                  </svg>
+                )}
+              </button>
               <div className="relative w-24">
                 <input
                   type="range"
                   min="0"
-                  max="1.8"
+                  max="1"
                   step="0.05"
                   value={volume}
                   onChange={(e) => {
                     const v = Number(e.target.value);
                     setVolume(v);
-                    if (gainRef.current) {
-                    cancelFade()
-                    gainRef.current.gain.value = v
-                  }
+                    if (audioRef.current) audioRef.current.volume = v;
                   }}
                   className="vol-range w-24 shadow-sm -translate-y-[4px] translate-x-[20px] shadow-black/10 relative z-10"
                 />
