@@ -2671,35 +2671,52 @@ useEffect(() => {
         </button>
       </div>
     
-  {showTimeline && hoverPreview && hoverTooltipLeft !== null && (
-    <div
-      ref={hoverTooltipRef}
-      className="fixed z-[999999] pointer-events-none transition-opacity duration-60"
-      style={{
-        left: hoverTooltipLeft,
-        bottom: 240,
-        opacity: 1,
-      }}
-    >
-      <div className="w-[375px] h-[250px] rounded-lg bg-black/90 p-3 text-white shadow-xl backdrop-blur-sm">
-        {hoverPreview.imgUrl ? (
-          <img
-            src={hoverPreview.imgUrl}
-            alt=""
-            className="mb-3 h-[170px] w-full rounded-md object-cover transition-opacity duration-150"
-          />
-        ) : (
-          <div className="mb-3 h-[170px] w-full rounded-md bg-white/10" />
-        )}
-        <div className="line-clamp-1 text-[13px] leading-snug">
-          {hoverPreview.text ?? ""}
-        </div>
-        <div className="mt-2 text-[12px] tabular-nums text-white/80">
+{showTimeline && hoverPreview && hoverTooltipLeft !== null && (
+  <div
+    ref={hoverTooltipRef}
+    className="fixed z-[999999] pointer-events-none transition-opacity duration-60"
+    style={{
+      left: hoverTooltipLeft,
+      bottom: 240,
+      opacity: 1,
+    }}
+  >
+    <div className="relative w-[375px] h-[250px] rounded-lg bg-black/90 p-2 text-white shadow-xl backdrop-blur-sm overflow-hidden">
+
+      {/* timestamp pill */}
+      {hoverPreview.timeLabel && (
+        <div
+          className="
+            absolute top-3 left-3
+            bg-black/40 text-[#fff] rounded-full
+            px-2 py-[2px]
+            shadow-sm
+            text-sm font-medium
+            pointer-events-none z-[2]
+          "
+        >
           {hoverPreview.timeLabel}
         </div>
+      )}
+
+      {/* image */}
+      {hoverPreview.imgUrl ? (
+        <img
+          src={hoverPreview.imgUrl}
+          alt=""
+          className="h-[165px] w-full object-cover rounded-t-lg"
+        />
+      ) : (
+        <div className="h-[165px] w-full bg-white/10 rounded-t-lg" />
+      )}
+
+      {/* text block */}
+      <div className="px-3 py-2 text-[13px] leading-snug line-clamp-3">
+        {hoverPreview.text ?? ""}
       </div>
     </div>
-  )}
+  </div>
+)}
 
   {/* HOVER REVEAL AREA */}
   <div
