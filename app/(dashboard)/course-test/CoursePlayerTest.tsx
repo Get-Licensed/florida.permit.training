@@ -228,44 +228,43 @@
     const shouldAutoPlayRef = useRef(false);
     const autoPausedRef = useRef(false);
     const isPlayingRef = useRef(false);
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const gainRef = useRef<GainNode | null>(null);
+    const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+    // module and lesson tracking
     const [modules, setModules] = useState<ModuleRow[]>([]);
     const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
-    // track highest DB-completed module
     const [maxCompletedIndex, setMaxCompletedIndex] = useState(0);
     const [progressReady, setProgressReady] = useState(false);
     const [contentReady, setContentReady] = useState(false);
     const [progressResolved, setProgressResolved] = useState(false);
-
     const [lessons, setLessons] = useState<LessonRow[]>([]);
     const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
-
+    const [courseTotals, setCourseTotals] = useState<{
+       totalSeconds: number; }>({ totalSeconds: 0 });
+   // course assets
     const [slides, setSlides] = useState<SlideRow[]>([]);
     const [captions, setCaptions] = useState<Record<string, CaptionRow[]>>({});
-
     const [courseLessons, setCourseLessons] = useState<LessonRow[]>([]);
     const [courseSlides, setCourseSlides] = useState<CourseSlideRow[]>([]);
     const [courseCaptions, setCourseCaptions] = useState<
       Record<string, CaptionTimingRow[]>
     >({});
-
     const [promoOpen, setPromoOpen] = useState(false);
-
     const [slideIndex, setSlideIndex] = useState(0);
-    const [loading, setLoading] = useState(true);
-
-    const [volume, setVolume] = useState(0.8);
+    // audio controls
+    const [volume, setVolume] = useState(1);
     const [voice, setVoice] = useState("en-US-Neural2-D");
-
     const [audioTime, setAudioTime] = useState(0);
     const [audioDuration, setAudioDuration] = useState(0);
+    // loading
+    const [loading, setLoading] = useState(true);
     const [restoredReady, setRestoredReady] = useState(false)
     const [initialHydrationDone, setInitialHydrationDone] = useState(false);
 
     const [showPlayFlash, setShowPlayFlash] = useState(false);
     const playFlashTimer = useRef<number | null>(null);
-
-    const [courseTotals, setCourseTotals] = useState<{
-    totalSeconds: number; }>({ totalSeconds: 0 });
+    // final actions
     const [examPassed, setExamPassed] = useState(false);
     const [paymentPaid, setPaymentPaid] = useState(false);
 
@@ -284,12 +283,26 @@
     const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
     const [canProceed, setCanProceed] = useState(false);
     const [isPaused, setIsPaused] = useState(true);
-      // NEW — for karaoke word highlighting
-      const [currentWordIndex, setCurrentWordIndex] = useState(0);
+    const [currentWordIndex, setCurrentWordIndex] = useState(0);
 
-      const timelineAutoHideTimerRef = useRef<number | null>(null)
+    const timelineAutoHideTimerRef = useRef<number | null>(null)
+    // NAV STATE
+      const totalSlides = slides.length;
 
-      function revealTimelineFor3s() {
+      const isFinalSlideOfModule =
+        currentLessonIndex === (lessons?.length ?? 0) - 1 &&
+        slideIndex === totalSlides - 1;
+
+      const showContinueInstruction =
+        isFinalSlideOfModule &&
+        canProceed;
+
+      const isFinalCourseSlide =
+        isFinalSlideOfModule &&
+        currentModuleIndex === (modules?.length ?? 0) - 1;
+
+      
+    function revealTimelineFor3s() {
         setShowTimeline(true)
 
         if (timelineAutoHideTimerRef.current !== null) {
@@ -758,6 +771,24 @@
       return () => window.removeEventListener("keydown", handleSpace)
     }, [])
 
+    useEffect(() => {
+      function handleContinueHotkey(e: KeyboardEvent) {
+        if (!showContinueInstruction) return
+
+        // prevent space scrolling
+        if (e.code === "Space" || e.code === "Enter") {
+          e.preventDefault()
+
+          resetAudioElement()
+          setIsPaused(!shouldAutoPlayRef.current)
+          goNext()
+        }
+      }
+
+      window.addEventListener("keydown", handleContinueHotkey)
+      return () => window.removeEventListener("keydown", handleContinueHotkey)
+    }, [showContinueInstruction])
+
   // -------------------------------------------------------------
   // DEBUG: Core gate values (helps detect infinite steering wheel)
   // -------------------------------------------------------------
@@ -810,58 +841,62 @@
     }
   }
 
-  // ------------------------------------------------------
-  // AUDIO FADE HELPERS (HTMLAudioElement ONLY)
-  // ------------------------------------------------------
-  const fadeFrameRef = useRef<number | null>(null);
-  const targetVolumeRef = useRef(volume);
+// ------------------------------------------------------
+// AUDIO FADE HELPERS  (GainNode-based)
+// ------------------------------------------------------
+const fadeFrameRef = useRef<number | null>(null);
+const targetVolumeRef = useRef(volume);
 
-  const cancelFade = useCallback(() => {
-    if (fadeFrameRef.current !== null) {
-      cancelAnimationFrame(fadeFrameRef.current);
-      fadeFrameRef.current = null;
+const cancelFade = useCallback(() => {
+  if (fadeFrameRef.current !== null) {
+    cancelAnimationFrame(fadeFrameRef.current);
+    fadeFrameRef.current = null;
+  }
+}, []);
+
+const fadeToVolume = useCallback(
+  (target: number, duration = 140) => {
+    cancelFade();
+
+    if (!gainRef.current) return;
+
+    const start = performance.now();
+    const initial = gainRef.current.gain.value;
+
+    // allow boosted loudness
+    const clamp = (v: number) => Math.min(1.8, Math.max(0, v));
+
+    if (duration <= 0) {
+      gainRef.current.gain.value = clamp(target);
+      return;
     }
-  }, []);
+    console.log(gainRef.current.gain.value)
 
-  const fadeToVolume = useCallback(
-    (audio: HTMLAudioElement, target: number, duration = 140) => {
-      cancelFade();
+    const step = (now: number) => {
+      const p = Math.min((now - start) / duration, 1);
+      const raw = initial + (target - initial) * p;
 
-      const start = performance.now();
-      const initial = audio.volume;
+      gainRef.current!.gain.value = clamp(raw);
 
-      const clamp = (v: number) => Math.min(1, Math.max(0, v));
-
-      if (duration <= 0) {
-        audio.volume = clamp(target);
-        return;
+      if (p < 1) {
+        fadeFrameRef.current = requestAnimationFrame(step);
+      } else {
+        fadeFrameRef.current = null;
       }
+    };
 
-      const step = (now: number) => {
-        const p = Math.min((now - start) / duration, 1);
+    fadeFrameRef.current = requestAnimationFrame(step);
+  },
+  [cancelFade]
+);
 
-        const raw = initial + (target - initial) * p;
-        audio.volume = clamp(raw);
+// keep ref in sync with slider UI volume
+useEffect(() => {
+  targetVolumeRef.current = volume;
+}, [volume]);
 
-        if (p < 1) {
-          fadeFrameRef.current = requestAnimationFrame(step);
-        } else {
-          fadeFrameRef.current = null;
-        }
-      };
-
-      fadeFrameRef.current = requestAnimationFrame(step);
-    },
-    [cancelFade]
-  );
-
-  // keep ref in sync with slider
-  useEffect(() => {
-    targetVolumeRef.current = volume;
-  }, [volume]);
-
-  // cleanup on unmount
-  useEffect(() => cancelFade, [cancelFade]);
+// cleanup fade on unmount
+useEffect(() => cancelFade, [cancelFade]);
 
   //--------------------------------------------------------------------
   // VOICE URL RESOLVER (UPDATED)
@@ -936,6 +971,25 @@
   }, [])
 
   useEffect(() => {
+  const audio = audioRef.current
+  if (!audio) return
+  if (audioCtxRef.current) return     // prevent duplicate graph setups
+
+  const ctx = new AudioContext()
+  const source = ctx.createMediaElementSource(audio)
+  const gain = ctx.createGain()
+
+  source.connect(gain).connect(ctx.destination)
+
+  audioCtxRef.current = ctx
+  gainRef.current = gain
+  sourceRef.current = source
+
+  // default volume
+  gain.gain.value = 1.0
+}, [])
+
+  useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -958,25 +1012,23 @@
     };
   }, []);
 
+    const hardResetAudio = useCallback(() => {
+      if (scrubActive.current) return;
+      cancelFade();
 
-  const hardResetAudio = useCallback(() => {
-    if (scrubActive.current) return;
-    cancelFade();
+      const audio = audioRef.current;
+      if (!audio) return;
 
-    const audio = audioRef.current;
-    if (!audio) return;
+      audio.pause();
+      audio.currentTime = 0;
 
-    audio.pause();
-    audio.currentTime = 0;
+      // clear buffer completely
+      audio.src = "";
+      audio.load();
 
-    // clear buffer completely
-    audio.src = "";
-    audio.load();
+      audio.oncanplay = null;
 
-    audio.volume = targetVolumeRef.current;
-    audio.oncanplay = null;
-  }, [cancelFade]);
-
+    }, [cancelFade]);
 
   //--------------------------------------------------------------------
   // UNLOCK AUTOPLAY ON FIRST USER GESTURE
@@ -1534,22 +1586,6 @@
     }
   }
 
-  /* ------------------------------------------------------
-    NAV STATE
-  ------------------------------------------------------ */
-  const totalSlides = slides.length;
-
-  const isFinalSlideOfModule =
-    currentLessonIndex === (lessons?.length ?? 0) - 1 &&
-    slideIndex === totalSlides - 1;
-
-  const showContinueInstruction =
-    isFinalSlideOfModule &&
-    canProceed;
-
-  const isFinalCourseSlide =
-    isFinalSlideOfModule &&
-    currentModuleIndex === (modules?.length ?? 0) - 1;
 
   /* ------------------------------------------------------
     LOAD SEQUENCE
@@ -1735,7 +1771,7 @@ useEffect(() => {
     if (cancelAutoplay.current && !voiceSwitchRef.current) return;
     const shouldAutoPlay = shouldAutoPlayRef.current;
 
-    // SRC CHANGE
+   // SRC CHANGE
     if (audio.src !== nextUrl) {
       cancelFade();
 
@@ -1743,20 +1779,26 @@ useEffect(() => {
       audio.currentTime = 0;
       audio.src = nextUrl;
 
-      audio.volume = 0; // HARD SILENCE BEFORE PLAY
+      // force silent state
+      if (gainRef.current) {
+        gainRef.current.gain.value = 0;
+      }
 
       audio.oncanplaythrough = () => {
         audio.oncanplaythrough = null;
 
-        // If user paused during transition, do NOT start silent playback
-        if (!shouldAutoPlayRef.current || isPausedRef.current || cancelAutoplay.current) {
-          audio.volume = targetVolumeRef.current;
-          return;
+        // if user paused during transition → restore gain instantly but don't play
+       if (!shouldAutoPlayRef.current || isPausedRef.current || cancelAutoplay.current) {
+          if (gainRef.current) {
+            gainRef.current.gain.value = volume   // immediate reflect slider
+          }
+          return
         }
+
 
         audio
           .play()
-          .then(() => fadeToVolume(audio, targetVolumeRef.current))
+          .then(() => fadeToVolume(targetVolumeRef.current))
           .catch(() => {});
       };
 
@@ -1764,11 +1806,12 @@ useEffect(() => {
       return;
     }
 
+
     // SAME SRC → RESUME
     if (shouldAutoPlay && !isPaused && !cancelAutoplay.current) {
       audio
         .play()
-        .then(() => fadeToVolume(audio, targetVolumeRef.current, 120))
+        .then(() => fadeToVolume(targetVolumeRef.current, 120))
         .catch(() => {});
     }
   }, [
@@ -1798,8 +1841,10 @@ useEffect(() => {
 
       // If we paused while volume was forced to 0 for a transition,
       // restore it so resume can't be silent.
-      if (a.volume === 0) a.volume = targetVolumeRef.current;
-    }
+    if (gainRef.current) {
+      gainRef.current.gain.value = targetVolumeRef.current;
+    } 
+   }
   }, [isPaused, cancelFade]);
 
 
@@ -1837,12 +1882,9 @@ useEffect(() => {
 
     cancelAutoplay.current = false;
 
-    // If we were stuck at 0 volume, bring it back with a fade.
-    if (a.volume === 0) a.volume = 0.001;
-
     setTimeout(() => {
       a.play()
-        .then(() => fadeToVolume(a, targetVolumeRef.current, 120))
+      .then(() => fadeToVolume(targetVolumeRef.current, 120))
         .catch(() => {});
     }, 50);
   }, [isPaused, fadeToVolume]);
@@ -2144,10 +2186,12 @@ useEffect(() => {
     isPausedRef.current = false;
 
     if (audio) {
-      if (audio.volume === 0) audio.volume = 0.001;
       audio
         .play()
-        .then(() => fadeToVolume(audio, targetVolumeRef.current, 120))
+        .then(() => {
+          // fade gain node instead of audio.volume
+          fadeToVolume(targetVolumeRef.current, 120);
+        })
         .catch(() => {});
     }
 
@@ -2163,17 +2207,22 @@ useEffect(() => {
   }, [fadeToVolume]);
 
   const pausePlayback = useCallback(() => {
-    const audio = audioRef.current;
-    cancelAutoplay.current = true;
-    cancelFade();
-    if (audio) {
-      audio.pause();
-      if (audio.volume === 0) audio.volume = targetVolumeRef.current;
-    }
+  const audio = audioRef.current;
+  cancelAutoplay.current = true;
+  cancelFade();
 
-    setIsPaused(true);
-    isPausedRef.current = true;
-  }, [cancelFade]);
+  if (audio) {
+    audio.pause();
+
+    if (gainRef.current) {
+      gainRef.current.gain.value = targetVolumeRef.current;
+    }
+  }
+
+  setIsPaused(true);
+  isPausedRef.current = true;
+}, [cancelFade]);
+
 
   const requestPlay = useCallback(() => {
     isPlayingRef.current = true
@@ -2272,38 +2321,42 @@ useEffect(() => {
 
   // AFTER initial hydration → do NOT block the UI with the loader
 
-  function togglePlay() {
-    revealTimelineFor3s()
+    function togglePlay() {
+    revealTimelineFor3s();
 
-    const audio = audioRef.current
+    const audio = audioRef.current;
 
-    // ensure fresh refs
     const isActuallyPlaying =
       audio &&
       !audio.paused &&
       audio.currentTime > 0 &&
-      !audio.ended
+      !audio.ended;
 
     if (isActuallyPlaying) {
-      shouldAutoPlayRef.current = false
-      cancelAutoplay.current = true
-      requestPause()
-      return
+      shouldAutoPlayRef.current = false;
+      cancelAutoplay.current = true;
+      requestPause();
+      return;
     }
 
+    shouldAutoPlayRef.current = true;
+    setIsPaused(false);
+    isPausedRef.current = false;
 
-    shouldAutoPlayRef.current = true
-      setIsPaused(false)
-      isPausedRef.current = false
+    requestAnimationFrame(() => {
+      queueMicrotask(() => {
+        if (!audioRef.current) return;
 
-      // resume playback cleanly (prevents click/pop artifacts)
-      requestAnimationFrame(() => {
-        queueMicrotask(() => {
-          if (!audioRef.current) return
-          requestPlay()
-        })
-      })
-    }
+        // IMPORTANT: resume AudioContext first time user interacts
+        if (audioCtxRef.current?.state === "suspended") {
+          audioCtxRef.current.resume();
+        }
+
+        requestPlay();
+      });
+    });
+  }
+
 
   const hoverTooltipLeft = (() => {
     if (!hoverPreview || !timelineHoverRef.current) return null;
@@ -2593,9 +2646,9 @@ useEffect(() => {
             e.currentTarget.currentTime = seekTo;
             if (voiceSwitch.wasPlaying) {
               cancelAutoplay.current = false;
-              if (e.currentTarget.volume === 0) {
-                e.currentTarget.volume = targetVolumeRef.current;
-              }
+            if (gainRef.current) {
+              gainRef.current.gain.value = targetVolumeRef.current;
+            }
               e.currentTarget.play().catch(() => {});
               isPausedRef.current = false;
               setIsPaused(false);
@@ -2765,13 +2818,16 @@ useEffect(() => {
                 <input
                   type="range"
                   min="0"
-                  max="1"
+                  max="1.8"
                   step="0.05"
                   value={volume}
                   onChange={(e) => {
                     const v = Number(e.target.value);
                     setVolume(v);
-                    if (audioRef.current) audioRef.current.volume = v;
+                    if (gainRef.current) {
+                    cancelFade()
+                    gainRef.current.gain.value = v
+                  }
                   }}
                   className="vol-range w-24 shadow-sm -translate-y-[4px] translate-x-[20px] shadow-black/10 relative z-10"
                 />
