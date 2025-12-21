@@ -1,7 +1,6 @@
   // deno-lint-ignore-file
-
-  "use client";
-
+"use client";
+export const dynamic = "force-dynamic";
   import { supabase } from "@/utils/supabaseClient";
   import { useEffect, useState, useCallback, useRef, useMemo } from "react";
   import CourseTimeline from "@/components/YT-Timeline";
