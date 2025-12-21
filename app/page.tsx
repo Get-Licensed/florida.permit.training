@@ -4,31 +4,235 @@ export const dynamic = "force-dynamic";
 import PublicHeader from "@/app/(public)/_PublicHeader";
 import TopProgressBar from "@/components/TopProgressBar";
 import Image from "next/image";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import VerifyPhoneModal from "@/components/VerifyPhoneModal";
+import CourseTimeline from "@/components/YT-Timeline";
 
+type ModuleRow = {
+  id: string;
+  title: string;
+  sort_order: number;
+};
+
+type SlideRow = {
+  id: string;
+  module_id: string;
+  image_path: string | null;
+  order_index: number;
+};
+
+type HoverPreviewData = {
+  imgUrl: string | null;
+  text: string;
+  timeLabel: string;
+};
+
+const DEFAULT_SLIDE_SECONDS = 60;
+
+function formatHoverTime(seconds: number) {
+  if (!isFinite(seconds)) return "00:00:00";
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
 
 export default function SignUpPage() {
   const router = useRouter();
-
-  const [hoverItem, setHoverItem] = useState<any>(null);
-  const [mouseX, setMouseX] = useState(0);
+  const [modules, setModules] = useState<ModuleRow[]>([]);
+  const [slides, setSlides] = useState<SlideRow[]>([]);
   const [vw, setVw] = useState(0);
-
   const [showPromoBox, setShowPromoBox] = useState(true);
   const [mobilePromoOpen, setMobilePromoOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [progress, setProgress] = useState(15);
-
   const mobileSheetRef = useRef<HTMLDivElement>(null);
   const [lastPromoX, setLastPromoX] = useState<number | null>(null);
   const finalSegmentRef = useRef<HTMLDivElement>(null);
-
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [userId, setUserId] = useState<string>("");
+  const [isPaused, setIsPaused] = useState(true);
+  const allowedSeekSecondsRef = useRef(Infinity);
+  const playedSecondsRef = useRef(0);
+  const timelineHoverRef = useRef<HTMLDivElement | null>(null);
+  const thumbCacheRef = useRef(new Map<string, string>());
+  const hoverTooltipRafRef = useRef<number | null>(null);
+  const previewXRef = useRef(0);
+  const previewDataRef = useRef<HoverPreviewData>({
+    imgUrl: null,
+    text: "",
+    timeLabel: "",
+  });
+  const tooltipVisibleRef = useRef(false);
+  const hoverTooltipRef = useRef<HTMLDivElement | null>(null);
+  const hoverTooltipImageRef = useRef<HTMLImageElement | null>(null);
+  const hoverTooltipPlaceholderRef = useRef<HTMLDivElement | null>(null);
+  const hoverTooltipTextRef = useRef<HTMLDivElement | null>(null);
+  const hoverTooltipTimeRef = useRef<HTMLDivElement | null>(null);
+  // STATE mirror for tooltip preview (forces render)
+  const [previewState, setPreviewState] = useState({
+    imgUrl: null as string | null,
+    text: "",
+    timeLabel: "",
+    leftPx: 0,
+    visible: false,
+  });
 
+  const togglePlay = () => setIsPaused((p) => !p);
+  const goToModule = () => router.push("/course");
+
+  const slidesByModule = useMemo(() => {
+    const map = new Map<string, SlideRow[]>();
+    slides
+      .slice()
+      .sort((a, b) => a.order_index - b.order_index)
+      .forEach((slide) => {
+        const list = map.get(slide.module_id) ?? [];
+        list.push(slide);
+        map.set(slide.module_id, list);
+      });
+    return map;
+  }, [slides]);
+
+  const firstSlidesByModule = useMemo(() => {
+    const map = new Map<string, SlideRow>();
+    modules.forEach((module) => {
+      const firstSlide = slidesByModule.get(module.id)?.[0];
+      if (firstSlide) map.set(module.id, firstSlide);
+    });
+    return map;
+  }, [modules, slides]);
+
+  const moduleDurations = useMemo(
+    () =>
+      modules.map((module) => {
+        const count = slidesByModule.get(module.id)?.length ?? 0;
+        return Math.max(1, count) * DEFAULT_SLIDE_SECONDS;
+      }),
+    [modules, slidesByModule]
+  );
+
+  const totalCourseSeconds = moduleDurations.reduce(
+    (sum, duration) => sum + duration,
+    0
+  );
+
+  const scheduleTooltipUpdate = useCallback(() => {
+    if (hoverTooltipRafRef.current !== null) return;
+    hoverTooltipRafRef.current = requestAnimationFrame(() => {
+      hoverTooltipRafRef.current = null;
+      const tooltip = hoverTooltipRef.current;
+      if (!tooltip) return;
+
+      const { imgUrl, text, timeLabel } = previewDataRef.current;
+      tooltip.style.left = `${previewXRef.current}px`;
+
+      if (hoverTooltipImageRef.current) {
+        if (imgUrl) {
+          hoverTooltipImageRef.current.src = imgUrl;
+          hoverTooltipImageRef.current.style.display = "block";
+        } else {
+          hoverTooltipImageRef.current.removeAttribute("src");
+          hoverTooltipImageRef.current.style.display = "none";
+        }
+      }
+
+      if (hoverTooltipPlaceholderRef.current) {
+        hoverTooltipPlaceholderRef.current.style.display = imgUrl
+          ? "none"
+          : "block";
+      }
+
+      if (hoverTooltipTextRef.current) {
+        hoverTooltipTextRef.current.textContent = text ?? "";
+      }
+
+      if (hoverTooltipTimeRef.current) {
+        hoverTooltipTimeRef.current.textContent = timeLabel ?? "";
+        hoverTooltipTimeRef.current.style.display = timeLabel
+          ? "block"
+          : "none";
+      }
+    });
+  }, []);
+
+  const handleHoverResolve = useCallback(
+    (seconds: number, clientX: number) => {
+      if (!modules.length) return;
+      if (totalCourseSeconds <= 0) return;
+      if (!timelineHoverRef.current) return;
+
+      let remaining = Math.min(Math.max(seconds, 0), totalCourseSeconds);
+      let moduleIndex = 0;
+
+      for (let i = 0; i < moduleDurations.length; i++) {
+        const duration = moduleDurations[i] ?? 0;
+        if (remaining <= duration || i === moduleDurations.length - 1) {
+          moduleIndex = i;
+          break;
+        }
+        remaining -= duration;
+      }
+
+      const module = modules[moduleIndex];
+      if (!module) return;
+
+      const rect = timelineHoverRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+
+      const width = 375;
+      const viewportWidth =
+        typeof window !== "undefined" ? window.innerWidth : rect.right;
+      const minBoundary = Math.max(0, rect.left);
+      const maxViewportBoundary = Math.max(0, viewportWidth - width);
+      const maxBoundary = Math.min(rect.right - width, maxViewportBoundary);
+      const desired = clientX - width / 2;
+      const leftPx = Math.min(Math.max(desired, minBoundary), maxBoundary);
+
+      const slide = firstSlidesByModule.get(module.id);
+      const imgUrl =
+        slide?.image_path
+          ? thumbCacheRef.current.get(slide.image_path.replace(/^\/+/, "")) ??
+            null
+          : null;
+      const timeLabel = formatHoverTime(seconds);
+
+      previewXRef.current = leftPx;
+      previewDataRef.current = {
+        imgUrl,
+        text: module.title,
+        timeLabel,
+      };
+      tooltipVisibleRef.current = true;
+      scheduleTooltipUpdate();
+
+      // NEW: force UI render update
+      setPreviewState({
+        imgUrl,
+        text: module.title,
+        timeLabel,
+        leftPx,
+        visible: true,
+      });
+    },
+    [
+      firstSlidesByModule,
+      moduleDurations,
+      modules,
+      scheduleTooltipUpdate,
+      totalCourseSeconds,
+    ]
+  );
+
+  const handleHoverEnd = useCallback(() => {
+    tooltipVisibleRef.current = false;
+    scheduleTooltipUpdate();
+    setPreviewState(prev => ({ ...prev, visible: false }));
+  }, [scheduleTooltipUpdate]);
 
 
   /* ───────── CHECK IF LOGGED IN ───────── */
@@ -58,28 +262,86 @@ export default function SignUpPage() {
     setLastPromoX(rect.left + rect.width / 2);
   }, [ready, vw, showPromoBox]);
 
+  useEffect(() => {
+    let cancelled = false;
 
-  /* ───────── TIMELINE DATA ───────── */
-  const TIMELINE = [
-    { id: "start", title: "Join Florida Permit Training", duration: 12, thumbnail: "/logo.png", displayDuration: "6 hours" },
-    { id: 1, title: "Introduction", duration: 10, thumbnail: "/thumbs/intro.jpg" },
-    { id: 2, title: "Traffic Safety Problem", duration: 35, thumbnail: "/thumbs/safety.jpg" },
-    { id: 3, title: "Physiological Effects", duration: 35, thumbnail: "/thumbs/physiology.jpg" },
-    { id: 4, title: "Psychological Factors", duration: 25, thumbnail: "/thumbs/psych.jpg" },
-    { id: 5, title: "Driving Under the Influence", duration: 60, thumbnail: "/thumbs/dui.jpg" },
-    { id: 6, title: "Licensing & Insurance", duration: 25, thumbnail: "/thumbs/licensing.jpg" },
-    { id: 7, title: "Licensing Actions", duration: 25, thumbnail: "/thumbs/actions.jpg" },
-    { id: 8, title: "Vehicle Safety", duration: 40, thumbnail: "/thumbs/avoidance.jpg" },
-    { id: 9, title: "Crash Dynamics", duration: 40, thumbnail: "/thumbs/dynamics.jpg" },
-    { id: 10, title: "Traffic Laws I", duration: 55, thumbnail: "/thumbs/laws1.jpg" },
-    { id: 11, title: "Traffic Laws II", duration: 55, thumbnail: "/thumbs/laws2.jpg" },
-    { id: 12, title: "Traffic Laws III", duration: 55, thumbnail: "/thumbs/laws3.jpg" },
-    { id: 13, title: "Behind the Wheel", duration: 55, thumbnail: "/thumbs/wheel.jpg" },
-    { id: "finalActions", title: "PAY / EXAM / DMV", duration: 48, thumbnail: null },
-  ];
+    async function loadMinimalStructure() {
+      const { data: moduleRows } = await supabase
+        .from("modules")
+        .select("id,title,sort_order")
+        .order("sort_order");
 
-  const totalMinutes = useMemo(() => TIMELINE.reduce((s, l) => s + l.duration, 0), []);
-  const widthPercent = (l: any) => (l.duration / totalMinutes) * 100;
+      const { data: slideRows } = await supabase
+        .from("lesson_slides")
+        .select("id,module_id,image_path,order_index")
+        .order("order_index", { ascending: true });
+
+      if (cancelled) return;
+      setModules(moduleRows ?? []);
+      setSlides(slideRows ?? []);
+    }
+
+    loadMinimalStructure();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+async function preloadThumbs() {
+  console.log("preloadThumbs invoked");
+  console.log("modules:", modules.length);
+  console.log("slides:", slides.length);
+  if (!modules.length || !slides.length) return;
+
+  const firstSlides = modules
+    .map(m => firstSlidesByModule.get(m.id))
+    .filter((s): s is SlideRow => Boolean(s?.image_path));
+
+  const unresolved = firstSlides.filter(
+    s => !thumbCacheRef.current.has(s.image_path!.replace(/^\/+/, ""))
+  );
+
+  console.log("unresolved count:", unresolved.length);
+  console.log("unresolved items:", unresolved.map(u => u.image_path));
+
+  if (!unresolved.length) return;
+
+  const paths = unresolved.map(s => s.image_path!);
+
+  const { data, error } = await supabase.storage
+    .from("uploads")
+    .createSignedUrls(paths, 3600);
+
+  console.log("signed result:", {data, error});
+
+  if (error || !data) return;
+
+  data.forEach((entry, idx) => {
+    const slide = unresolved[idx];
+    if (!slide || !entry.signedUrl) return;
+
+    const path = slide.image_path!;
+    const normalized = path.replace(/^\/+/, "");
+    console.log("cache write:", { path, signedUrl: entry.signedUrl });
+
+    thumbCacheRef.current.set(normalized, entry.signedUrl);
+
+    requestAnimationFrame(() => {
+      if (tooltipVisibleRef.current) scheduleTooltipUpdate();
+    });
+  });
+}
+
+
+    preloadThumbs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [firstSlidesByModule, modules, slides]);
 
   /* ───────── GOOGLE POPUP SIGN-IN ───────── */
   const handleGoogleSignup = async () => {
@@ -109,38 +371,9 @@ export default function SignUpPage() {
     }
   };
 
-/* ───────── TIMELINE HOVER → TOP BAR PROGRESS ───────── */
-    const defaultProgress = 15;
-
-    const handleHoverTimeline = (item: any, x?: number) => {
-      // If user hovers nothing or the start block, reset progress only
-      if (!item || item.id === "start") {
-        setProgress(defaultProgress);
-        return; // **Do NOT hide promo box here**
-      }
-
-      // If user hovers FINAL ACTIONS segment
-      if (item.id === "finalActions") {
-        setHoverItem(item);
-        setProgress(99);
-
-        // Always show the promo box for final item (desktop only)
-        if (vw >= 768) setShowPromoBox(true);
-
-        // Track x-position live for correct popup alignment
-        if (x) setLastPromoX(x);
-        return;
-      }
-
-      // All other segments: hide promo box on desktop
-      if (vw >= 768) setShowPromoBox(false);
-
-      // Update progress based on position
-      const idx = TIMELINE.indexOf(item);
-      const pct = Math.round((idx / (TIMELINE.length - 1)) * 100);
-      setProgress(Math.max(defaultProgress, pct));
-    };
-
+  useEffect(() => {
+    (window as any).thumbCache = thumbCacheRef.current
+  },[])
 
   /* ───────── MOBILE PROMO CLOSE ON OUTSIDE TAP ───────── */
   useEffect(() => {
@@ -183,8 +416,16 @@ useEffect(() => {
   return () => window.removeEventListener("message", handlePopupMessage);
 }, []);
 
+const totalSeconds = totalCourseSeconds;
+const currentSeconds = 0;
+const elapsedCourseSeconds = 0;
+const onScrub = () => {};
+const onScrubStart = () => {};
+const onScrubEnd = () => {};
+
   /* ───────────────────────────────────────────────────────────── */
   return (
+    <>
     <main className="flex flex-col bg-white relative overflow-hidden" style={{ height: "calc(100vh - 2px)", marginTop: "2px" }}>
       
       {/* ===== FIXED PROGRESS BAR ===== */}
@@ -214,32 +455,6 @@ useEffect(() => {
           </p>
         </div>
       </section>
-
-      {/* ===== PROMO + MOBILE SHEET + TIMELINE + TOOLTIP ===== */}
-      <FooterTimeline
-        TIMELINE={TIMELINE}
-        widthPercent={widthPercent}
-        defaultProgress={defaultProgress}
-        setHoverItem={setHoverItem}
-        setMouseX={setMouseX}
-        handleHoverTimeline={handleHoverTimeline}
-        setMobilePromoOpen={setMobilePromoOpen}
-        setShowPromoBox={setShowPromoBox}
-        setLastPromoX={setLastPromoX}
-        vw={vw}
-        finalSegmentRef={finalSegmentRef}
-
-      />
-
-    {ready && showPromoBox && vw >= 768 && (
-      <PromoBox x={lastPromoX ?? mouseX} setShowPromoBox={setShowPromoBox} />
-    )}
-
-
-
-      {vw < 768 && <MobilePromo mobileSheetRef={mobileSheetRef} mobilePromoOpen={mobilePromoOpen} setMobilePromoOpen={setMobilePromoOpen} />}
-
-      {hoverItem && hoverItem.id !== "finalActions" && <Tooltip hoverItem={hoverItem} vw={vw} mouseX={mouseX} />}
    
       {/* 2FA POPUP MODAL */}
       {showVerifyModal && (
@@ -251,8 +466,81 @@ useEffect(() => {
           }}
         />
       )}
+  </main>
 
-    </main>
+  <div className="fixed left-0 right-0 bottom-0 z-[999] bg-white translate-y-0">
+    {previewState.visible && (
+      <div
+        className="fixed z-[999999] pointer-events-none transition-opacity duration-100"
+        style={{
+          left: previewState.leftPx,
+          bottom: 240,
+          opacity: 1,
+          width: 375,
+          height: 250,
+        }}
+      >
+        <div className="relative w-full h-full rounded-lg bg-black/85 text-white shadow-md overflow-hidden flex flex-col">
+
+          {/* time */}
+          {previewState.timeLabel && (
+            <div
+              className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"
+            >
+              {previewState.timeLabel}
+            </div>
+          )}
+
+          {/* image or placeholder */}
+          {previewState.imgUrl ? (
+            <img
+              src={previewState.imgUrl}
+              className="h-[165px] w-full object-cover rounded-t-lg"
+              alt=""
+            />
+          ) : (
+            <div className="h-[165px] w-full bg-white/10 rounded-t-lg" />
+          )}
+
+          {/* module title */}
+          <div className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1">
+            {previewState.text}
+          </div>
+        </div>
+      </div>
+    )}
+
+
+<div className="fixed bottom-[150px] left-0 right-0 z-[999] bg-white">
+  {ready && (
+    <CourseTimeline
+      timelineContainerRef={timelineHoverRef}
+      modules={modules}
+      allowedSeekSecondsRef={allowedSeekSecondsRef}
+      playedSecondsRef={playedSecondsRef}
+      togglePlay={togglePlay}
+      isPaused={isPaused}
+      currentSeconds={currentSeconds}
+      totalSeconds={totalSeconds}
+      elapsedCourseSeconds={elapsedCourseSeconds}
+      totalCourseSeconds={totalCourseSeconds}
+      moduleDurations={moduleDurations}
+      onScrub={onScrub}
+      onScrubStart={onScrubStart}
+      onScrubEnd={onScrubEnd}
+      onHoverResolve={handleHoverResolve}
+      onHoverEnd={handleHoverEnd}
+      thumbCacheRef={thumbCacheRef}
+      currentModuleIndex={0}
+      maxCompletedIndex={0}
+      goToModule={goToModule}
+      examPassed={false}
+      paymentPaid={false}
+    />
+  )}
+</div>
+</div>
+</>
   );
 }
 
@@ -283,7 +571,6 @@ function PromoBox({ x, setShowPromoBox }: PromoBoxProps) {
       </button>
 
       <PromoText />
-      <Arrow />
     </div>
   );
 }
@@ -336,129 +623,6 @@ function PromoText() {
       </p>
 
     </div>
-  );
-}
-
-
-
-
-function Arrow() {
-  return (
-    <div
-      className="absolute left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8"
-      style={{
-        borderLeftColor: "transparent",
-        borderRightColor: "transparent",
-        borderTopColor: "#001f40",
-        bottom: "-7px"
-      }}
-    />
-  );
-}
-
-
-/* FOOTER TIMELINE */
-function FooterTimeline({
-  TIMELINE,
-  widthPercent,
-  defaultProgress,
-  setHoverItem,
-  setMouseX,
-  handleHoverTimeline,
-  setMobilePromoOpen,
-  setShowPromoBox,
-  setLastPromoX,
-  vw,
-  finalSegmentRef,
-  
-}: any) {
-  return (
-    <footer className="bg-white fixed left-0 right-0" style={{ bottom: "1px" }}>
-      <div className="w-full px-4 md:px-0">
-        <div className="md:max-w-6xl md:mx-auto p-4">
-
-          {/* TIMELINE RAIL */}
-          <div className="relative w-full h-6 flex items-center">
-            <div className="absolute left-0 right-0 h-2 bg-[#001f40] rounded-full" />
-
-            {/* MODULE SEGMENTS */}
-            <div className="relative w-full h-6 flex items-center">
-{TIMELINE.map((item: any, i: number) => {
-  const isFirst = i === 0;
-  const isLast = i === TIMELINE.length - 1;
-
-  let bg = "#4B1E1E";
-  if (isFirst) bg = "#ca5608";
-  if (isLast)  bg = "#001f40";
-
-  // FINAL segment logic stays but color from bg
-  if (isLast) {
-    return (
-      <div
-        key={item.id}
-        ref={finalSegmentRef}
-        className="relative h-full flex items-center justify-center cursor-pointer"
-        style={{ width: "4%" }}
-        data-final-segment
-        onMouseEnter={(e) => {
-          setHoverItem(item);
-          setMouseX(e.clientX);
-          handleHoverTimeline(item, e.clientX);
-        }}
-        onMouseMove={(e) => {
-          setMouseX(e.clientX);
-          setLastPromoX(e.clientX);
-        }}
-        onMouseLeave={() => setHoverItem(null)}
-        onClick={() => {
-          if (vw < 768) setMobilePromoOpen(true);
-        }}
-      >
-        <div
-          className="flex-1 h-2 rounded-r-full"
-          style={{
-            backgroundColor: bg,
-boxShadow: isFirst ? `0 0 14px ${bg}` : "none",
-          }}
-        />
-      </div>
-    );
-  }
-
-  // Middle + first
-  return (
-    <div
-      key={item.id}
-      style={{ width: `${widthPercent(item)}%` }}
-      className="relative h-full flex items-center justify-center transition-all cursor-pointer"
-      onMouseEnter={(e) => {
-        setHoverItem(item);
-        setMouseX(e.clientX);
-        handleHoverTimeline(item, e.clientX);
-      }}
-      onMouseMove={(e) => setMouseX(e.clientX)}
-      onMouseLeave={() => setHoverItem(null)}
-    >
-      <div
-        className="flex-1 h-2"
-        style={{
-          backgroundColor: bg,
-          borderTopLeftRadius: isFirst ? 999 : 0,
-          borderBottomLeftRadius: isFirst ? 999 : 0,
-boxShadow: isFirst ? `0 0 14px ${bg}` : "none",
-        }}
-      />
-      {!isLast && <div className="w-[3px] h-full bg-white" />}
-    </div>
-  );
-})}
-            </div>
-
-          </div>
-
-        </div>
-      </div>
-    </footer>
   );
 }
 
