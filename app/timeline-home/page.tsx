@@ -1,12 +1,17 @@
-  // deno-lint-ignore-file
+// deno-lint-ignore-file
 "use client";
+
 export const dynamic = "force-dynamic";
-  import { supabase } from "@/utils/supabaseClient";
-  import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-  import CourseTimeline from "@/components/YT-Timeline";
-  import { useSearchParams } from "next/navigation";
-  import { useRouter } from "next/navigation";
-  import Loader from "@/components/loader";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
+import { supabase } from "@/utils/supabaseClient";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import CourseTimeline from "@/components/YT-Timeline";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import Loader from "@/components/loader";
+
   /* ------------------------------------------------------
     TYPES
   ------------------------------------------------------ */
