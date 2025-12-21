@@ -1,4 +1,3 @@
-// deno-lint-ignore-file
 "use client";
 
 import { supabase } from "@/utils/supabaseClient";
