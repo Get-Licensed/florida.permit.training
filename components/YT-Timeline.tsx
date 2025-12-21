@@ -21,6 +21,7 @@ export type CourseTimelineProps = {
   goToModule?: (index: number) => void
   allowedSeekSecondsRef: { current: number }
   playedSecondsRef?: { current: number }
+  thumbCacheRef?: RefObject<Map<string, string>>
   togglePlay: () => void
   isPaused: boolean
   examPassed: boolean
@@ -47,6 +48,7 @@ export default function CourseTimeline({
   goToModule,
   allowedSeekSecondsRef,
   playedSecondsRef,
+  thumbCacheRef,
   examPassed = false,
   paymentPaid = false,
   currentSeconds,
@@ -63,8 +65,8 @@ export default function CourseTimeline({
 }: CourseTimelineProps) {
   const [dragging, setDragging] = useState(false)
   const draggingRef = useRef(false)
-  const [hoverSeconds, setHoverSeconds] = useState<number | null>(null)
   const hoverSecondsRef = useRef<number | null>(null)
+  const hoverPreviewRafRef = useRef<number | null>(null)
   const totalSegments = modules.length + TERMINAL_SEGMENTS.length
   const remainingPct =
     totalSegments > 0 ? (TERMINAL_SEGMENTS.length / totalSegments) * 100 : 0
@@ -80,6 +82,7 @@ export default function CourseTimeline({
   const internalTimelineRef = useRef<HTMLDivElement | null>(null)
   const timelineRef = timelineContainerRef ?? internalTimelineRef
   const handleRef = useRef<HTMLDivElement | null>(null)
+  const ghostHandleRef = useRef<HTMLDivElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const targetPxRef = useRef(0)
   const currentPxRef = useRef(0)
@@ -96,6 +99,10 @@ export default function CourseTimeline({
   const wasPlayingBeforeScrubRef = useRef(false)
   const playedTrackRef = useRef<HTMLDivElement | null>(null)
   const playedSecondsRefResolved = playedSecondsRef ?? allowedSeekSecondsRef
+
+  useEffect(() => {
+    if (!thumbCacheRef?.current) return
+  }, [thumbCacheRef])
 
   const releaseSuppressModuleClick = useCallback(() => {
     if (suppressModuleClickTimeoutRef.current !== null) {
@@ -264,6 +271,27 @@ export default function CourseTimeline({
     [moduleDurations, modulePortionRatio, totalDur]
   )
 
+  const scheduleHoverPreviewUpdate = useCallback(() => {
+    if (hoverPreviewRafRef.current !== null) return
+    hoverPreviewRafRef.current = requestAnimationFrame(() => {
+      hoverPreviewRafRef.current = null
+      const ghost = ghostHandleRef.current
+      if (!ghost) return
+      const sec = hoverSecondsRef.current
+      if (sec === null || totalSeconds <= 0) {
+        ghost.style.opacity = "0"
+        return
+      }
+      const px = getPxFromSeconds(sec)
+      if (px === null) {
+        ghost.style.opacity = "0"
+        return
+      }
+      ghost.style.opacity = "1"
+      ghost.style.left = `${px}px`
+    })
+  }, [getPxFromSeconds, totalSeconds])
+
   const updatePlayedTrack = useCallback(() => {
     if (!playedTrackRef.current) return
     const rect = timelineRef.current?.getBoundingClientRect()
@@ -366,6 +394,7 @@ export default function CourseTimeline({
       if (px === null) return
       hoverSecondsRef.current = sec
       syncHandleTransform(px)
+      scheduleHoverPreviewUpdate()
       if (onScrub) onScrub(sec)
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
       if (!rafRef.current && !draggingRef.current) {
@@ -393,8 +422,8 @@ export default function CourseTimeline({
   releaseSuppressModuleClick()
 
   setDragging(false)
-  setHoverSeconds(null)
   hoverSecondsRef.current = null
+  scheduleHoverPreviewUpdate()
   if (onHoverEnd) onHoverEnd()
 }
 
@@ -413,12 +442,16 @@ export default function CourseTimeline({
     onScrub,
     onScrubEnd,
     releaseSuppressModuleClick,
+    scheduleHoverPreviewUpdate,
     syncHandleTransform,
   ])
 
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (hoverPreviewRafRef.current) {
+        cancelAnimationFrame(hoverPreviewRafRef.current)
+      }
       if (suppressModuleClickTimeoutRef.current !== null) {
         window.clearTimeout(suppressModuleClickTimeoutRef.current)
       }
@@ -477,9 +510,9 @@ return (
         clearTimeout(timelineAutoHideTimerRef.current)
       }
       setDragging(true)
-      setHoverSeconds(null)
       hoverSecondsRef.current = sec
       syncHandleTransform(px)
+      scheduleHoverPreviewUpdate()
       if (onScrubStart) onScrubStart()
       if (onScrub) onScrub(sec)
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
@@ -499,17 +532,20 @@ return (
         e.clientY >= rect.top - pad &&
         e.clientY <= rect.bottom + pad
       if (!within) {
-        setHoverSeconds(null)
+        hoverSecondsRef.current = null
+        scheduleHoverPreviewUpdate()
         if (onHoverEnd) onHoverEnd()
         return
       }
       const sec = getHoverSeconds(e.clientX)
       if (sec === null) {
-        setHoverSeconds(null)
+        hoverSecondsRef.current = null
+        scheduleHoverPreviewUpdate()
         if (onHoverEnd) onHoverEnd()
         return
       }
-      setHoverSeconds(sec)
+      hoverSecondsRef.current = sec
+      scheduleHoverPreviewUpdate()
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
        }}
       onMouseLeave={(e) => {
@@ -523,7 +559,8 @@ return (
           e.clientY >= rect.top - pad &&
           e.clientY <= rect.bottom + pad
         if (!within) {
-          setHoverSeconds(null)
+          hoverSecondsRef.current = null
+          scheduleHoverPreviewUpdate()
           if (onHoverEnd) onHoverEnd()
         }
       }}
@@ -553,20 +590,20 @@ return (
     )}
 
     {/* ghost preview */}
-    {hoverSeconds !== null && totalSeconds > 0 && (
-      <div
-        className="
-          absolute top-1.5
-          w-4.5 h-4.5 rounded-full
-          shadow-sm
-          bg-[#fff]/40
-        "
-        style={{
-          left: `${getPxFromSeconds(hoverSeconds) ?? 0}px`,
-          transform: `translate(-50%, -50%)`,
-        }}
-      />
-    )}
+    <div
+      ref={ghostHandleRef}
+      className="
+        absolute top-1.5
+        w-4.5 h-4.5 rounded-full
+        shadow-sm
+        bg-[#fff]/40
+      "
+      style={{
+        left: 0,
+        opacity: 0,
+        transform: `translate(-50%, -50%)`,
+      }}
+    />
   </div>
 {/* ===== TRACK + MODULE + TERMINAL CELLS (scrubbable modules only) ===== */}
 <div

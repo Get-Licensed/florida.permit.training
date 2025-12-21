@@ -167,14 +167,6 @@
     slideId: string;
   };
 
-  type HoverPreview = {
-    leftPx: number;
-    imgUrl: string | null;
-    text: string | null;
-    timeLabel: string;
-    clientX: number;
-  };
-
   /* ------------------------------------------------------
     IMAGE RESOLVER
   ------------------------------------------------------ */
@@ -287,11 +279,21 @@
     const COURSE_ID = "FL_PERMIT_TRAINING";
     const TOTAL_REQUIRED_SECONDS = 6 * 60 * 60; // 21600
     const [showTimeline, setShowTimeline] = useState(false);
-    const [hoverPreview, setHoverPreview] = useState<HoverPreview | null>(null);
-    const hoverDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const thumbCacheRef = useRef(new Map<string, string>());
+    const hoverTooltipRafRef = useRef<number | null>(null);
+    const previewXRef = useRef(0);
+    const previewDataRef = useRef({
+      imgUrl: null as string | null,
+      text: "",
+      timeLabel: "",
+    });
+    const tooltipVisibleRef = useRef(false);
     const timelineHoverRef = useRef<HTMLDivElement | null>(null);
     const hoverTooltipRef = useRef<HTMLDivElement | null>(null);
-    const [tooltipWidth, setTooltipWidth] = useState(0);
+    const hoverTooltipImageRef = useRef<HTMLImageElement | null>(null);
+    const hoverTooltipPlaceholderRef = useRef<HTMLDivElement | null>(null);
+    const hoverTooltipTextRef = useRef<HTMLDivElement | null>(null);
+    const hoverTooltipTimeRef = useRef<HTMLDivElement | null>(null);
     const [timelineVersion, setTimelineVersion] = useState(0);
 
     const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
@@ -453,6 +455,46 @@
       });
       return map;
     }, [courseCaptions]);
+
+    useEffect(() => {
+      let cancelled = false;
+
+      const preloadThumbs = async () => {
+        const slidesWithThumbs = courseSlides.filter(
+          (slide) => slide.image_path
+        );
+        const missing = slidesWithThumbs.filter(
+          (slide) =>
+            slide.image_path && !thumbCacheRef.current.has(slide.id)
+        );
+
+        if (!missing.length) return;
+
+        const paths = missing.map((slide) => slide.image_path as string);
+        const { data, error } = await supabase.storage
+          .from("uploads")
+          .createSignedUrls(paths, 60 * 60);
+
+        if (cancelled || error || !data) return;
+
+        data.forEach((entry, index) => {
+          const slide = missing[index];
+          if (!slide) return;
+          if (entry?.signedUrl) {
+            thumbCacheRef.current.set(slide.id, entry.signedUrl);
+            const img = new Image();
+            img.src = entry.signedUrl;
+            img.decode?.().catch(() => {});
+          }
+        });
+      };
+
+      preloadThumbs();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [courseSlides]);
 
     const voiceLabel =
       VOICES.find(v => v.code === voice)?.label ?? "Unknown";
@@ -699,6 +741,47 @@
       resolveCourseTime,
     ]);
 
+    const scheduleTooltipUpdate = useCallback(() => {
+      if (hoverTooltipRafRef.current !== null) return;
+      hoverTooltipRafRef.current = requestAnimationFrame(() => {
+        hoverTooltipRafRef.current = null;
+        const tooltip = hoverTooltipRef.current;
+        if (!tooltip) return;
+
+        const { imgUrl, text, timeLabel } = previewDataRef.current;
+        tooltip.style.left = `${previewXRef.current}px`;
+        tooltip.style.opacity = tooltipVisibleRef.current ? "1" : "0";
+        tooltip.style.pointerEvents = tooltipVisibleRef.current
+          ? "auto"
+          : "none";
+
+        if (hoverTooltipImageRef.current) {
+          if (imgUrl) {
+            hoverTooltipImageRef.current.src = imgUrl;
+            hoverTooltipImageRef.current.style.display = "block";
+          } else {
+            hoverTooltipImageRef.current.removeAttribute("src");
+            hoverTooltipImageRef.current.style.display = "none";
+          }
+        }
+
+        if (hoverTooltipPlaceholderRef.current) {
+          hoverTooltipPlaceholderRef.current.style.display = imgUrl
+            ? "none"
+            : "block";
+        }
+
+        if (hoverTooltipTextRef.current) {
+          hoverTooltipTextRef.current.textContent = text ?? "";
+        }
+
+        if (hoverTooltipTimeRef.current) {
+          hoverTooltipTimeRef.current.textContent = timeLabel ?? "";
+          hoverTooltipTimeRef.current.style.display = timeLabel ? "block" : "none";
+        }
+      });
+    }, []);
+
     const handleHoverResolve = useCallback(
       (seconds: number, clientX: number) => {
         if (!courseIndex) return;
@@ -709,42 +792,50 @@
         const rect = timelineHoverRef.current?.getBoundingClientRect();
         if (!rect || rect.width <= 0) return;
 
-        const leftPx = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+        const width = 375;
+        const viewportWidth =
+          typeof window !== "undefined" ? window.innerWidth : rect.right;
+        const minBoundary = Math.max(0, rect.left);
+        const maxViewportBoundary = Math.max(0, viewportWidth - width);
+        const maxBoundary = Math.min(rect.right - width, maxViewportBoundary);
+        const desired = clientX - width / 2;
+        const leftPx = Math.min(Math.max(desired, minBoundary), maxBoundary);
         const slide = courseSlidesById.get(target.slideId);
-        const imgUrl = slide ? resolveImage(slide.image_path) : null;
-        const text = captionPreviewBySlideId.get(target.slideId) ?? null;
+        const imgUrl = slide
+          ? thumbCacheRef.current.get(slide.id) ?? null
+          : null;
+        const text = captionPreviewBySlideId.get(target.slideId) ?? "";
         const timeLabel = formatHoverTime(seconds);
 
-        const nextPreview: HoverPreview = {
-          leftPx,
+        previewXRef.current = leftPx;
+        previewDataRef.current = {
           imgUrl,
-          text,
+          text: text ?? "",
           timeLabel,
-          clientX,
         };
-
-        if (hoverDebounceRef.current) {
-          clearTimeout(hoverDebounceRef.current);
-        }
-
-        hoverDebounceRef.current = setTimeout(() => {
-          setHoverPreview(nextPreview);
-        }, 60);
+        tooltipVisibleRef.current = true;
+        scheduleTooltipUpdate();
       },
       [
         courseIndex,
         resolveCourseTime,
         courseSlidesById,
         captionPreviewBySlideId,
+        scheduleTooltipUpdate,
       ]
     );
 
     const handleHoverEnd = useCallback(() => {
-      if (hoverDebounceRef.current) {
-        clearTimeout(hoverDebounceRef.current);
+      tooltipVisibleRef.current = false;
+      scheduleTooltipUpdate();
+    }, [scheduleTooltipUpdate]);
+
+    useEffect(() => {
+      if (!showTimeline) {
+        tooltipVisibleRef.current = false;
+        scheduleTooltipUpdate();
       }
-      setHoverPreview(null);
-    }, []);
+    }, [scheduleTooltipUpdate, showTimeline]);
 
     const handleScrubStart = useCallback(() => {
       scrubActive.current = true; // start scrubbing
@@ -761,17 +852,6 @@
       setIsPaused(true);
       isPausedRef.current = true;
     }, []);
-
-    useEffect(() => {
-      if (!hoverPreview?.imgUrl) return;
-      const img = new Image();
-      img.src = hoverPreview.imgUrl;
-    }, [hoverPreview?.imgUrl]);
-
-    useEffect(() => {
-      if (!hoverPreview || !hoverTooltipRef.current) return;
-      setTooltipWidth(hoverTooltipRef.current.offsetWidth);
-    }, [hoverPreview]);
 
     useEffect(() => {
       function handleSpace(e: KeyboardEvent) {
@@ -2334,19 +2414,6 @@ useEffect(() => {
       })
     }
 
-  const hoverTooltipLeft = (() => {
-    if (!hoverPreview || !timelineHoverRef.current) return null;
-    const rect = timelineHoverRef.current.getBoundingClientRect();
-    const width = tooltipWidth || 0;
-    const viewportWidth =
-      typeof window !== "undefined" ? window.innerWidth : rect.right;
-    const minBoundary = Math.max(0, rect.left);
-    const maxViewportBoundary = Math.max(0, viewportWidth - width);
-    const maxBoundary = Math.min(rect.right - width, maxViewportBoundary);
-    const desired = hoverPreview.clientX - width / 2;
-    return Math.min(Math.max(desired, minBoundary), maxBoundary);
-  })();
-
   return (
     <div className="relative min-h-screen bg-white flex flex-col">
 
@@ -2671,49 +2738,38 @@ useEffect(() => {
         </button>
       </div>
     
-{showTimeline && hoverPreview && hoverTooltipLeft !== null && (
+{showTimeline && (
   <div
     ref={hoverTooltipRef}
     className="fixed z-[999999] pointer-events-none transition-opacity duration-60"
     style={{
-      left: hoverTooltipLeft,
+      left: 0,
       bottom: 240,
-      opacity: 1,
+      opacity: 0,
     }}
   >
-    <div className="relative w-[375px] h-[250px] rounded-lg bg-black/90 p-2 text-white shadow-xl backdrop-blur-sm overflow-hidden">
+    <div className="relative w-[375px] h-[250px] rounded-lg bg-black/85 text-white shadow-md overflow-hidden flex flex-col">
+      <div
+        ref={hoverTooltipTimeRef}
+        className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"
+        style={{ display: "none" }}
+      />
 
-      {/* timestamp pill */}
-      {hoverPreview.timeLabel && (
-        <div
-          className="
-            absolute top-3 left-3
-            bg-black/40 text-[#fff] rounded-full
-            px-2 py-[2px]
-            shadow-sm
-            text-sm font-medium
-            pointer-events-none z-[2]
-          "
-        >
-          {hoverPreview.timeLabel}
-        </div>
-      )}
+      <img
+        ref={hoverTooltipImageRef}
+        alt=""
+        className="h-[165px] w-full object-cover rounded-t-lg"
+        style={{ display: "none" }}
+      />
+      <div
+        ref={hoverTooltipPlaceholderRef}
+        className="h-[165px] w-full bg-white/10 rounded-t-lg"
+      />
 
-      {/* image */}
-      {hoverPreview.imgUrl ? (
-        <img
-          src={hoverPreview.imgUrl}
-          alt=""
-          className="h-[165px] w-full object-cover rounded-t-lg"
-        />
-      ) : (
-        <div className="h-[165px] w-full bg-white/10 rounded-t-lg" />
-      )}
-
-      {/* text block */}
-      <div className="px-3 py-2 text-[13px] leading-snug line-clamp-3">
-        {hoverPreview.text ?? ""}
-      </div>
+      <div
+        ref={hoverTooltipTextRef}
+        className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1"
+      />
     </div>
   </div>
 )}
@@ -2765,6 +2821,7 @@ useEffect(() => {
         onHoverResolve={handleHoverResolve}
         onHoverEnd={handleHoverEnd}
         timelineContainerRef={timelineHoverRef}
+        thumbCacheRef={thumbCacheRef}
       />
 
       {/* CONTROLS – volume + CC */}
