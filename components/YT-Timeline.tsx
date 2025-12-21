@@ -111,6 +111,8 @@ export default function CourseTimeline({
   // remember play state across scrub
   const wasPlayingBeforeScrubRef = useRef(false)
   const playedTrackRef = useRef<HTMLDivElement | null>(null)
+  const furthestTrackRef = useRef<HTMLDivElement | null>(null)
+  const maxCompletedSecondsRef = useRef(0)
   const playedSecondsRefResolved = playedSecondsRef ?? allowedSeekSecondsRef
 
   useEffect(() => {
@@ -334,6 +336,20 @@ export default function CourseTimeline({
     totalCourseSeconds,
   ])
 
+  const updateFurthestTrack = useCallback(() => {
+    if (!furthestTrackRef.current) return
+    const rect = timelineRef.current?.getBoundingClientRect()
+    const timelineWidth = rect ? rect.width * modulePortionRatio : 0
+    if (timelineWidth <= 0) return
+
+    const furthestPx = Math.min(
+      (maxCompletedSecondsRef.current / totalCourseSeconds) * timelineWidth,
+      timelineWidth
+    )
+
+    furthestTrackRef.current.style.background = `linear-gradient(to right, #f6b27a ${furthestPx}px, #d1d5db ${furthestPx}px)`
+  }, [modulePortionRatio, timelineRef, totalCourseSeconds])
+
   const syncHandleTransform = useCallback((px: number) => {
     if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) return
     currentPxRef.current = px
@@ -369,6 +385,14 @@ export default function CourseTimeline({
   }, [])
 
   useEffect(() => {
+    if (totalCourseSeconds <= 0) return
+
+    if (elapsedCourseSeconds > maxCompletedSecondsRef.current) {
+      maxCompletedSecondsRef.current = elapsedCourseSeconds
+    }
+  }, [elapsedCourseSeconds, totalCourseSeconds])
+
+  useEffect(() => {
     if (ignoreElapsedTimeRef.current) return
     if (draggingRef.current) return
     if (freezeSeekRef.current) return
@@ -398,6 +422,7 @@ export default function CourseTimeline({
     let frame: number | null = null
 
     const tick = () => {
+      updateFurthestTrack()
       updatePlayedTrack()
       frame = requestAnimationFrame(tick)
     }
@@ -407,7 +432,7 @@ export default function CourseTimeline({
     return () => {
       if (frame !== null) cancelAnimationFrame(frame)
     }
-  }, [updatePlayedTrack])
+  }, [updateFurthestTrack, updatePlayedTrack])
 
   useEffect(() => {
     function handleMove(e: MouseEvent) {
@@ -689,6 +714,14 @@ return (
   className="relative z-[1] flex items-center h-full flex-1 -translate-y-[.5px]"
   style={{ minWidth: 0 }}
 >
+  <div
+    className="absolute left-0 top-[2px] bottom-[2px] z-[1] rounded-full pointer-events-none"
+    ref={furthestTrackRef}
+    style={{
+      width: `${modulePortionRatio * 100}%`,
+      background: "linear-gradient(to right, #f6b27a 0px, #d1d5db 0px)",
+    }}
+  />
   <div
     ref={playedTrackRef}
     className="absolute left-0 top-[2px] bottom-[2px] z-[2] rounded-full pointer-events-none"

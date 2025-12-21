@@ -438,7 +438,8 @@
       () => courseIndex?.modules.map((module) => module.durationSeconds) ?? [],
       [courseIndex]
     );
-    const totalCourseSeconds = courseIndex?.totalSeconds ?? 0;
+    const totalCourseSeconds =
+      courseTotals.totalSeconds || courseIndex?.totalSeconds || 0;
 
     const courseSlidesById = useMemo(() => {
       const map = new Map<string, CourseSlideRow>();
