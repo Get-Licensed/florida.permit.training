@@ -43,6 +43,7 @@ export type CourseTimelineProps = {
   timelineContainerRef?: RefObject<HTMLDivElement | null>
   promoOffsetBottom?: number
   promoVisible?: boolean
+  promoDismissedRef?: { current: boolean }
   showTimeline?: boolean
   setShowTimeline?: (visible: boolean) => void
 }
@@ -76,6 +77,7 @@ export default function CourseTimeline({
   timelineContainerRef,
   promoOffsetBottom,
   promoVisible = false,
+  promoDismissedRef,
   showTimeline,
   setShowTimeline = () => {},
 }: CourseTimelineProps) {
@@ -672,6 +674,10 @@ return (
   onMouseLeave={(e) => {
     isHoveringRef.current = false;
     onTimelineLeave?.()
+
+    if (promoDismissedRef?.current) {
+      setShowTimeline(false);
+    }
 
     if (dragging) return;
 

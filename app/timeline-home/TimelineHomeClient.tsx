@@ -142,6 +142,7 @@ import Loader from "@/components/loader";
     const [promoStickyVisible, setPromoStickyVisible] = useState(false)
     // sticky promo logic for terminal popups
     const [promoSticky, setPromoSticky] = useState(false);
+    const promoDismissedRef = useRef(false);
 
     // NAV STATE
       const totalSlides = slides.length;
@@ -179,6 +180,21 @@ import Loader from "@/components/loader";
         setShowTimeline(true);
         setPromoSticky(true);
         setPromoStickyVisible(true);
+        scheduleTimelineAutoHide();
+      }
+
+      function handlePromoClose() {
+        promoDismissedRef.current = true;
+
+        setPromoSticky(false);
+        setPromoStickyVisible(false);
+
+        // force return to normal hide mode
+        isHoveringTimelineRef.current = false;
+        scrubActiveRef.current = false;
+
+        // immediately begin auto-hide countdown
+        clearTimelineAutoHideTimer();
         scheduleTimelineAutoHide();
       }
 
@@ -1613,7 +1629,7 @@ useEffect(() => {
     className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60"
     style={{
       left: 0,
-      bottom: 140, // above timeline rail which is fixed bottom-[25px]
+      bottom: 115, // above timeline rail which is fixed bottom-[25px]
       opacity: 0,
     }}
   >
@@ -1708,10 +1724,11 @@ useEffect(() => {
         onHoverEnd={handleHoverEnd}
         timelineContainerRef={timelineHoverRef}
         thumbCacheRef={thumbCacheRef}
-        promoOffsetBottom={140}
+        promoOffsetBottom={115}
         showTimeline={showTimeline}
         setShowTimeline={setShowTimeline}
         promoVisible={promoStickyVisible}
+        promoDismissedRef={promoDismissedRef}
         onTimelineHover={() => {
           setPromoSticky(true)
           setPromoStickyVisible(true)
@@ -1720,10 +1737,7 @@ useEffect(() => {
           setPromoSticky(true)
           setPromoStickyVisible(true)
         }}
-        onPromoClose={() => {
-          setPromoSticky(false)
-          setPromoStickyVisible(false)
-        }}
+        onPromoClose={handlePromoClose}
       />
 </div>
       <div
