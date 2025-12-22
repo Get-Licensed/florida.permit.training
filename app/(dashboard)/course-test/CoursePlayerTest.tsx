@@ -2797,6 +2797,7 @@ useEffect(() => {
         }
       `}
     >
+<div className="fixed bottom-[145px] left-0 right-0 z-40 min-h-[6rem]">
 
         {/* TIMELINE */}
       <CourseTimeline
@@ -2823,8 +2824,9 @@ useEffect(() => {
         onHoverEnd={handleHoverEnd}
         timelineContainerRef={timelineHoverRef}
         thumbCacheRef={thumbCacheRef}
+        promoOffsetBottom={310} 
       />
-
+</div>
       {/* CONTROLS – volume + CC */}
       <div
         className="fixed bottom-[160px] left-0 right-0 z-[200] pointer-events-auto"

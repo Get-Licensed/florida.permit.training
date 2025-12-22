@@ -37,6 +37,11 @@ export type CourseTimelineProps = {
   onHoverResolve?: (seconds: number, clientX: number) => void
   onHoverEnd?: () => void
   timelineContainerRef?: RefObject<HTMLDivElement | null>
+  promoOffsetBottom?: number;
+  promoSticky?: boolean
+  setPromoSticky?: (v: boolean) => void
+  promoDefaultVisible?: boolean
+  onPromoClose?: () => void
 }
 
 export default function CourseTimeline({
@@ -62,7 +67,16 @@ export default function CourseTimeline({
   onHoverResolve,
   onHoverEnd,
   timelineContainerRef,
+  promoOffsetBottom,
+
+  // these 3 must be present together
+  promoSticky = false,
+  setPromoSticky,
+  promoDefaultVisible = true,
+
+  onPromoClose,
 }: CourseTimelineProps) {
+
   type ScrubberReleaseFix = "none" | "A" | "B" | "C"
   // Switch between options: "A" (hide timeline), "B" (freeze sync), "C" (both).
   const SCRUBBER_RELEASE_FIX: ScrubberReleaseFix = "C" as ScrubberReleaseFix
@@ -104,9 +118,9 @@ export default function CourseTimeline({
   const [promoX, setPromoX] = useState<number | null>(null);
   const [mobilePromoOpen, setMobilePromoOpen] = useState(false);
   const mobileSheetRef = useRef<HTMLDivElement>(null);
-  const [timelineHidden, setTimelineHidden] = useState(false)
-  const timelineHiddenTimeoutRef = useRef<number | null>(null)
   const freezeElapsedTimeoutRef = useRef<number | null>(null)
+  const [promoVisible, setPromoVisible] = useState<boolean>(promoDefaultVisible ?? false);
+  const isHoveringRef = useRef(false);
 
   // remember play state across scrub
   const wasPlayingBeforeScrubRef = useRef(false)
@@ -132,20 +146,31 @@ export default function CourseTimeline({
 
   const timelineAutoHideTimerRef = useRef<number | null>(null)
 
-  function revealTimelineFor3s() {
-    if (timelineAutoHideTimerRef.current !== null) {
-      clearTimeout(timelineAutoHideTimerRef.current)
-    }
-
-    // show via callback to parent
-    if (onHoverResolve) onHoverResolve(elapsedCourseSeconds, 0)
-
-    timelineAutoHideTimerRef.current = window.setTimeout(() => {
-      if (!draggingRef.current) {
-        if (onHoverEnd) onHoverEnd()
-      }
-    }, 3000)
+  function scheduleTimelineAutoHide() {
+  if (timelineAutoHideTimerRef.current !== null) {
+    clearTimeout(timelineAutoHideTimerRef.current);
   }
+
+  timelineAutoHideTimerRef.current = window.setTimeout(() => {
+    // don't hide if hovering anywhere inside timeline
+    if (isHoveringRef.current) return;
+
+    if (!draggingRef.current) {
+      if (onHoverEnd) onHoverEnd();
+    }
+  }, 3000);
+}
+
+  function revealTimelineFor3s() {
+    // timeline just became visible → reset hide timer
+    scheduleTimelineAutoHide();
+
+    // force timeline/tooltip visible with current hover time
+    if (onHoverResolve) {
+      onHoverResolve(elapsedCourseSeconds, 0);
+    }
+  }
+
 
   const handlePlayPauseClick = () => {
     revealTimelineFor3s()
@@ -435,6 +460,27 @@ export default function CourseTimeline({
   }, [updateFurthestTrack, updatePlayedTrack])
 
   useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (!timelineRef.current) return
+
+      const tl = timelineRef.current
+      const promo = promoSticky ? null : null // irrelevant, promo is inside tl
+
+      // if click is inside timeline or promo, ignore
+      if (tl.contains(e.target as Node)) return
+
+      // otherwise hide promo + hover mode preview
+      setShowPromoBox(false)
+      setPromoVisible(false)
+      setPromoSticky?.(false)
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [timelineRef, promoSticky])
+
+
+  useEffect(() => {
     function handleMove(e: MouseEvent) {
       if (!draggingRef.current) return
       const sec = getScrubSeconds(e.clientX, true)
@@ -456,13 +502,6 @@ export default function CourseTimeline({
 
       draggingRef.current = false
       document.body.style.userSelect = ""
-
-      if (enableTimelineHide) {
-        setTimelineHidden(true)
-        if (timelineHiddenTimeoutRef.current !== null) {
-          window.clearTimeout(timelineHiddenTimeoutRef.current)
-        }
-      }
 
       if (enableFreezeElapsedSync) {
         freezeElapsedSyncRef.current = true
@@ -497,16 +536,7 @@ export default function CourseTimeline({
           SCRUBBER_RELEASE_FIX === "C" ? 200 : 200
         freezeElapsedTimeoutRef.current = window.setTimeout(() => {
           freezeElapsedSyncRef.current = false
-          if (SCRUBBER_RELEASE_FIX === "C") {
-            setTimelineHidden(false)
-          }
         }, freezeDelayMs)
-      }
-
-      if (enableTimelineHide && SCRUBBER_RELEASE_FIX === "A") {
-        timelineHiddenTimeoutRef.current = window.setTimeout(() => {
-          setTimelineHidden(false)
-        }, 160)
       }
 
       setDragging(false)
@@ -544,17 +574,15 @@ export default function CourseTimeline({
       if (suppressModuleClickTimeoutRef.current !== null) {
         window.clearTimeout(suppressModuleClickTimeoutRef.current)
       }
-      if (timelineHiddenTimeoutRef.current !== null) {
-        window.clearTimeout(timelineHiddenTimeoutRef.current)
-      }
       if (freezeElapsedTimeoutRef.current !== null) {
         window.clearTimeout(freezeElapsedTimeoutRef.current)
       }
     }
   }, [])
 
+  
+
 return (
-  <div className="fixed bottom-[145px] left-0 right-0 z-40 min-h-[6rem]">
     <div className="w-full px-4 md:px-0">
       <div className="md:max-w-6xl md:mx-auto p-4">
 
@@ -577,97 +605,134 @@ return (
           )}
         </button>
 
-    {/* MODULE SCRUBBER */}
-    <div
-      ref={timelineRef}
-      className={`
-        flex-1 relative
-        h-3 rounded-full bg-white/90 shadow-sm px-1
-        select-none cursor-pointer
-        ${enableTimelineHide
-          ? timelineHidden
-            ? "opacity-0 pointer-events-none transition-opacity duration-100"
-            : "opacity-100 transition-opacity duration-100"
-          : ""}
-      `}
-      onMouseDown={(e) => {
-      if (e.button !== 0) return
-      const sec = getScrubSeconds(e.clientX, false)
-      const px = getScrubPx(e.clientX, false)
-      if (sec === null) return
-      if (px === null) return
-      e.preventDefault()
-      document.body.style.userSelect = "none"
-      suppressModuleClickRef.current = true
-      if (suppressModuleClickTimeoutRef.current !== null) {
-        window.clearTimeout(suppressModuleClickTimeoutRef.current)
-        suppressModuleClickTimeoutRef.current = null
-      }
-      draggingRef.current = true
-      freezeSeekRef.current = true
-      ignoreElapsedTimeRef.current = true
-      railRectRef.current =
-        timelineRef.current?.getBoundingClientRect() ?? null
-      wasPlayingBeforeScrubRef.current = !isPaused
-      if (timelineAutoHideTimerRef.current !== null) {
-        clearTimeout(timelineAutoHideTimerRef.current)
-      }
-      setDragging(true)
-      hoverSecondsRef.current = sec
-      targetPxRef.current = px
-      if (!rafRef.current) {
-        rafRef.current = requestAnimationFrame(animate)
-      }
-      scheduleHoverPreviewUpdate()
-      if (onScrubStart) onScrubStart()
-      if (onScrub) onScrub(sec)
-      if (onHoverResolve) onHoverResolve(sec, e.clientX)
-    }}
+{/* MODULE SCRUBBER */}
+<div
+  ref={timelineRef}
+  className={`
+    flex-1 relative
+    h-3 rounded-full bg-white/90 shadow-sm px-1
+    select-none cursor-pointer
+  `}
 
-    onMouseMove={(e) => {
-      if (dragging) return
-      const rect = timelineRef.current?.getBoundingClientRect()
-      const pad = 10
-      const within =
-        rect &&
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top - pad &&
-        e.clientY <= rect.bottom + pad
-      if (!within) {
-        hoverSecondsRef.current = null
-        scheduleHoverPreviewUpdate()
-        if (onHoverEnd) onHoverEnd()
-        return
-      }
-      const sec = getHoverSeconds(e.clientX)
-      if (sec === null) {
-        hoverSecondsRef.current = null
-        scheduleHoverPreviewUpdate()
-        if (onHoverEnd) onHoverEnd()
-        return
-      }
-      hoverSecondsRef.current = sec
-      scheduleHoverPreviewUpdate()
-      if (onHoverResolve) onHoverResolve(sec, e.clientX)
-       }}
-      onMouseLeave={(e) => {
-        if (dragging) return
-        const rect = timelineRef.current?.getBoundingClientRect()
-        const pad = 10
-        const within =
-          rect &&
-          e.clientX >= rect.left &&
-          e.clientX <= rect.right &&
-          e.clientY >= rect.top - pad &&
-          e.clientY <= rect.bottom + pad
-        if (!within) {
-          hoverSecondsRef.current = null
-          scheduleHoverPreviewUpdate()
-          if (onHoverEnd) onHoverEnd()
-        }
-      }}
-    >
+  onMouseEnter={(e) => {
+    isHoveringRef.current = true;
+    scheduleTimelineAutoHide();
+
+    setPromoVisible(true);
+    setPromoSticky?.(false);
+
+    if (promoX === null && timelineRef.current) {
+      const rect = timelineRef.current.getBoundingClientRect();
+      const mid = rect.left + rect.width - 40;
+      setPromoX(mid);
+    }
+
+    setShowPromoBox(true);
+  }}
+
+  onMouseDown={(e) => {
+    if (e.button !== 0) return;
+
+    scheduleTimelineAutoHide();
+
+    const sec = getScrubSeconds(e.clientX, false);
+    const px = getScrubPx(e.clientX, false);
+    if (sec === null) return;
+    if (px === null) return;
+
+    e.preventDefault();
+    document.body.style.userSelect = "none";
+    suppressModuleClickRef.current = true;
+    if (suppressModuleClickTimeoutRef.current !== null) {
+      window.clearTimeout(suppressModuleClickTimeoutRef.current);
+      suppressModuleClickTimeoutRef.current = null;
+    }
+
+    draggingRef.current = true;
+    freezeSeekRef.current = true;
+    ignoreElapsedTimeRef.current = true;
+
+    railRectRef.current =
+      timelineRef.current?.getBoundingClientRect() ?? null;
+    wasPlayingBeforeScrubRef.current = !isPaused;
+
+    if (timelineAutoHideTimerRef.current !== null) {
+      clearTimeout(timelineAutoHideTimerRef.current);
+    }
+
+    setDragging(true);
+    hoverSecondsRef.current = sec;
+    targetPxRef.current = px;
+
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(animate);
+    }
+
+    scheduleHoverPreviewUpdate();
+    if (onScrubStart) onScrubStart();
+    if (onScrub) onScrub(sec);
+    if (onHoverResolve) onHoverResolve(sec, e.clientX);
+  }}
+
+  onMouseMove={(e) => {
+    isHoveringRef.current = true;
+    scheduleTimelineAutoHide();
+
+    if (dragging) return;
+
+    const rect = timelineRef.current?.getBoundingClientRect();
+    const pad = 10;
+
+    const within =
+      rect &&
+      e.clientX >= rect.left &&
+      e.clientX <= rect.right &&
+      e.clientY >= rect.top - pad &&
+      e.clientY <= rect.bottom + pad;
+
+    if (!within) {
+      hoverSecondsRef.current = null;
+      scheduleHoverPreviewUpdate();
+      if (onHoverEnd) onHoverEnd();
+      return;
+    }
+
+    const sec = getHoverSeconds(e.clientX);
+    if (sec === null) {
+      hoverSecondsRef.current = null;
+      scheduleHoverPreviewUpdate();
+      if (onHoverEnd) onHoverEnd();
+      return;
+    }
+
+    hoverSecondsRef.current = sec;
+    scheduleHoverPreviewUpdate();
+    if (onHoverResolve) onHoverResolve(sec, e.clientX);
+  }}
+
+  onMouseLeave={(e) => {
+    isHoveringRef.current = false;
+    scheduleTimelineAutoHide();
+
+    if (dragging) return;
+
+    const rect = timelineRef.current?.getBoundingClientRect();
+    const pad = 10;
+
+    const within =
+      rect &&
+      e.clientX >= rect.left &&
+      e.clientX <= rect.right &&
+      e.clientY >= rect.top - pad &&
+      e.clientY <= rect.bottom + pad;
+
+    if (!within) {
+      hoverSecondsRef.current = null;
+      scheduleHoverPreviewUpdate();
+      if (onHoverEnd) onHoverEnd();
+    }
+  }}
+>
 
   {/* SCRUB LAYER */}
   <div className="absolute inset-0 pointer-events-none z-[9999]">
@@ -800,18 +865,30 @@ return (
 
                       /* PROMO HOVER EVENTS (phase-2 wiring) */
                       onMouseEnter={(e) => {
-                        if (isFinalActions) {
-                          setShowPromoBox(true)
-                          setPromoX(e.clientX)
+                        if (!isFinalActions) return
+                          
+                        // allow re-showing after close
+                        setPromoVisible(true)
+                        setPromoSticky?.(false)
+
+                        setShowPromoBox(true)
+                        setPromoX(e.clientX)
+                      }}
+
+                      onMouseMove={(e) => {
+                        if (!isFinalActions) return
+                        setPromoX(e.clientX)
+                      }}
+
+                      onMouseLeave={() => {
+                        if (!isFinalActions) return
+
+                        // only hide when hover mode
+                        if (!promoSticky) {
+                          setShowPromoBox(false)
                         }
                       }}
-                      onMouseMove={(e) => {
-                        if (isFinalActions) setPromoX(e.clientX)
-                      }}
-                      onMouseLeave={() => {
-                        if (isFinalActions) setShowPromoBox(false)
-                      }}
-                    >
+                                          >
                       <div className="w-full flex items-center justify-center h-2 translate-y-[2.2px]">
                         <div
                           className="flex-1 h-2"
@@ -835,13 +912,13 @@ return (
            </div>
           </div>
         </div>
-      </div>
-{showPromoBox && promoX !== null && (
+
+{(promoVisible || (showPromoBox && !promoSticky)) && promoX !== null && (
   <div
     className="fixed z-[999999] pointer-events-none transition-opacity duration-100"
     style={{
       left: promoX - 187.5,
-      bottom: 240,
+      bottom: promoOffsetBottom ?? 240,
       width: 375,
       height: 250,
     }}
@@ -853,13 +930,37 @@ return (
         backdrop-blur-sm text-white p-4
         pointer-events-auto overflow-hidden
         flex flex-col justify-center items-center gap-6
+        relative
       "
     >
+
+      {/* CLOSE BUTTON for sticky mode */}
+      {promoSticky && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setPromoSticky?.(false)
+            setPromoVisible(false)
+            onPromoClose?.()
+          }}
+          className="
+            absolute top-2 right-2
+            text-white text-xl font-bold
+            bg-black/50 hover:bg-black/70
+            rounded-full px-2 pb-[2px]
+            pointer-events-auto
+          "
+        >
+          ✕
+        </button>
+      )}
+
       {/* top group */}
       <div className="flex flex-col items-center justify-center">
 
         {/* column labels */}
-        <div className="flex items-start text-[14px] font-semibold uppercase tracking-wide mb-1">
+        <div className="flex items-start text-[14px] font-semibold 
+        uppercase tracking-wide mb-1">
           <span
             className="text-center w-[120px]"
             style={{ transform: 'translateX(-20px)' }}
@@ -876,7 +977,8 @@ return (
         </div>
 
         {/* column details */}
-        <div className="flex justify-center items-start gap-4 text-[12px] leading-snug relative w-full max-w-[320px]">
+        <div className="flex justify-center items-start gap-4 
+        text-[12px] leading-snug relative w-full max-w-[320px]">
 
           <div className="text-center w-[150px]">
             ✔ 40 questions<br />
@@ -884,7 +986,7 @@ return (
             ✔ Unlimited retakes
           </div>
 
-         <div className="text-center w-[150px]">
+          <div className="text-center w-[150px]">
             ✔ $59.95 one-time fee <br />
             ✔ Verified submission of<br />
             course + exam to FL DMV

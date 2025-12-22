@@ -1,5 +1,6 @@
 "use client";
 
+import PublicHeader from "@/app/(public)/_PublicHeader";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import CourseTimeline from "@/components/YT-Timeline";
@@ -131,11 +132,24 @@ import Loader from "@/components/loader";
     const hoverTooltipTextRef = useRef<HTMLDivElement | null>(null);
     const hoverTooltipTimeRef = useRef<HTMLDivElement | null>(null);
     const [timelineVersion, setTimelineVersion] = useState(0);
+    const isHoveringTimelineRef = useRef(false);
 
     const [canProceed, setCanProceed] = useState(false);
     const [isPaused, setIsPaused] = useState(true);
 
     const timelineAutoHideTimerRef = useRef<number | null>(null)
+    const [promoStickyVisible, setPromoStickyVisible] = useState(true)
+    // sticky promo logic for terminal popups
+    const [promoSticky, setPromoSticky] = useState(false);
+    const [promoDefaultVisible, setPromoDefaultVisible] = useState(false);
+
+    // restore sticky promo when timeline reappears
+    function showTimelineAgain() {
+      setShowTimeline(true);
+      setPromoSticky(true);
+      setPromoDefaultVisible(true);
+    }
+
     // NAV STATE
       const totalSlides = slides.length;
 
@@ -150,21 +164,29 @@ import Loader from "@/components/loader";
       const isFinalCourseSlide =
         isFinalSlideOfModule &&
         currentModuleIndex === (modules?.length ?? 0) - 1;
-
       
-    function revealTimelineFor3s() {
-        setShowTimeline(true)
+      function revealTimelineFor3s() {
+        setShowTimeline(true);
+
+        // ENSURE sticky mode initializes
+        if (!promoSticky) {
+          setPromoSticky(true);
+        }
+
+        // restore X if previously closed
+        setPromoStickyVisible(true);
 
         if (timelineAutoHideTimerRef.current !== null) {
-          clearTimeout(timelineAutoHideTimerRef.current)
+          clearTimeout(timelineAutoHideTimerRef.current);
         }
 
         timelineAutoHideTimerRef.current = window.setTimeout(() => {
-          if (!scrubActive.current) {
-            setShowTimeline(false)
+          if (!scrubActive.current && !isHoveringTimelineRef.current) {
+            setShowTimeline(false);
           }
-        }, 3000)
+        }, 3000);
       }
+
 
     const courseIndex = useMemo(() => {
       if (!modules.length || !courseLessons.length || !courseSlides.length) {
@@ -1219,9 +1241,59 @@ import Loader from "@/components/loader";
     };
   }, []);
 
+  /* ------------------------------------------------------
+    AUTO HIDE TIMELINE
+  ------------------------------------------------------ */
+
+useEffect(() => {
+  if (!showTimeline) return;
+
+  // clear any existing timer
+  if (timelineAutoHideTimerRef.current !== null) {
+    clearTimeout(timelineAutoHideTimerRef.current);
+  }
+
+  timelineAutoHideTimerRef.current = window.setTimeout(() => {
+    if (!scrubActive.current) {
+      setShowTimeline(false);
+    }
+  }, 3000);
+
+  return () => {
+    if (timelineAutoHideTimerRef.current) {
+      clearTimeout(timelineAutoHideTimerRef.current);
+      timelineAutoHideTimerRef.current = null;
+    }
+  };
+}, [showTimeline]);
+
+useEffect(() => {
+  function handleDocClick(e: MouseEvent) {
+    const t = e.target as HTMLElement;
+
+    // skip if clicking inside timeline or terminal promo box
+    if (
+      t.closest('#timeline-region') ||
+      t.closest('.promo-box')
+    ) return;
+
+    // ONLY close if ALSO not hovered
+    if (!scrubActive.current && !isHoveringTimelineRef.current) {
+      setShowTimeline(false);
+      tooltipVisibleRef.current = false;
+    }
+      }
+
+  document.addEventListener('mousedown', handleDocClick);
+
+  return () => {
+    document.removeEventListener('mousedown', handleDocClick);
+  };
+}, []);
+
 
   /* ------------------------------------------------------
-    PROGRESS UPDATERS (copy/paste exactly)
+    PROGRESS UPDATERS
   ------------------------------------------------------ */
   async function recordSlideComplete(moduleIndex: number, lessonIndex: number, slideIndex: number) {
     const user = await supabase.auth.getUser();
@@ -1482,6 +1554,8 @@ import Loader from "@/components/loader";
   return (
     <div className="relative min-h-screen bg-white flex flex-col">
 
+  <PublicHeader />
+
       <div className="fixed top-0 left-0 right-0 z-40 h-2 bg-gray-200">
         <div
           className="h-full bg-[#ca5608] transition-[width] duration-700 ease-linear"
@@ -1500,65 +1574,11 @@ import Loader from "@/components/loader";
             tgt.closest("a")
           )
             return;
-          togglePlay();
+          // do nothing for now
         }}
+
       >
         <SlideView currentImage={currentImage} />
-
-      <div
-    className={`
-      absolute left-0 right-0 z-[50]
-      flex items-center justify-center
-      transition-opacity duration-300
-      ${isPaused
-        ? "opacity-100"
-        : "opacity-0 pointer-events-none"}
-        `}
-    style={{ top: "8px", bottom: "300px" }}
-  >
-    {isIdle && (
-      <div className="absolute bottom-[115px] text-white font-bold text-lg">
-        Press play to begin
-      </div>
-    )}
-
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        togglePlay();
-      }}
-      className={`
-        w-20 h-20
-        rounded-full
-        bg-black/90
-        flex items-center justify-center
-        backdrop-blur-sm
-        cursor-pointer
-        transition
-        ring-4 ring-white/70
-        ${isIdle ? "idle-fade" : ""}
-        hover:bg-black/70    
-        `}
-    >
-      {isPaused ? (
-        <svg
-          viewBox="0 0 24 24"
-          className="w-18 h-20 fill-white"
-          style={{ transform: "translateX(-1.5px)" }}
-        >
-          <path d="M8.5 5a1.5 1.5 0 00-1.5 1.5v11a1.5 1.5 0 001.5 1.5L21.5 12z" />
-        </svg>
-      ) : (
-        <svg
-          viewBox="0 0 24 24"
-          className="w-15 h-15 fill-white"
-          style={{ transform: "translateX(-2.5px)" }}
-        >
-          <path d="M6.8 5.5a1.1 1.1 0 011.1-1.1h2.2a1.1 1.1 0 011.1 1.1v13a1.1 1.1 0 01-1.1 1.1H7.9a1.1 1.1 0 01-1.1-1.1z M14.9 5.5a1.1 1.1 0 011.1-1.1h2.2a1.1 1.1 0 011.1 1.1v13a1.1 1.1 0 01-1.1 1.1H16a1.1 1.1 0 01-1.1-1.1z" />
-        </svg>
-      )}
-    </button>
-  </div>
       </div>
 
       <div
@@ -1592,14 +1612,15 @@ import Loader from "@/components/loader";
           Continue
         </button>
       </div>
-    
+          
+{/* THUMBNAILS */}
 {showTimeline && (
   <div
     ref={hoverTooltipRef}
-    className="fixed z-[999999] pointer-events-none transition-opacity duration-60"
+    className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60"
     style={{
       left: 0,
-      bottom: 240,
+      bottom: 140, // above timeline rail which is fixed bottom-[25px]
       opacity: 0,
     }}
   >
@@ -1635,12 +1656,12 @@ import Loader from "@/components/loader";
       fixed bottom-0 left-0 right-0
       z-40 px-0 pb-[0px]
     "
-    onMouseEnter={() => setShowTimeline(true)}
-    onMouseLeave={() => {
-      if (scrubActive.current) return;
-      setShowTimeline(false);
-      handleHoverEnd();
+    onMouseEnter={() => {
+      setShowTimeline(true);
+      setPromoSticky(true);
+      setPromoStickyVisible(true);
     }}
+
   >
     <div
       className={`
@@ -1651,6 +1672,36 @@ import Loader from "@/components/loader";
         }
       `}
     >
+<div
+  id="timeline-region"
+  className="fixed bottom-[25px] left-0 right-0 z-40 min-h-[6rem]"
+  onMouseEnter={() => {
+    isHoveringTimelineRef.current = true;
+    if (!showTimeline) setShowTimeline(true);
+
+    // optional: extend auto-hide window when re-hovering
+    if (timelineAutoHideTimerRef.current) {
+      clearTimeout(timelineAutoHideTimerRef.current);
+    }
+    timelineAutoHideTimerRef.current = window.setTimeout(() => {
+      if (!scrubActive.current && !isHoveringTimelineRef.current) {
+        setShowTimeline(false);
+      }
+    }, 3000);
+  }}
+  onMouseLeave={() => {
+    isHoveringTimelineRef.current = false;
+
+    if (timelineAutoHideTimerRef.current) {
+      clearTimeout(timelineAutoHideTimerRef.current);
+    }
+    timelineAutoHideTimerRef.current = window.setTimeout(() => {
+      if (!scrubActive.current && !isHoveringTimelineRef.current) {
+        setShowTimeline(false);
+      }
+    }, 3000);
+  }}
+>
 
         {/* TIMELINE */}
       <CourseTimeline
@@ -1677,10 +1728,14 @@ import Loader from "@/components/loader";
         onHoverEnd={handleHoverEnd}
         timelineContainerRef={timelineHoverRef}
         thumbCacheRef={thumbCacheRef}
+        promoOffsetBottom={140}
+        promoSticky={promoSticky}
+        setPromoSticky={setPromoSticky}
+        promoDefaultVisible={true}
       />
-
+</div>
       <div
-        className="fixed bottom-[160px] left-0 right-0 z-[200] pointer-events-none"
+        className="fixed bottom-[45px] left-0 right-0 z-[200] pointer-events-none"
       >
         <div className="md:max-w-6xl md:mx-auto px-4">
           <div className="flex items-center gap-4 text-[#001f40]">
@@ -1704,12 +1759,9 @@ import Loader from "@/components/loader";
           </div>
         </div>
       </div>
-
     </div>
   </div>
-
-
-    </div>
+ </div>
     );
   }
 
