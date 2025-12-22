@@ -774,7 +774,6 @@ return (
     if (isCompleted) bg = "#ca5608"
     if (isActive) {
       bg = "#ca5608"
-      glow = `0 0 6px #ca5608`
     }
 
     return (
