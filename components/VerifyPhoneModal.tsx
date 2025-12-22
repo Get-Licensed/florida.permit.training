@@ -120,7 +120,7 @@ async function verifyCode() {
     <div className="fixed inset-0 bg-black/40 z-[200] flex items-center justify-center">
       <div className="bg-white p-6 rounded-lg shadow-xl w-[90%] max-w-sm">
         <h2 className="text-lg font-bold text-[#001f40] mb-4">
-          Verify Phone
+          Verify It's You
         </h2>
 
         <form onSubmit={handleSubmit}>

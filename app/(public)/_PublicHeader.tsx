@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
+import type { Session } from "@supabase/supabase-js";
 
 export default function PublicMenuHeader({
   volume,
@@ -18,6 +19,13 @@ export default function PublicMenuHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null);
+    });
+  }, []);
 
   useEffect(() => {
     async function loadProfile() {
@@ -49,7 +57,7 @@ export default function PublicMenuHeader({
 
   return (
     <div className="relative overflow-visible">
-      <Link href="/dashboard">
+      <Link href="/">
         <img
           src="/logo.png"
           alt="Florida Permit Training"
@@ -69,10 +77,30 @@ export default function PublicMenuHeader({
 
     <header className="relative h-16 flex items-center bg-white border-b border-gray-200 z-[60]">
   
-      <div className="flex items-baseline w-full px-3 gap-4 pl-[100px] justify-end">
-    <span className="text-[#001f40] text-sm font-semibold truncate max-w-[200px]">
-      {fullName}
-    </span>
+      <div className="flex items-baseline w-full px-3 gap-4 pl-[100px] justify-end -translate-x-[10px]">
+<span
+  className="text-[#001f40] text-sm font-semibold truncate max-w-[200px] cursor-pointer hover:text-[#ca5608]"
+  onClick={async () => {
+    if (session) return; // already logged in
+
+    const redirect = `${window.location.origin}/auth/callback`;
+
+    const res = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: redirect, skipBrowserRedirect: true },
+    });
+
+    if (res?.data?.url) {
+      window.open(
+        res.data.url,
+        "GoogleLogin",
+        `width=520,height=650,top=${window.screenY + 80},left=${window.screenX + 120}`
+      );
+    }
+  }}
+>
+  {session ? fullName : "Log In"}
+</span>
 
     {typeof volume === "number" && setVolume && (
       <input

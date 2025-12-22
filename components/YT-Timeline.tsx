@@ -17,15 +17,15 @@ const TERMINAL_SEGMENTS = [
 export type CourseTimelineProps = {
   modules: ModuleRow[]
   currentModuleIndex: number
-  maxCompletedIndex: number
+  maxCompletedIndex?: number
   goToModule?: (index: number) => void
   allowedSeekSecondsRef: { current: number }
   playedSecondsRef?: { current: number }
   thumbCacheRef?: RefObject<Map<string, string>>
   togglePlay: () => void
   isPaused: boolean
-  examPassed: boolean
-  paymentPaid: boolean
+  examPassed?: boolean
+  paymentPaid?: boolean
   currentSeconds: number
   totalSeconds: number
   elapsedCourseSeconds: number
@@ -741,11 +741,11 @@ return (
 {/* ===== TRACK + MODULE + TERMINAL CELLS (scrubbable modules only) ===== */}
 <div
   ref={modulesRef}
-  className="relative z-[1] flex items-center h-full flex-1 -translate-y-[.5px]"
+  className="relative z-[1] flex items-center h-full flex-1"
   style={{ minWidth: 0 }}
 >
   <div
-    className="absolute left-0 top-[2px] bottom-[2px] z-[1] rounded-full pointer-events-none"
+    className="absolute left-0 top-[2px] bottom-[2px] z-[1] rounded-l-full rounded-r-none pointer-events-none"
     ref={furthestTrackRef}
     style={{
       width: `${modulePortionRatio * 100}%`,
@@ -754,7 +754,7 @@ return (
   />
   <div
     ref={playedTrackRef}
-    className="absolute left-0 top-[2px] bottom-[2px] z-[2] rounded-full pointer-events-none"
+    className="absolute left-[-2px] top-[1px] bottom-[.5px] z-[2] rounded-l-full rounded-r-none pointer-events-none"
     style={{
       width: `${modulePortionRatio * 100}%`,
       background: "linear-gradient(to right, #ca5608 0px, #d1d5db 0px)",
@@ -781,7 +781,7 @@ return (
       <div
         key={m.id}
         style={{ width: `${moduleWidthPct}%` }}
-        className={`relative z-[1] h-full flex items-center justify-center ${
+        className={`relative z-[1] h-full flex items-center justify-center translate-y-[2px] ${
           isUnlocked ? "cursor-pointer" : "cursor-pointer opacity-45"
         }`}
         onClick={() => {
@@ -859,7 +859,7 @@ return (
                         {!isLast && <div className="w-[2px] h-full" />}
                       </div>
 
-                            <div className="mt-3 text-[9px] font-medium text-black text-center opacity-80 px-1 bg-white/90 rounded-md px-2 py-[1px]">
+                            <div className="mt-3 text-[8px] font-bold text-black text-center opacity-80 px-1 bg-white/90 rounded-md px-2 py-[1px]">
                         {seg.label}
                       </div>
                     </div>

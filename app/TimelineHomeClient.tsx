@@ -5,11 +5,9 @@ import PublicHeader from "@/app/(public)/_PublicHeader";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import CourseTimeline from "@/components/YT-Timeline";
-import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
-import Loader from "@/components/loader";
 import VerifyPhoneModal from "@/components/VerifyPhoneModal"
-
+import Loader from "@/components/loader";
 
 /* ------------------------------------------------------
     TYPES
@@ -83,7 +81,6 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
   export const allowedSeekSecondsRef = { current: 0 };
 
   export default function CoursePlayerClient() {
-    const didApplyProgress = useRef(false);
     const playedSecondsRef = useRef(0);
     const scrubActive = useRef(false);
     const scrubSeekSecondsRef = useRef<number | null>(null);
@@ -92,35 +89,18 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
     const [userId, setUserId] = useState("")
     
     // module and lesson tracking
-    const [modules, setModules] = useState<ModuleRow[]>([]);
-    const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
-    const [maxCompletedIndex, setMaxCompletedIndex] = useState(0);
-    const [progressReady, setProgressReady] = useState(false);
-    const [contentReady, setContentReady] = useState(false);
-    const [progressResolved, setProgressResolved] = useState(false);
-    const [lessons, setLessons] = useState<LessonRow[]>([]);
-    const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
-    const [courseTotals, setCourseTotals] = useState<{
-       totalSeconds: number; }>({ totalSeconds: 0 });
-   // course assets
     const [slides, setSlides] = useState<SlideRow[]>([]);
     const [captions, setCaptions] = useState<Record<string, CaptionRow[]>>({});
+    const [slideIndex, setSlideIndex] = useState(0);
+
+    const [modules, setModules] = useState<ModuleRow[]>([]);
+    const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
     const [courseLessons, setCourseLessons] = useState<LessonRow[]>([]);
     const [courseSlides, setCourseSlides] = useState<CourseSlideRow[]>([]);
     const [courseCaptions, setCourseCaptions] = useState<
       Record<string, CaptionTimingRow[]>
     >({});
-    const [slideIndex, setSlideIndex] = useState(0);
-
-    const [restoredReady, setRestoredReady] = useState(false)
-    const [initialHydrationDone, setInitialHydrationDone] = useState(false);
-
     // final actions
-    const [examPassed, setExamPassed] = useState(false);
-    const [paymentPaid, setPaymentPaid] = useState(false);
-
-
-    const [moduleTotals, setModuleTotals] = useState<Record<string, number>>({});
     const [showTimeline, setShowTimeline] = useState(false);
     const thumbCacheRef = useRef(new Map<string, string>());
     const hoverTooltipRafRef = useRef<number | null>(null);
@@ -140,8 +120,6 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
     const [timelineVersion, setTimelineVersion] = useState(0);
     const isHoveringTimelineRef = useRef(false);
     const scrubActiveRef = scrubActive;
-
-    const [canProceed, setCanProceed] = useState(false);
     const [isPaused, setIsPaused] = useState(true);
 
     const timelineAutoHideTimerRef = useRef<number | null>(null)
@@ -151,20 +129,6 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
     const promoDismissedRef = useRef(false);
 
     // NAV STATE
-      const totalSlides = slides.length;
-
-      const isFinalSlideOfModule =
-        currentLessonIndex === (lessons?.length ?? 0) - 1 &&
-        slideIndex === totalSlides - 1;
-
-      const showContinueInstruction =
-        isFinalSlideOfModule &&
-        canProceed;
-
-      const isFinalCourseSlide =
-        isFinalSlideOfModule &&
-        currentModuleIndex === (modules?.length ?? 0) - 1;
-      
       const clearTimelineAutoHideTimer = useCallback(() => {
         if (timelineAutoHideTimerRef.current !== null) {
           clearTimeout(timelineAutoHideTimerRef.current);
@@ -282,8 +246,10 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
       () => courseIndex?.modules.map((module) => module.durationSeconds) ?? [],
       [courseIndex]
     );
-    const totalCourseSeconds =
-      courseTotals.totalSeconds || courseIndex?.totalSeconds || 0;
+    // ------------------------------------
+    // GLOBAL total course time for timeline
+    // ------------------------------------
+    const totalCourseSeconds = courseIndex?.totalSeconds ?? 0;
 
     const courseSlidesById = useMemo(() => {
       const map = new Map<string, CourseSlideRow>();
@@ -301,47 +267,6 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
       return map;
     }, [courseCaptions]);
 
-    useEffect(() => {
-      let cancelled = false;
-
-      const preloadThumbs = async () => {
-        const slidesWithThumbs = courseSlides.filter(
-          (slide) => slide.image_path
-        );
-        const missing = slidesWithThumbs.filter(
-          (slide) =>
-            slide.image_path && !thumbCacheRef.current.has(slide.id)
-        );
-
-        if (!missing.length) return;
-
-        const paths = missing.map((slide) => slide.image_path as string);
-        const { data, error } = await supabase.storage
-          .from("uploads")
-          .createSignedUrls(paths, 60 * 60);
-
-        if (cancelled || error || !data) return;
-
-        data.forEach((entry, index) => {
-          const slide = missing[index];
-          if (!slide) return;
-          if (entry?.signedUrl) {
-            thumbCacheRef.current.set(slide.id, entry.signedUrl);
-            const img = new window.Image();
-            img.src = entry.signedUrl;
-            img.decode?.().catch(() => {});
-          }
-        });
-      };
-
-      preloadThumbs();
-
-      return () => {
-        cancelled = true;
-      };
-    }, [courseSlides]);
-
-    const searchParams = useSearchParams();
     const router = useRouter();
 
     const resolveCourseTime = useCallback(
@@ -420,48 +345,6 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
       [courseIndex]
     );
 
-    const applySeekTarget = useCallback(
-      (target: SeekTarget) => {
-        if (scrubActive.current) return;
-        const {
-          moduleIndex,
-          lessonIndex,
-          slideIndex: targetSlideIndex,
-          slideId,
-        } = target;
-
-        const moduleChanged = moduleIndex !== currentModuleIndex;
-        const lessonChanged = lessonIndex !== currentLessonIndex || moduleChanged;
-        const slideChanged = targetSlideIndex !== slideIndex || lessonChanged;
-
-        if (moduleChanged) {
-          if (!scrubActive.current) {
-            setContentReady(false);
-            setRestoredReady(false);
-          }
-          setCurrentModuleIndex(moduleIndex);
-        }
-
-        if (lessonChanged && !scrubActive.current) {
-          setCurrentLessonIndex(lessonIndex);
-        }
-
-        if (slideChanged && !scrubActive.current) {
-          setSlideIndex(targetSlideIndex);
-        }
-
-        if (!slideChanged && slideId === slides[slideIndex]?.id) {
-          setCanProceed(true);
-        }
-      },
-      [
-        currentModuleIndex,
-        currentLessonIndex,
-        slideIndex,
-        slides,
-      ]
-    );
-
     const handleScrub = useCallback(
       (seconds: number) => {
         if (!courseIndex) return;
@@ -490,27 +373,8 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
       const secs = scrubSeekSecondsRef.current;
       scrubSeekSecondsRef.current = null;
       if (secs === null) return;
-      if (secs > allowedSeekSecondsRef.current) return;
-
-      const resolved = resolveCourseTime(secs);
-      if (!resolved) return;
-
-      const maxUnlockedModuleIndex = Math.min(
-        modules.length - 1,
-        maxCompletedIndex + 1
-      );
-
-      const target =
-        resolved.moduleIndex > maxUnlockedModuleIndex
-          ? clampTargetToModuleEnd(maxUnlockedModuleIndex) ?? resolved
-          : resolved;
-
-      applySeekTarget(target);
-
     }, [
-      applySeekTarget,
       clampTargetToModuleEnd,
-      maxCompletedIndex,
       modules.length,
       resolveCourseTime,
       scheduleTimelineAutoHide,
@@ -534,6 +398,9 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
           if (imgUrl) {
             hoverTooltipImageRef.current.src = imgUrl;
             hoverTooltipImageRef.current.style.display = "block";
+            hoverTooltipImageRef.current.onload = () => {
+              hoverTooltipPlaceholderRef.current!.style.display = "none";
+            };
           } else {
             hoverTooltipImageRef.current.removeAttribute("src");
             hoverTooltipImageRef.current.style.display = "none";
@@ -622,33 +489,6 @@ import VerifyPhoneModal from "@/components/VerifyPhoneModal"
       setIsPaused(true);
     }, [clearTimelineAutoHideTimer]);
 
-    useEffect(() => {
-      function handleSpace(e: KeyboardEvent) {
-        if (e.code !== "Space") return
-        e.preventDefault()
-        revealTimelineFor3s()
-        togglePlay()
-      }
-
-      window.addEventListener("keydown", handleSpace)
-      return () => window.removeEventListener("keydown", handleSpace)
-    }, [])
-
-    useEffect(() => {
-      function handleContinueHotkey(e: KeyboardEvent) {
-        if (!showContinueInstruction) return
-
-        // prevent space scrolling
-        if (e.code === "Space" || e.code === "Enter") {
-          e.preventDefault()
-          goNext()
-        }
-      }
-
-      window.addEventListener("keydown", handleContinueHotkey)
-      return () => window.removeEventListener("keydown", handleContinueHotkey)
-    }, [showContinueInstruction])
-
   // -------------------------------------------------------------
   // REQUIRED POPUP LOGIN HANDLER
   // -------------------------------------------------------------
@@ -704,234 +544,55 @@ async function handleGoogleSignup() {
     console.error("Google Sign-Up Error:", err);
   }
 }
-
-
   // -------------------------------------------------------------
-  // DEBUG: Core gate values (helps detect infinite steering wheel)
+  // AUTO LOGIN PUSH TO COURSE
   // -------------------------------------------------------------
-  useEffect(() => {
-    console.log("GATES:", {
-      progressReady,
-      contentReady,
-      restoredReady,
-      initialHydrationDone
-    });
-    console.log("INDICES:", {
-      currentModuleIndex,
-      currentLessonIndex,
-      slideIndex
-    });
-  }, [progressReady, contentReady, restoredReady, initialHydrationDone,
-      currentModuleIndex, currentLessonIndex, slideIndex]);
-
 
     useEffect(() => {
-      if (progressReady && contentReady && !initialHydrationDone) {
-        setInitialHydrationDone(true);
+      async function checkSession() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          router.replace("/course");  // or push()
+        }
       }
-    }, [progressReady, contentReady]);
-
-  // ------------------------------------------------------
-  // COURSE COMPLETION
-  // ------------------------------------------------------
-  const courseCompletionSentRef = useRef(false);
-
-  async function markCourseCompletedOnce() {
-    if (courseCompletionSentRef.current) return;
-    courseCompletionSentRef.current = true;
-
-    try {
-      await fetch("/api/course/complete", {
-    method: "POST",
-    credentials: "include",
-  });
-    } catch (e) {
-      console.error("Failed to mark course complete", e);
-    }
-  }
-
-    const moduleLoadInFlightRef = useRef<string | null>(null);
-    const lessonLoadInFlightRef = useRef<number | null>(null);
+      checkSession();
+    }, [router]);
 
 
   //-----------------------------------
   // TIME-BASED PROGRESS CALCULATIONS
   //-----------------------------------
-  const totalModuleSeconds = slides.reduce((sum, slide) => {
-    const caps = captions[slide.id] || [];
-    return sum + caps.reduce((s, c) => s + (c.seconds ?? 0), 0);
-  }, 0);
+      const totalModuleSeconds = slides.reduce((sum, slide) => {
+        const caps = captions[slide.id] || [];
+        return sum + caps.reduce((s, c) => s + (c.seconds ?? 0), 0);
+      }, 0);
 
-  const elapsedSeconds = (() => {
-    let sec = 0;
+      const elapsedSeconds = (() => {
+        let sec = 0;
 
-  for (let i = 0; i < slideIndex; i++) {
-    const slide = slides[i];
-    if (!slide) continue;
-    const caps = captions[slide.id] || [];
-    sec += caps.reduce((s, c) => s + (c.seconds ?? 0), 0);
-  }
+      for (let i = 0; i < slideIndex; i++) {
+        const slide = slides[i];
+        if (!slide) continue;
+        const caps = captions[slide.id] || [];
+        sec += caps.reduce((s, c) => s + (c.seconds ?? 0), 0);
+      }
 
 
-    return sec;
-  })();
+        return sec;
+      })();
 
     // -----------------------------------
     // COURSE-LEVEL TOTAL TIME
     // -----------------------------------
 
+    // homepage simplified elapsedCourseSeconds
+    const elapsedCourseSeconds = elapsedSeconds
 
-    // per-module totals
+    // update refs minimally (required for timeline + loader exit)
     useEffect(() => {
-    async function loadCourseTotals() {
-      const { data: slideRows } = await supabase
-        .from("lesson_slides")
-        .select("id");
-
-      const slideIds = slideRows?.map(s => s.id) ?? [];
-
-      const { data: caps } = await supabase
-        .from("slide_captions")
-        .select("seconds")
-        .in("slide_id", slideIds);
-
-      const total = (caps ?? []).reduce(
-        (sum, c) => sum + (c.seconds ?? 0),
-        0
-      );
-
-      setCourseTotals({ totalSeconds: total });
-    }
-
-    loadCourseTotals();
-  }, []);
-
-  const completedModulesSeconds = modules
-    .slice(0, currentModuleIndex)
-    .reduce(
-      (sum, m) => sum + (moduleTotals[m.id] || 0),
-      0
-    );
-
-  // -----------------------------------
-  // COURSE-LEVEL ELAPSED TIME (FINAL)
-  // -----------------------------------
-  const elapsedCourseSeconds =
-    completedModulesSeconds + elapsedSeconds;
-
-  const isIdle = isPaused && elapsedCourseSeconds === 0
-
-  useEffect(() => {
-    allowedSeekSecondsRef.current = Math.max(
-      allowedSeekSecondsRef.current,
-      elapsedCourseSeconds
-    );
-    playedSecondsRef.current = Math.max(
-      playedSecondsRef.current,
-      elapsedCourseSeconds
-    );
-  }, [elapsedCourseSeconds]);
-
-
-  useEffect(() => {
-    async function loadModuleTotals() {
-      const { data: slideRows } = await supabase
-        .from("lesson_slides")
-        .select("id, lesson_id");
-
-      const { data: lessonRows } = await supabase
-        .from("lessons")
-        .select("id, module_id");
-
-
-      const lessonToModule = Object.fromEntries(
-      (lessonRows ?? []).map(l => [l.id, l.module_id])
-    );
-
-      const { data: caps } = await supabase
-        .from("slide_captions")
-        .select("slide_id, seconds");
-
-      const slideToLesson = Object.fromEntries(
-        (slideRows ?? []).map(s => [s.id, s.lesson_id])
-      );
-
-
-      const totals: Record<string, number> = {};
-
-      caps?.forEach(c => {
-        const lessonId = slideToLesson[c.slide_id];
-        const moduleId = lessonToModule[lessonId];
-        if (!moduleId) return;
-
-        totals[moduleId] = (totals[moduleId] || 0) + (c.seconds ?? 0);
-      });
-
-      setModuleTotals(totals);
-    }
-
-    loadModuleTotals();
-  }, []);
-
-    /* ------------------------------------------------------
-      checks backend status and redirects
-    ------------------------------------------------------ */
-  const [terminalStatusLoaded, setTerminalStatusLoaded] = useState(false);
-
-  async function refreshStatusAndRedirect() {
-        const res = await fetch("/api/course/status");
-        const data = await res.json();
-
-        if (data.status === "completed_unpaid") {
-          window.location.href = "/finish-pay";
-        } else if (
-          data.status === "completed_paid" ||
-          data.status === "dmv_submitted"
-        ) {
-          window.location.href = "/finish";
-        }
-      }
-
-      async function loadTerminalStatus() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
-      console.warn("No session — skipping terminal status");
-      return;
-    }
-
-    const res = await fetch("/api/course/status", {
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-      },
-    });
-
-    if (!res.ok) {
-      console.error("Failed to load terminal status", res.status);
-      return;
-    }
-
-    const data = await res.json();
-
-    console.log("COURSE STATUS RESPONSE:", data);
-
-    // SAFETY GUARD: null or undefined response
-    if (!data) {
-      setExamPassed(false);
-      setPaymentPaid(false);
-      return;
-    }
-
-    setExamPassed(Boolean(data.exam_passed));
-
-    setPaymentPaid(
-      data.status === "completed_paid" ||
-      data.status === "dmv_submitted"
-    );
-  }
-
+      allowedSeekSecondsRef.current = elapsedCourseSeconds
+      playedSecondsRef.current = elapsedCourseSeconds
+    }, [elapsedCourseSeconds])
 
     /* ------------------------------------------------------
       LOAD MODULES
@@ -966,6 +627,34 @@ async function handleGoogleSignup() {
       setCourseLessons(lessonRows ?? []);
       setCourseSlides(slideRows ?? []);
 
+      // BUILD THUMBNAIL SIGNED URLs EARLY – preload ALL thumbs at once
+      if (slideRows?.length) {
+        const paths = slideRows
+          .map(s => s.image_path)
+          .filter(Boolean) as string[];
+
+        const { data } = await supabase.storage
+          .from("uploads")
+          .createSignedUrls(paths, 3600 * 24); // 24h cache
+
+        data?.forEach((entry, index) => {
+          const slide = slideRows[index];
+          if (entry?.signedUrl) {
+            thumbCacheRef.current.set(slide.id, entry.signedUrl);
+          }
+        });
+
+        // warm browser decode now so timeline hover is instant
+        thumbCacheRef.current.forEach(url => {
+          const img = new window.Image() as HTMLImageElement;
+          (img as any).decoding = "async";
+          img.src = url;
+          img.decode?.().catch(() => {});
+        });
+
+      }
+
+
       const captionMap: Record<string, CaptionTimingRow[]> = {};
 
       (captionRows ?? []).forEach((caption) => {
@@ -982,344 +671,17 @@ async function handleGoogleSignup() {
       setCourseCaptions(captionMap);
     }
 
-  // ------------------------
-  // PROGRESS LOADING + APPLY
-  // ------------------------
-  useEffect(() => {
-    // Wait until modules are loaded
-    if (!modules.length) return;
-
-    // Apply progress exactly once
-    if (didApplyProgress.current) return;
-
-    loadProgress();
-  }, [modules]);
-
-  async function loadProgressFromDB() {
-    const user = await supabase.auth.getUser();
-
-    if (!user?.data?.user) {
-      return { modRows: [], slideRows: [] };
-    }
-
-    const { data: modRows } = await supabase
-      .from("course_progress_modules")
-      .select("*")
-      .eq("user_id", user.data.user.id)
-      .eq("course_id", "FL_PERMIT_TRAINING");
-
-    const { data: slideRows } = await supabase
-      .from("course_progress_slides")
-      .select("*")
-      .eq("user_id", user.data.user.id)
-      .eq("course_id", "FL_PERMIT_TRAINING");
-
-    return { modRows: modRows ?? [], slideRows: slideRows ?? [] };
-  }
-
-  async function loadProgress() {
-    const { modRows, slideRows } = await loadProgressFromDB();
-    applyProgress(modRows, slideRows);
-  }
-
-  function applyProgress(
-    modRows: any[] = [],
-    slideRows: any[] = []
-  ) {
-
-    // ----------------------------------
-    // SINGLE ENTRY GUARD (ONLY PLACE)
-    // ----------------------------------
-    if (didApplyProgress.current) return;
-    didApplyProgress.current = true;
-
-    console.log("APPLY_PROGRESS INPUT:", {
-      modCount: modRows.length,
-      slideCount: slideRows.length,
-    });
-
-    // ----------------------------------
-    // BASIC SANITY
-    // ----------------------------------
-    if (!Array.isArray(modRows) || !Array.isArray(slideRows)) {
-      unlockProgressGates();
-      return;
-    }
-
-  // ----------------------------------
-  // URL DEEP-LINK
-  // ----------------------------------
-  const rawParam = searchParams.get("module");
-
-  let urlIndex: number | null = null;
-
-  if (rawParam !== null) {
-    const parsed = Number(rawParam);
-    if (Number.isInteger(parsed)) {
-      urlIndex = parsed;
-    }
-  }
-
-  // ----------------------------------
-  // MODULE COMPLETION (DB)
-  // ----------------------------------
-  const completedModules = modRows.filter(m => m?.completed);
-
-  const maxCompletedModuleIndex = completedModules.length
-    ? Math.max(...completedModules.map(m => m.module_index ?? 0))
-    : 0;
-
-  setMaxCompletedIndex(maxCompletedModuleIndex);
-
-  // ----------------------------------
-  // FINAL MODULE DECISION (SINGLE SOURCE OF TRUTH)
-  // ----------------------------------
-  let finalModuleIndex = maxCompletedModuleIndex;
-
-  if (urlIndex !== null) {
-    finalModuleIndex = Math.min(urlIndex, maxCompletedModuleIndex);
-  }
-
-  console.log("📍 FINAL MODULE INDEX:", finalModuleIndex);
-
-  setCurrentModuleIndex(finalModuleIndex);
-
-
-  // ----------------------------------
-  // SLIDE POSITION WITHIN *FINAL* MODULE
-  // ----------------------------------
-  const slidesInModule = slideRows.filter(
-    s => (s?.module_index ?? -1) === finalModuleIndex
-  );
-
-  if (!slidesInModule.length) {
-    setCurrentLessonIndex(0);
-    setSlideIndex(0);
-    unlockProgressGates();
-    return;
-  }
-
-  const last = slidesInModule.reduce((a, b) =>
-    (a.slide_index ?? 0) > (b.slide_index ?? 0) ? a : b
-  );
-
-  setCurrentLessonIndex(last.lesson_index ?? 0);
-  setSlideIndex(last.slide_index ?? 0);
-
-  unlockProgressGates();
-
-  }
-
-  const refreshStatusAndProgress = useCallback(async () => {
-    const { modRows } = await loadProgressFromDB();
-    const completedModules = modRows.filter(m => m?.completed);
-    const maxCompletedModuleIndex = completedModules.length
-      ? Math.max(...completedModules.map(m => m.module_index ?? 0))
-      : 0;
-
-    setMaxCompletedIndex(maxCompletedModuleIndex);
-    allowedSeekSecondsRef.current = Math.max(
-      allowedSeekSecondsRef.current,
-      elapsedCourseSeconds
-    );
-    playedSecondsRef.current = Math.max(
-      playedSecondsRef.current,
-      elapsedCourseSeconds
-    );
-    setTimelineVersion((v) => v + 1);
-  }, [elapsedCourseSeconds]);
-
-  // ----------------------------------
-  // CENTRALIZED GATE UNLOCK
-  // ----------------------------------
-  function unlockProgressGates() {
-    setProgressReady(true);
-    setRestoredReady(true);
-    setProgressResolved(true);
-  }
-
-  /* ------------------------------------------------------
-      LOAD LESSONS (without resetting lesson index)
-    ------------------------------------------------------ */
-    async function loadLessons(moduleId: string) {
-      if (moduleLoadInFlightRef.current === moduleId) return;
-      moduleLoadInFlightRef.current = moduleId;
-
-      try {
-      const { data } = await supabase
-        .from("lessons")
-        .select("*")
-        .eq("module_id", moduleId)
-        .order("sort_order", { ascending: true });
-
-      if (!data?.length) {
-        setLessons([]);
-        return;
-      }
-
-      setLessons(data);
-      // DO NOT reset currentLessonIndex here
-      } finally {
-        if (moduleLoadInFlightRef.current === moduleId) {
-          moduleLoadInFlightRef.current = null;
-        }
-      }
-    }
-
-  /* ------------------------------------------------------
-    LOAD LESSON CONTENT  (with contentReady gates)
-  ------------------------------------------------------ */
-  async function loadLessonContent(lessonId: number) {
-      if (scrubActive.current) {
-      console.warn("LOAD CANCELLED — scrub active")
-      return
-    }
-
-    if (lessonLoadInFlightRef.current === lessonId) return;
-    lessonLoadInFlightRef.current = lessonId;
-    console.log("LOAD_LESSON_CONTENT: start", { lessonId });
-
-    try {
-      // reset content-ready for this lesson load
-      setContentReady(false);
-
-      // clear existing content
-      setSlides([]);
-      setCaptions({});
-
-      // ---- SLIDES ----
-      const { data: slideRows } = await supabase
-        .from("lesson_slides")
-        .select("*")
-        .eq("lesson_id", lessonId)
-        .order("order_index", { ascending: true });
-
-      setSlides(slideRows || []);
-
-      // ---- CAPTIONS ----
-      const slideIds = slideRows?.map((s) => s.id) ?? [];
-      const { data: captionRows } = await supabase
-        .from("slide_captions")
-        .select(`
-          id,
-          slide_id,
-          caption,
-          seconds,
-          line_index
-        `)
-        .in("slide_id", slideIds)
-        .order("line_index", { ascending: true });
-
-      const grouped: Record<string, CaptionRow[]> = {};
-      slideRows?.forEach((s) => {
-        grouped[s.id] =
-          captionRows?.filter((c) => String(c.slide_id) === String(s.id)) ?? [];
-      });
-
-      setCaptions(grouped);
-
-      console.log("LESSON CONTENT LOADED:", {
-        lessonId,
-        slidesLoaded: slideRows?.length ?? 0,
-        captionsLoaded: captionRows?.length ?? 0,
-        restoredReady,
-        contentReadyPending: true
-      });
-
-      // ------------------------------------------------------
-      // PATCH: Unlock autoplay for *fresh module loads* 
-      // (restoredReady = false means NEW USER or NEW MODULE)
-      // ------------------------------------------------------
-      if (!restoredReady) {
-        console.log("FRESH MODULE LOAD → enabling contentReady immediately");
-        setContentReady(true);
-      }
-
-      // ------------------------------------------------------
-      // If restoring from saved progress, wait and then unlock.
-      // ------------------------------------------------------
-      if (restoredReady) {
-        console.log("RESTORED PROGRESS → enabling contentReady");
-        setContentReady(true);
-      }
-    } finally {
-      if (lessonLoadInFlightRef.current === lessonId) {
-        lessonLoadInFlightRef.current = null;
-      }
-    }
-  }
-
 
   /* ------------------------------------------------------
     LOAD SEQUENCE
   ------------------------------------------------------ */
-  useEffect(() => {
-    loadModules();
-  }, []);
+useEffect(() => {
+  loadModules();
+}, []);
 
-  useEffect(() => {
-    loadCourseStructure();
-  }, []);
-
-  useEffect(() => {
-    loadTerminalStatus();
-  }, []);
-
-
-  useEffect(() => {
-    if (!progressResolved) return;
-    if (scrubActive.current) return;
-    const module = modules[currentModuleIndex];
-    if (!module) return;
-    loadLessons(module.id);
-  }, [modules, currentModuleIndex, progressResolved]);
-
-  useEffect(() => {
-    if (!progressResolved) return;
-    if (scrubActive.current) return;
-    const l = lessons[currentLessonIndex];
-    if (!l) return;
-    loadLessonContent(l.id);
-  }, [lessons, currentLessonIndex, progressResolved]);
-
-  useEffect(() => {
-    // If restoredReady turned true AFTER lesson content loaded,
-    // we must unlock contentReady manually.
-    if (restoredReady && slides.length > 0 && Object.keys(captions).length > 0) {
-      console.log("LATE RESTORE → Unlocking contentReady now");
-      setContentReady(true);
-    }
-  }, [restoredReady, slides, captions]);
-
-  useEffect(() => {
-    if (!contentReady) return;
-    if (!slides[slideIndex]) return;
-    setCanProceed(true);
-  }, [contentReady, slideIndex, slides]);
-
-
-  /* ------------------------------------------------------
-    AUTO-PAUSE WHEN PAGE IS NOT ACTIVE
-  ------------------------------------------------------ */
-  useEffect(() => {
-    function handleVisibility() {
-      if (document.hidden) {
-        setIsPaused(true);
-      }
-    }
-
-    function handleBlur() {
-      setIsPaused(true);
-    }
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("blur", handleBlur);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, []);
+useEffect(() => {
+  loadCourseStructure();
+}, []);
 
   /* ------------------------------------------------------
     AUTO HIDE TIMELINE
@@ -1364,93 +726,6 @@ useEffect(() => {
 }, [promoSticky, promoStickyVisible]);
 
 
-  /* ------------------------------------------------------
-    PROGRESS UPDATERS
-  ------------------------------------------------------ */
-  async function recordSlideComplete(moduleIndex: number, lessonIndex: number, slideIndex: number) {
-    const user = await supabase.auth.getUser();
-    console.log("recordSlideComplete user:", user?.data?.user);
-    if (!user.data.user) return;
-
-    const module = modules[moduleIndex];
-    const lesson = lessons[lessonIndex];
-    const slide = slides[slideIndex];
-
-    if (!module || !lesson || !slide) return;
-
-  await supabase
-    .from("course_progress_slides")
-    .upsert(
-      {
-        user_id: user.data.user.id,
-        course_id: "FL_PERMIT_TRAINING",
-        module_id: module.id,
-        lesson_id: lesson.id,
-        slide_id: slide.id,
-        slide_index: slideIndex,
-        lesson_index: lessonIndex,
-        completed: true,
-      },
-      { onConflict: "user_id,course_id,slide_id" }
-    )
-    .select()
-    .throwOnError();
-  }
-
-
-  /* update module-level progress */
-  async function updateModuleProgress(moduleIndex: number) {
-    const user = await supabase.auth.getUser();
-    if (!user.data.user) return;
-
-    const module = modules[moduleIndex];
-    if (!module) return;
-
-    // total slides in that module
-    const { data: totalSlides } = await supabase
-      .from("lesson_slides")
-      .select("id")
-      .eq("module_id", module.id);
-
-    const { data: completedSlides } = await supabase
-      .from("course_progress_slides")
-      .select("id")
-      .eq("user_id", user.data.user.id)
-      .eq("module_id", module.id)
-      .eq("completed", true);
-
-    const completed = (completedSlides?.length ?? 0) >= (totalSlides?.length ?? 0);
-
-    // DEBUG THIS BEFORE UPSERT
-    console.log("updateModuleProgress payload:", {
-      user_id: user.data.user.id,
-      course_id: "FL_PERMIT_TRAINING",
-      module_id: module.id,
-      module_index: moduleIndex,
-      highest_slide_index: slides.length - 1,
-      completed
-    });
-
-  await supabase
-    .from("course_progress_modules")
-    .upsert(
-      {
-        user_id: user.data.user.id,
-        course_id: "FL_PERMIT_TRAINING",
-        module_id: module.id,
-        module_index: moduleIndex,
-        highest_slide_index: slides.length - 1,
-        completed,
-      },
-      { onConflict: "user_id,course_id,module_id" }
-    )
-    .select()
-    .throwOnError();
-
-    if (completed) {
-      await refreshStatusAndProgress();
-    }
-  }
   //--------------------------------------------------------------------
   // SAFE DISPLAY VALUES FOR CURRENT UI
   //--------------------------------------------------------------------
@@ -1460,151 +735,15 @@ useEffect(() => {
     ? resolveImage(currentSlide.image_path)
     : null;
 
-  /* ------------------------------------------------------
-    NAVIGATION  (FULL REPLACEMENT — FINAL SAFE VERSION)
-  ------------------------------------------------------ */
-  const goNext = useCallback(async () => {
 
-    // 🚨 FINAL COURSE TERMINAL STATE (ABSOLUTE STOP)
-    if (isFinalCourseSlide) {
-      await markCourseCompletedOnce();
-
-      // HARD EXIT — prevents ANY restore / reset logic
-      window.location.href = "/my-permit";
-      return;
-    }
-
-    const record = async (modI: number, lesI: number, sliI: number) => {
-      await recordSlideComplete(modI, lesI, sliI);
-      await updateModuleProgress(modI);
-    };
-
-    // ▶️ NEXT SLIDE (same lesson)
-    if (slideIndex < totalSlides - 1) {
-      const nextSlide = slideIndex + 1;
-      setSlideIndex(nextSlide);
-      record(currentModuleIndex, currentLessonIndex, nextSlide);
-      return;
-    }
-
-    // ▶️ NEXT LESSON (same module)
-    if (currentLessonIndex < lessons.length - 1) {
-      const nextLesson = currentLessonIndex + 1;
-      setCurrentLessonIndex(nextLesson);
-      setSlideIndex(0);
-      record(currentModuleIndex, nextLesson, 0);
-      return;
-    }
-
-  // ▶ NEXT MODULE
-  if (currentModuleIndex < modules.length - 1) {
-    const nextModule = currentModuleIndex + 1;
-
-    setSlides([]);
-    setCaptions({});
-
-    setContentReady(false);
-    setRestoredReady(false);
-
-    setCurrentModuleIndex(nextModule);
-    setCurrentLessonIndex(0);
-    setSlideIndex(0);
-
-    record(nextModule, 0, 0);
-    return;
-  }
-
-    // 🚫 NO FALLTHROUGH — terminal paths handled above
-  }, [
-    isFinalCourseSlide,
-    slideIndex,
-    totalSlides,
-    currentLessonIndex,
-    currentModuleIndex,
-    lessons?.length ?? 0,
-    modules?.length ?? 0,
-  ]);
-
-  //--------------------------------------------------------------------
-  // PROGRESS BAR SMOOTHING
-  //--------------------------------------------------------------------
-
-  const courseFinished =
-    isFinalCourseSlide && canProceed;
-
-  const progressPercentage =
-    courseFinished
-      ? 100
-      : progressReady && contentReady && totalModuleSeconds > 0
-      ? (elapsedSeconds / totalModuleSeconds) * 100
-      : 0;
-
-
-
-  //--------------------------------------------------------------------
-  // jump to module only if user has unlocked it (GUARDED)
-  //--------------------------------------------------------------------
   function goToModule(i: number) {
     if (scrubActive.current) return;
-    const targetStartSeconds = moduleDurationSeconds
-      .slice(0, i)
-      .reduce((sum, duration) => sum + (duration ?? 0), 0);
-
-    if (targetStartSeconds > allowedSeekSecondsRef.current) {
-      return;
-    }
-
-    // ✅ Always allow current module
-    if (i === currentModuleIndex) {
-      // fall through to existing reload logic below
-    }
-    // ✅ Allow completed modules
-    else if (i <= maxCompletedIndex) {
-      // allowed
-    }
-    // ✅ Allow next unlocked module
-    else if (i === maxCompletedIndex + 1) {
-      // allowed
-    }
-    // 🚫 Everything else blocked
-    else {
-      return;
-    }
-
-    // ------------------------------
-    // SAME MODULE CLICK → HARD RELOAD
-    // ------------------------------
-    if (i === currentModuleIndex) {
-      console.log("HARD MODULE RELOAD");
-
-      setContentReady(false);
-      setRestoredReady(true);
-
-      setCurrentLessonIndex(0);
-      setSlideIndex(0);
-      setCanProceed(false);
-      setIsPaused(true);
-
-      loadLessons(modules[i].id)
-        .then(() => loadLessonContent(lessons[0]?.id));
-
-      return;
-    }
-
-    // ------------------------------
-    // REAL MODULE SWITCH
-    // ------------------------------
-    setContentReady(false);
-    setRestoredReady(false);
 
     setCurrentModuleIndex(i);
-    setCurrentLessonIndex(0);
     setSlideIndex(0);
-
-    setCanProceed(false);
     setIsPaused(true);
 
-    router.push(`/course-test?module=${i}`);
+    // No DB gating and no reload URL push needed on homepage
   }
 
   // ------------------------------
@@ -1620,14 +759,15 @@ useEffect(() => {
     }, []);
 
 
-  // Show steering wheel ONLY during very first load
-  if (!initialHydrationDone) {
-    if (!progressReady || !contentReady) {
-      return (
-      <Loader />
-      );
+      const isReady =
+      modules.length > 0 &&
+      courseSlides.length > 0 &&
+      Object.keys(courseCaptions).length > 0;
+
+    if (!isReady) {
+      return <Loader />;
     }
-  }
+
 
   // AFTER initial hydration → do NOT block the UI with the loader
 
@@ -1657,6 +797,7 @@ function togglePlay() {
                 rounded-xl
                 p-10
                 shadow-xl
+                -mt-[170px]
               "
             > 
 
@@ -1673,7 +814,7 @@ function togglePlay() {
           className="
             flex items-center justify-center 
             border border-[#001f40] bg-white text-[#001f40] 
-            text-[22px] font-bold px-6 rounded-md 
+            text-[22px] font-bold px-6 rounded-md
             cursor-pointer hover:shadow-lg transition-all
           "
         >
@@ -1729,10 +870,17 @@ function togglePlay() {
             className="h-[165px] w-full object-cover rounded-t-lg"
             style={{ display: "none" }}
           />
-          <div
-            ref={hoverTooltipPlaceholderRef}
-            className="h-[165px] w-full bg-white/10 rounded-t-lg"
-          />
+       <div
+          ref={hoverTooltipPlaceholderRef}
+          className="
+            h-[165px] w-full
+            rounded-t-lg
+            flex items-center justify-center
+            bg-white/10
+          "
+        >
+          <div className="w-6 h-6 border-2 border-[#001f40]/30 border-t-[#001f40] rounded-full animate-spin" />
+        </div>
           <div
             ref={hoverTooltipTextRef}
             className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1"
@@ -1779,19 +927,16 @@ function togglePlay() {
             key={timelineVersion}
             modules={modules}
             currentModuleIndex={currentModuleIndex}
-            maxCompletedIndex={maxCompletedIndex}
             goToModule={goToModule}
             allowedSeekSecondsRef={allowedSeekSecondsRef}
             playedSecondsRef={playedSecondsRef}
-            examPassed={examPassed}
-            paymentPaid={paymentPaid}
             togglePlay={togglePlay}
             isPaused={isPaused}
             currentSeconds={elapsedSeconds}
-            totalSeconds={totalModuleSeconds}
+            totalSeconds={totalCourseSeconds}
             elapsedCourseSeconds={elapsedCourseSeconds}
-            totalCourseSeconds={totalCourseSeconds}
             moduleDurations={moduleDurationSeconds}
+            totalCourseSeconds={totalCourseSeconds}
             onScrub={handleScrub}
             onScrubStart={handleScrubStart}
             onScrubEnd={handleScrubEnd}
@@ -1832,8 +977,7 @@ function togglePlay() {
                   whitespace-nowrap
                 "
               >
-                {formatTime(elapsedCourseSeconds)} /{" "}
-                {formatTime(courseTotals.totalSeconds)}
+                {formatTime(elapsedCourseSeconds)} / {formatTime(totalCourseSeconds)}
               </div>
             </div>
           </div>
