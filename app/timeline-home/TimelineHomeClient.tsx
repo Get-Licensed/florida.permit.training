@@ -133,6 +133,7 @@ import Loader from "@/components/loader";
     const hoverTooltipTimeRef = useRef<HTMLDivElement | null>(null);
     const [timelineVersion, setTimelineVersion] = useState(0);
     const isHoveringTimelineRef = useRef(false);
+    const scrubActiveRef = scrubActive;
 
     const [canProceed, setCanProceed] = useState(false);
     const [isPaused, setIsPaused] = useState(true);
@@ -141,14 +142,6 @@ import Loader from "@/components/loader";
     const [promoStickyVisible, setPromoStickyVisible] = useState(true)
     // sticky promo logic for terminal popups
     const [promoSticky, setPromoSticky] = useState(false);
-    const [promoDefaultVisible, setPromoDefaultVisible] = useState(false);
-
-    // restore sticky promo when timeline reappears
-    function showTimelineAgain() {
-      setShowTimeline(true);
-      setPromoSticky(true);
-      setPromoDefaultVisible(true);
-    }
 
     // NAV STATE
       const totalSlides = slides.length;
@@ -165,26 +158,28 @@ import Loader from "@/components/loader";
         isFinalSlideOfModule &&
         currentModuleIndex === (modules?.length ?? 0) - 1;
       
-      function revealTimelineFor3s() {
-        setShowTimeline(true);
-
-        // ENSURE sticky mode initializes
-        if (!promoSticky) {
-          setPromoSticky(true);
-        }
-
-        // restore X if previously closed
-        setPromoStickyVisible(true);
-
+      const clearTimelineAutoHideTimer = useCallback(() => {
         if (timelineAutoHideTimerRef.current !== null) {
           clearTimeout(timelineAutoHideTimerRef.current);
+          timelineAutoHideTimerRef.current = null;
         }
+      }, []);
 
+      const scheduleTimelineAutoHide = useCallback(() => {
+        clearTimelineAutoHideTimer();
         timelineAutoHideTimerRef.current = window.setTimeout(() => {
-          if (!scrubActive.current && !isHoveringTimelineRef.current) {
-            setShowTimeline(false);
-          }
+          if (scrubActiveRef.current) return;
+          if (isHoveringTimelineRef.current) return;
+          setShowTimeline(false);
+          tooltipVisibleRef.current = false;
         }, 3000);
+      }, [clearTimelineAutoHideTimer, scrubActiveRef, isHoveringTimelineRef]);
+
+      function revealTimelineFor3s() {
+        setShowTimeline(true);
+        setPromoSticky(true);
+        setPromoStickyVisible(true);
+        scheduleTimelineAutoHide();
       }
 
 
@@ -469,6 +464,7 @@ import Loader from "@/components/loader";
 
     const handleScrubEnd = useCallback(() => {
       scrubActive.current = false;
+      scheduleTimelineAutoHide();
       const secs = scrubSeekSecondsRef.current;
       scrubSeekSecondsRef.current = null;
       if (secs === null) return;
@@ -495,6 +491,7 @@ import Loader from "@/components/loader";
       maxCompletedIndex,
       modules.length,
       resolveCourseTime,
+      scheduleTimelineAutoHide,
     ]);
 
     const scheduleTooltipUpdate = useCallback(() => {
@@ -596,8 +593,12 @@ import Loader from "@/components/loader";
     const handleScrubStart = useCallback(() => {
       scrubActive.current = true; // start scrubbing
       scrubSeekSecondsRef.current = null;
+      clearTimelineAutoHideTimer();
+      setShowTimeline(true);
+      setPromoSticky(true);
+      setPromoStickyVisible(true);
       setIsPaused(true);
-    }, []);
+    }, [clearTimelineAutoHideTimer]);
 
     useEffect(() => {
       function handleSpace(e: KeyboardEvent) {
@@ -1247,25 +1248,17 @@ import Loader from "@/components/loader";
 
 useEffect(() => {
   if (!showTimeline) return;
-
-  // clear any existing timer
-  if (timelineAutoHideTimerRef.current !== null) {
-    clearTimeout(timelineAutoHideTimerRef.current);
-  }
-
-  timelineAutoHideTimerRef.current = window.setTimeout(() => {
-    if (!scrubActive.current) {
-      setShowTimeline(false);
-    }
-  }, 3000);
-
+  scheduleTimelineAutoHide();
   return () => {
-    if (timelineAutoHideTimerRef.current) {
-      clearTimeout(timelineAutoHideTimerRef.current);
-      timelineAutoHideTimerRef.current = null;
-    }
+    clearTimelineAutoHideTimer();
   };
-}, [showTimeline]);
+}, [clearTimelineAutoHideTimer, scheduleTimelineAutoHide, showTimeline]);
+
+useEffect(() => {
+  return () => {
+    clearTimelineAutoHideTimer();
+  };
+}, [clearTimelineAutoHideTimer]);
 
 useEffect(() => {
   function handleDocClick(e: MouseEvent) {
@@ -1277,19 +1270,19 @@ useEffect(() => {
       t.closest('.promo-box')
     ) return;
 
-    // ONLY close if ALSO not hovered
-    if (!scrubActive.current && !isHoveringTimelineRef.current) {
-      setShowTimeline(false);
-      tooltipVisibleRef.current = false;
-    }
-      }
+    if (scrubActiveRef.current) return;
+    if (isHoveringTimelineRef.current) return;
+
+    setShowTimeline(false);
+    tooltipVisibleRef.current = false;
+  }
 
   document.addEventListener('mousedown', handleDocClick);
 
   return () => {
     document.removeEventListener('mousedown', handleDocClick);
   };
-}, []);
+}, [promoSticky, promoStickyVisible]);
 
 
   /* ------------------------------------------------------
@@ -1657,9 +1650,11 @@ useEffect(() => {
       z-40 px-0 pb-[0px]
     "
     onMouseEnter={() => {
-      setShowTimeline(true);
-      setPromoSticky(true);
-      setPromoStickyVisible(true);
+      revealTimelineFor3s();
+    }}
+    onMouseLeave={() => {
+      if (scrubActiveRef.current) return;
+      scheduleTimelineAutoHide();
     }}
 
   >
@@ -1672,34 +1667,19 @@ useEffect(() => {
         }
       `}
     >
-<div
+  <div
   id="timeline-region"
   className="fixed bottom-[25px] left-0 right-0 z-40 min-h-[6rem]"
   onMouseEnter={() => {
     isHoveringTimelineRef.current = true;
-    if (!showTimeline) setShowTimeline(true);
-
-    // optional: extend auto-hide window when re-hovering
-    if (timelineAutoHideTimerRef.current) {
-      clearTimeout(timelineAutoHideTimerRef.current);
-    }
-    timelineAutoHideTimerRef.current = window.setTimeout(() => {
-      if (!scrubActive.current && !isHoveringTimelineRef.current) {
-        setShowTimeline(false);
-      }
-    }, 3000);
+    setShowTimeline(true);
+    setPromoSticky(true);
+    setPromoStickyVisible(true);
+    clearTimelineAutoHideTimer();
   }}
   onMouseLeave={() => {
     isHoveringTimelineRef.current = false;
-
-    if (timelineAutoHideTimerRef.current) {
-      clearTimeout(timelineAutoHideTimerRef.current);
-    }
-    timelineAutoHideTimerRef.current = window.setTimeout(() => {
-      if (!scrubActive.current && !isHoveringTimelineRef.current) {
-        setShowTimeline(false);
-      }
-    }, 3000);
+    scheduleTimelineAutoHide();
   }}
 >
 
@@ -1729,9 +1709,13 @@ useEffect(() => {
         timelineContainerRef={timelineHoverRef}
         thumbCacheRef={thumbCacheRef}
         promoOffsetBottom={140}
+        showTimeline={showTimeline}
+        setShowTimeline={setShowTimeline}
         promoSticky={promoSticky}
         setPromoSticky={setPromoSticky}
         promoDefaultVisible={true}
+        promoStickyVisible={promoStickyVisible}
+        setPromoStickyVisible={setPromoStickyVisible}
       />
 </div>
       <div

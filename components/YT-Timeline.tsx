@@ -36,10 +36,15 @@ export type CourseTimelineProps = {
   onScrubEnd?: () => void
   onHoverResolve?: (seconds: number, clientX: number) => void
   onHoverEnd?: () => void
+  onTerminalHover?: () => void;
   timelineContainerRef?: RefObject<HTMLDivElement | null>
   promoOffsetBottom?: number;
+  showTimeline?: boolean
+  setShowTimeline?: (visible: boolean) => void
   promoSticky?: boolean
   setPromoSticky?: (v: boolean) => void
+  promoStickyVisible?: boolean
+  setPromoStickyVisible?: (v: boolean) => void
   promoDefaultVisible?: boolean
   onPromoClose?: () => void
 }
@@ -66,15 +71,19 @@ export default function CourseTimeline({
   onScrubEnd,
   onHoverResolve,
   onHoverEnd,
+  onPromoClose,
   timelineContainerRef,
   promoOffsetBottom,
+  showTimeline,
+  onTerminalHover,
+  setShowTimeline = () => {},
 
   // these 3 must be present together
   promoSticky = false,
   setPromoSticky,
+  promoStickyVisible,
+  setPromoStickyVisible,
   promoDefaultVisible = true,
-
-  onPromoClose,
 }: CourseTimelineProps) {
 
   type ScrubberReleaseFix = "none" | "A" | "B" | "C"
@@ -114,7 +123,6 @@ export default function CourseTimeline({
   const suppressModuleClickTimeoutRef = useRef<number | null>(null)
   const railRectRef = useRef<DOMRect | null>(null)
  // Promo box
-  const [showPromoBox, setShowPromoBox] = useState(false);
   const [promoX, setPromoX] = useState<number | null>(null);
   const [mobilePromoOpen, setMobilePromoOpen] = useState(false);
   const mobileSheetRef = useRef<HTMLDivElement>(null);
@@ -144,28 +152,40 @@ export default function CourseTimeline({
     }, 0)
   }, [])
 
-  const timelineAutoHideTimerRef = useRef<number | null>(null)
+  const updatePromoVisible = useCallback(
+    (visible: boolean) => {
+      setPromoVisible(visible);
+      setPromoStickyVisible?.(visible);
+    },
+    [setPromoStickyVisible]
+  );
 
-  function scheduleTimelineAutoHide() {
-  if (timelineAutoHideTimerRef.current !== null) {
-    clearTimeout(timelineAutoHideTimerRef.current);
+  useEffect(() => {
+    if (promoStickyVisible === undefined) return;
+    setPromoVisible(promoStickyVisible);
+  }, [promoStickyVisible]);
+
+useEffect(() => {
+  // only do anything if parent has asked for promoStickyVisible
+  if (!showTimeline) return;
+  if (!promoStickyVisible) return;
+
+  // keep internal visible state in sync with parent
+  updatePromoVisible(true);
+
+  // center promo X if we don't yet have a position
+  if (promoX === null && timelineRef.current) {
+    const rect = timelineRef.current.getBoundingClientRect();
+    setPromoX(rect.left + rect.width - 40);
   }
+}, [promoX, showTimeline, promoStickyVisible, timelineRef, updatePromoVisible]);
 
-  timelineAutoHideTimerRef.current = window.setTimeout(() => {
-    // don't hide if hovering anywhere inside timeline
-    if (isHoveringRef.current) return;
-
-    if (!draggingRef.current) {
-      if (onHoverEnd) onHoverEnd();
-    }
-  }, 3000);
-}
 
   function revealTimelineFor3s() {
-    // timeline just became visible → reset hide timer
-    scheduleTimelineAutoHide();
+    setShowTimeline(true);
+    setPromoSticky?.(true);
+    updatePromoVisible(true);
 
-    // force timeline/tooltip visible with current hover time
     if (onHoverResolve) {
       onHoverResolve(elapsedCourseSeconds, 0);
     }
@@ -464,20 +484,20 @@ export default function CourseTimeline({
       if (!timelineRef.current) return
 
       const tl = timelineRef.current
-      const promo = promoSticky ? null : null // irrelevant, promo is inside tl
 
       // if click is inside timeline or promo, ignore
       if (tl.contains(e.target as Node)) return
 
+      if (promoStickyVisible && promoSticky) return
+
       // otherwise hide promo + hover mode preview
-      setShowPromoBox(false)
-      setPromoVisible(false)
+      updatePromoVisible(false)
       setPromoSticky?.(false)
     }
 
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [timelineRef, promoSticky])
+  }, [promoSticky, promoStickyVisible, timelineRef, updatePromoVisible])
 
 
   useEffect(() => {
@@ -616,10 +636,9 @@ return (
 
   onMouseEnter={(e) => {
     isHoveringRef.current = true;
-    scheduleTimelineAutoHide();
-
-    setPromoVisible(true);
-    setPromoSticky?.(false);
+    setShowTimeline(true);
+    setPromoSticky?.(true);
+    updatePromoVisible(true);
 
     if (promoX === null && timelineRef.current) {
       const rect = timelineRef.current.getBoundingClientRect();
@@ -627,13 +646,13 @@ return (
       setPromoX(mid);
     }
 
-    setShowPromoBox(true);
   }}
 
   onMouseDown={(e) => {
     if (e.button !== 0) return;
-
-    scheduleTimelineAutoHide();
+    setShowTimeline(true);
+    setPromoSticky?.(true);
+    updatePromoVisible(true);
 
     const sec = getScrubSeconds(e.clientX, false);
     const px = getScrubPx(e.clientX, false);
@@ -656,10 +675,6 @@ return (
       timelineRef.current?.getBoundingClientRect() ?? null;
     wasPlayingBeforeScrubRef.current = !isPaused;
 
-    if (timelineAutoHideTimerRef.current !== null) {
-      clearTimeout(timelineAutoHideTimerRef.current);
-    }
-
     setDragging(true);
     hoverSecondsRef.current = sec;
     targetPxRef.current = px;
@@ -676,7 +691,7 @@ return (
 
   onMouseMove={(e) => {
     isHoveringRef.current = true;
-    scheduleTimelineAutoHide();
+    setShowTimeline(true);
 
     if (dragging) return;
 
@@ -712,7 +727,6 @@ return (
 
   onMouseLeave={(e) => {
     isHoveringRef.current = false;
-    scheduleTimelineAutoHide();
 
     if (dragging) return;
 
@@ -865,27 +879,24 @@ return (
 
                       /* PROMO HOVER EVENTS (phase-2 wiring) */
                       onMouseEnter={(e) => {
-                        if (!isFinalActions) return
-                          
-                        // allow re-showing after close
-                        setPromoVisible(true)
-                        setPromoSticky?.(false)
+                        if (!isFinalActions) return;
 
-                        setShowPromoBox(true)
-                        setPromoX(e.clientX)
+                        // notify parent instead of mutating promo state here
+                        onTerminalHover?.();
+                        setPromoX(e.clientX);
                       }}
 
                       onMouseMove={(e) => {
-                        if (!isFinalActions) return
-                        setPromoX(e.clientX)
+                        if (!isFinalActions) return;
+                        setPromoX(e.clientX);
                       }}
 
                       onMouseLeave={() => {
-                        if (!isFinalActions) return
+                        if (!isFinalActions) return;
 
-                        // only hide when hover mode
+                        // hide promo only when parent says it's not sticky
                         if (!promoSticky) {
-                          setShowPromoBox(false)
+                          updatePromoVisible(false);
                         }
                       }}
                                           >
@@ -913,9 +924,9 @@ return (
           </div>
         </div>
 
-{(promoVisible || (showPromoBox && !promoSticky)) && promoX !== null && (
+{promoVisible && promoX !== null && (
   <div
-    className="fixed z-[999999] pointer-events-none transition-opacity duration-100"
+    className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-100"
     style={{
       left: promoX - 187.5,
       bottom: promoOffsetBottom ?? 240,
@@ -934,26 +945,21 @@ return (
       "
     >
 
-      {/* CLOSE BUTTON for sticky mode */}
-      {promoSticky && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            setPromoSticky?.(false)
-            setPromoVisible(false)
-            onPromoClose?.()
-          }}
-          className="
-            absolute top-2 right-2
-            text-white text-xl font-bold
-            bg-black/50 hover:bg-black/70
-            rounded-full px-2 pb-[2px]
-            pointer-events-auto
-          "
-        >
-          ✕
-        </button>
-      )}
+      {/* CLOSE BUTTON */}
+      <button
+        onClick={() => {
+        onPromoClose?.()
+      }}
+        className="
+          absolute top-2 right-2
+          text-white text-xl font-bold
+          bg-black/50 hover:bg-black/70
+          rounded-full px-2 pb-[2px]
+          pointer-events-auto
+        "
+      >
+        ✕
+      </button>
 
       {/* top group */}
       <div className="flex flex-col items-center justify-center">
