@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import PublicHeader from "@/app/(public)/_PublicHeader3";
+import PublicHeader from "@/app/(public)/_PublicHeader";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import CourseTimeline from "@/components/YT-Timeline";
@@ -776,78 +776,106 @@ function togglePlay() {
   setIsPaused((prev) => !prev)
 }
 
-    return (
-     <div
-  className="
-    relative min-h-screen w-screen
-    flex flex-col overflow-hidden
-    bg-cover bg-center bg-no-repeat
-  "
- style={{
-      backgroundImage: "url('/drone-blue-car.jpg')",
+return (
+  <div
+    className="
+      relative min-h-screen w-screen
+      flex flex-col overflow-hidden
+      bg-cover bg-center bg-no-repeat
+    "
+    style={{
+      backgroundImage: "url('/teenage-male-hand.jpg')",
     }}
->
-        <PublicHeader />
-          <section className="flex-1 flex items-center justify-center overflow-auto pt-6">
-            <div
-              className="
-                flex flex-col items-center text-center max-w-md w-full
-                p-10
-                -mt-[170px]
-              "
-            > 
+  >
+    {/* overlays */}
+    <div className="absolute inset-0 bg-[#001f40]/30 pointer-events-none" />
+    <div className="absolute inset-0 bg-gradient-to-b from-[#001f40]/60 via-[#001f40]/30 to-transparent pointer-events-none" />
 
-<Image
-  src="/logo.png"
-  alt="Florida Permit Training"
-  width={520}
-  height={200}
-  className="object-contain max-h-[180px] mb-10"
-  style={{
-    filter: `
-      drop-shadow(0 0 1px white)
-      drop-shadow(0 0 1px white)
-      drop-shadow(0 0 1px white)
-      drop-shadow(0 0 1px white)
-      drop-shadow(0 0 1px white)
-      drop-shadow(0 0 1px white)
-    `,
-  }}
-  priority
-/>
-       <button
-  onClick={handleGoogleSignup}
-  className="
-    flex items-center justify-center
-    border border-[#001f40] bg-white text-[#001f40]
-    text-[22px] font-bold
-    px-6 py-4
-    rounded-md
-    cursor-pointer
-    hover:shadow-lg transition-all
-  "
->
+    {/* header */}
+    <div className="relative z-10">
+      <PublicHeader />
+    </div>
+
+    {/* LOGIN SECTION */}
+    <section
+      className="
+        relative z-10 flex-1 flex items-center justify-end
+        overflow-auto py-10
+        pr-[15%] pl-6
+      "
+    >
+      
+      <div className="w-full max-w-lg">
+           {/* divider */}
+        <div
+          className="
+            mt-6 pb-4 flex items-center justify-center gap-2
+            text-[12px] uppercase tracking-[0.2em] text-white/90
+          "
+        >
+          <span className="h-px w-10 bg-white/90" />
+          Florida Permit training
+          <span className="h-px w-10 bg-white/90" />
+        </div>
+        {/* CARD */}
+        <div
+          className="
+            flex flex-col items-center text-center
+            rounded-2xl border border-white/15
+            bg-white/35 backdrop-blur-xl
+            px-8 py-10 sm:px-10
+            shadow-[0_10px_40px_rgba(0,0,0,0.55)]
+          "
+        >
           <Image
-            src="/Google-Icon.png"
-            alt="Google Icon"
-            width={26}
-            height={26}
-            className="mr-3"
+            src="/logo.png"
+            alt="Florida Permit Training"
+            width={520}
+            height={200}
+            className="object-contain max-h-[170px] mb-8"
+            priority
           />
-          Continue with Google
-        </button>
-        <p className="text-[15px] text-[#fff] text-center mt-4">
-          Don’t have a Google account?{" "}
-          <a
-            href="https://accounts.google.com/signup"
-            target="_blank"
-            className="text-[#fff] underline"
+
+          <button
+            onClick={handleGoogleSignup}
+            className="
+              flex items-center justify-center
+              bg-white text-[#001f40]
+              border border-white/60
+              text-[20px] font-semibold
+              px-6 py-3 rounded-xl
+              cursor-pointer
+              shadow-md
+              transition-shadow
+              hover:shadow-lg
+              focus:outline-none focus:ring-2 focus:ring-white/40
+            "
           >
-            Create one
-          </a>.
-        </p>
+            <Image
+              src="/Google-Icon.png"
+              alt="Google Icon"
+              width={26}
+              height={26}
+              className="mr-3"
+            />
+            Continue with Google
+          </button>
+
+          <p className="text-[14px] text-white text-center mt-4 tracking-wide">
+            Don’t have a Google account?{" "}
+            <a
+              href="https://accounts.google.com/signup"
+              target="_blank"
+              className="text-[#fff] underline underline-offset-4 hover:text-[#ca5608]"
+            >
+              Create one
+            </a>.
+          </p>
+        </div>
       </div>
     </section>
+
+    {/* VERIFY MODAL */}
     {showVerifyModal && (
       <VerifyPhoneModal
         userId={userId}
@@ -857,7 +885,41 @@ function togglePlay() {
         }}
       />
     )}
+
+    {/* TIMELINE (unchanged) */}
     {showTimeline && (
+      <div
+        ref={hoverTooltipRef}
+        className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60"
+        style={{ left: 0, bottom: 115, opacity: 0 }}
+      >
+        <div className="relative w-[375px] h-[250px] rounded-2xl bg-white/90 text-black shadow-xl overflow-hidden flex flex-col border border-white/40">
+          <div
+            ref={hoverTooltipTimeRef}
+            className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"
+            style={{ display: "none" }}
+          />
+          <img
+            ref={hoverTooltipImageRef}
+            alt=""
+            className="h-[165px] w-full object-cover rounded-t-2xl"
+            style={{ display: "none" }}
+          />
+          <div
+            ref={hoverTooltipPlaceholderRef}
+            className="h-[165px] w-full rounded-t-2xl flex items-center justify-center bg-white/10"
+          >
+            <div className="w-6 h-6 border-2 border-[#001f40]/30 border-t-[#001f40] rounded-full animate-spin" />
+          </div>
+          <div
+            ref={hoverTooltipTextRef}
+            className="px-4 py-3 text-[13px] leading-snug line-clamp-3 flex-1 text-[#001f40]"
+          />
+        </div>
+      </div>
+    )}
+    
+        {showTimeline && (
       <div
         ref={hoverTooltipRef}
         className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60"
@@ -867,7 +929,7 @@ function togglePlay() {
           opacity: 0,
         }}
       >
-        <div className="relative w-[375px] h-[250px] rounded-lg bg-white/90 text-black shadow-md overflow-hidden flex flex-col">
+        <div className="relative w-[375px] h-[250px] rounded-2xl bg-white/90 text-black shadow-xl overflow-hidden flex flex-col border border-white/40">
           <div
             ref={hoverTooltipTimeRef}
             className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"
@@ -876,14 +938,14 @@ function togglePlay() {
           <img
             ref={hoverTooltipImageRef}
             alt=""
-            className="h-[165px] w-full object-cover rounded-t-lg"
+            className="h-[165px] w-full object-cover rounded-t-2xl"
             style={{ display: "none" }}
           />
        <div
           ref={hoverTooltipPlaceholderRef}
           className="
             h-[165px] w-full
-            rounded-t-lg
+            rounded-t-2xl
             flex items-center justify-center
             bg-white/10
           "
@@ -892,7 +954,7 @@ function togglePlay() {
         </div>
           <div
             ref={hoverTooltipTextRef}
-            className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1"
+            className="px-4 py-3 text-[13px] leading-snug line-clamp-3 flex-1 text-[#001f40]"
           />
         </div>
       </div>
@@ -977,8 +1039,8 @@ function togglePlay() {
                   h-6 px-4
                   flex items-center
                   rounded-full
-                  bg-[#fff]/10
-                  text-[#fff]
+                  bg-[#001f40]/70
+                  text-white
                   text-sm
                   tabular-nums
                   opacity-100
