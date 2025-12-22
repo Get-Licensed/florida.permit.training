@@ -139,7 +139,7 @@ import Loader from "@/components/loader";
     const [isPaused, setIsPaused] = useState(true);
 
     const timelineAutoHideTimerRef = useRef<number | null>(null)
-    const [promoStickyVisible, setPromoStickyVisible] = useState(true)
+    const [promoStickyVisible, setPromoStickyVisible] = useState(false)
     // sticky promo logic for terminal popups
     const [promoSticky, setPromoSticky] = useState(false);
 
@@ -1711,11 +1711,19 @@ useEffect(() => {
         promoOffsetBottom={140}
         showTimeline={showTimeline}
         setShowTimeline={setShowTimeline}
-        promoSticky={promoSticky}
-        setPromoSticky={setPromoSticky}
-        promoDefaultVisible={true}
-        promoStickyVisible={promoStickyVisible}
-        setPromoStickyVisible={setPromoStickyVisible}
+        promoVisible={promoStickyVisible}
+        onTimelineHover={() => {
+          setPromoSticky(true)
+          setPromoStickyVisible(true)
+        }}
+        onTerminalHover={() => {
+          setPromoSticky(true)
+          setPromoStickyVisible(true)
+        }}
+        onPromoClose={() => {
+          setPromoSticky(false)
+          setPromoStickyVisible(false)
+        }}
       />
 </div>
       <div

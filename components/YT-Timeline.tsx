@@ -36,17 +36,15 @@ export type CourseTimelineProps = {
   onScrubEnd?: () => void
   onHoverResolve?: (seconds: number, clientX: number) => void
   onHoverEnd?: () => void
-  onTerminalHover?: () => void;
+  onTimelineHover?: () => void
+  onTimelineLeave?: () => void
+  onTerminalHover?: () => void
+  onPromoClose?: () => void
   timelineContainerRef?: RefObject<HTMLDivElement | null>
-  promoOffsetBottom?: number;
+  promoOffsetBottom?: number
+  promoVisible?: boolean
   showTimeline?: boolean
   setShowTimeline?: (visible: boolean) => void
-  promoSticky?: boolean
-  setPromoSticky?: (v: boolean) => void
-  promoStickyVisible?: boolean
-  setPromoStickyVisible?: (v: boolean) => void
-  promoDefaultVisible?: boolean
-  onPromoClose?: () => void
 }
 
 export default function CourseTimeline({
@@ -71,19 +69,15 @@ export default function CourseTimeline({
   onScrubEnd,
   onHoverResolve,
   onHoverEnd,
+  onTimelineHover,
+  onTimelineLeave,
+  onTerminalHover,
   onPromoClose,
   timelineContainerRef,
   promoOffsetBottom,
+  promoVisible = false,
   showTimeline,
-  onTerminalHover,
   setShowTimeline = () => {},
-
-  // these 3 must be present together
-  promoSticky = false,
-  setPromoSticky,
-  promoStickyVisible,
-  setPromoStickyVisible,
-  promoDefaultVisible = true,
 }: CourseTimelineProps) {
 
   type ScrubberReleaseFix = "none" | "A" | "B" | "C"
@@ -122,13 +116,10 @@ export default function CourseTimeline({
   const suppressModuleClickRef = useRef(false)
   const suppressModuleClickTimeoutRef = useRef<number | null>(null)
   const railRectRef = useRef<DOMRect | null>(null)
- // Promo box
-  const [promoX, setPromoX] = useState<number | null>(null);
-  const [mobilePromoOpen, setMobilePromoOpen] = useState(false);
-  const mobileSheetRef = useRef<HTMLDivElement>(null);
+  // Promo box
+  const [promoX, setPromoX] = useState<number | null>(null)
   const freezeElapsedTimeoutRef = useRef<number | null>(null)
-  const [promoVisible, setPromoVisible] = useState<boolean>(promoDefaultVisible ?? false);
-  const isHoveringRef = useRef(false);
+  const isHoveringRef = useRef(false)
 
   // remember play state across scrub
   const wasPlayingBeforeScrubRef = useRef(false)
@@ -136,6 +127,14 @@ export default function CourseTimeline({
   const furthestTrackRef = useRef<HTMLDivElement | null>(null)
   const maxCompletedSecondsRef = useRef(0)
   const playedSecondsRefResolved = playedSecondsRef ?? allowedSeekSecondsRef
+
+  useEffect(() => {
+    if (!promoVisible) return
+    if (promoX !== null) return
+    if (!timelineRef.current) return
+    const rect = timelineRef.current.getBoundingClientRect()
+    setPromoX(rect.left + rect.width - 40)
+  }, [promoVisible, promoX, timelineRef])
 
   useEffect(() => {
     if (!thumbCacheRef?.current) return
@@ -152,39 +151,9 @@ export default function CourseTimeline({
     }, 0)
   }, [])
 
-  const updatePromoVisible = useCallback(
-    (visible: boolean) => {
-      setPromoVisible(visible);
-      setPromoStickyVisible?.(visible);
-    },
-    [setPromoStickyVisible]
-  );
-
-  useEffect(() => {
-    if (promoStickyVisible === undefined) return;
-    setPromoVisible(promoStickyVisible);
-  }, [promoStickyVisible]);
-
-useEffect(() => {
-  // only do anything if parent has asked for promoStickyVisible
-  if (!showTimeline) return;
-  if (!promoStickyVisible) return;
-
-  // keep internal visible state in sync with parent
-  updatePromoVisible(true);
-
-  // center promo X if we don't yet have a position
-  if (promoX === null && timelineRef.current) {
-    const rect = timelineRef.current.getBoundingClientRect();
-    setPromoX(rect.left + rect.width - 40);
-  }
-}, [promoX, showTimeline, promoStickyVisible, timelineRef, updatePromoVisible]);
-
-
   function revealTimelineFor3s() {
     setShowTimeline(true);
-    setPromoSticky?.(true);
-    updatePromoVisible(true);
+    onTimelineHover?.()
 
     if (onHoverResolve) {
       onHoverResolve(elapsedCourseSeconds, 0);
@@ -480,27 +449,6 @@ useEffect(() => {
   }, [updateFurthestTrack, updatePlayedTrack])
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (!timelineRef.current) return
-
-      const tl = timelineRef.current
-
-      // if click is inside timeline or promo, ignore
-      if (tl.contains(e.target as Node)) return
-
-      if (promoStickyVisible && promoSticky) return
-
-      // otherwise hide promo + hover mode preview
-      updatePromoVisible(false)
-      setPromoSticky?.(false)
-    }
-
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [promoSticky, promoStickyVisible, timelineRef, updatePromoVisible])
-
-
-  useEffect(() => {
     function handleMove(e: MouseEvent) {
       if (!draggingRef.current) return
       const sec = getScrubSeconds(e.clientX, true)
@@ -635,24 +583,20 @@ return (
   `}
 
   onMouseEnter={(e) => {
-    isHoveringRef.current = true;
-    setShowTimeline(true);
-    setPromoSticky?.(true);
-    updatePromoVisible(true);
+    isHoveringRef.current = true
+    setShowTimeline(true)
+    onTimelineHover?.()
 
     if (promoX === null && timelineRef.current) {
-      const rect = timelineRef.current.getBoundingClientRect();
-      const mid = rect.left + rect.width - 40;
-      setPromoX(mid);
+      const rect = timelineRef.current.getBoundingClientRect()
+      const mid = rect.left + rect.width - 40
+      setPromoX(mid)
     }
-
   }}
 
   onMouseDown={(e) => {
     if (e.button !== 0) return;
     setShowTimeline(true);
-    setPromoSticky?.(true);
-    updatePromoVisible(true);
 
     const sec = getScrubSeconds(e.clientX, false);
     const px = getScrubPx(e.clientX, false);
@@ -727,6 +671,7 @@ return (
 
   onMouseLeave={(e) => {
     isHoveringRef.current = false;
+    onTimelineLeave?.()
 
     if (dragging) return;
 
@@ -893,11 +838,6 @@ return (
 
                       onMouseLeave={() => {
                         if (!isFinalActions) return;
-
-                        // hide promo only when parent says it's not sticky
-                        if (!promoSticky) {
-                          updatePromoVisible(false);
-                        }
                       }}
                                           >
                       <div className="w-full flex items-center justify-center h-2 translate-y-[2.2px]">

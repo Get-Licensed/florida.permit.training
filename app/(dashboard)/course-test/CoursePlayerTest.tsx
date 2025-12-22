@@ -324,13 +324,27 @@
         isFinalSlideOfModule &&
         currentModuleIndex === (modules?.length ?? 0) - 1;
 
-    function maybeAutoShowPromo() {
-      if (promoDismissedRef.current) return;
+    function maybeAutoOpenPromo() {
       if (promoShownOnceRef.current) return;
-
       promoShownOnceRef.current = true;
+
+      // do not check promoDismissed here
+      // dismissal only blocks auto-open AFTER promoShownOnce
+      if (!promoDismissedRef.current) {
+        setPromoSticky(true);
+        setPromoStickyVisible(true);
+      }
+    }
+
+    function handleTerminalHover() {
       setPromoSticky(true);
       setPromoStickyVisible(true);
+    }
+
+    function handlePromoClose() {
+      promoDismissedRef.current = true;
+      setPromoSticky(false);
+      setPromoStickyVisible(false);
     }
 
       
@@ -353,7 +367,7 @@
 
       function revealTimelineFor3s() {
         setShowTimeline(true);
-        maybeAutoShowPromo()
+        maybeAutoOpenPromo()
         scheduleTimelineAutoHide();
       }
       const resetAudioElement = useCallback(() => {
@@ -903,7 +917,7 @@ const handleScrubStart = useCallback(() => {
   clearTimelineAutoHideTimer();
   setShowTimeline(true);
 
-  maybeAutoShowPromo()
+  maybeAutoOpenPromo()
 
   // record whether autoplay+playing was active BEFORE temporary pause
   resumeAfterScrubRef.current =
@@ -916,7 +930,7 @@ const handleScrubStart = useCallback(() => {
   cancelAutoplay.current = true;
   setIsPaused(true);
   isPausedRef.current = true;
-}, [clearTimelineAutoHideTimer]);
+}, [clearTimelineAutoHideTimer, maybeAutoOpenPromo]);
 
     useEffect(() => {
       function handleSpace(e: KeyboardEvent) {
@@ -2870,9 +2884,6 @@ useEffect(() => {
     isHoveringTimelineRef.current = true;
     setShowTimeline(true);
 
-    maybeAutoShowPromo()
-
-
     clearTimelineAutoHideTimer();
   }}
   onMouseLeave={() => {
@@ -2909,19 +2920,10 @@ useEffect(() => {
         promoOffsetBottom={240} 
         showTimeline={showTimeline}
         setShowTimeline={setShowTimeline}
-        promoSticky={promoSticky}
-        setPromoSticky={setPromoSticky}
-        promoStickyVisible={promoStickyVisible}
-        setPromoStickyVisible={setPromoStickyVisible}
-          onPromoClose={() => {
-            promoDismissedRef.current = true;
-            setPromoSticky(false);
-            setPromoStickyVisible(false);
-          }}
-            onTerminalHover={() => {
-             maybeAutoShowPromo()
-
-          }}
+        promoVisible={promoStickyVisible}
+        onTimelineHover={maybeAutoOpenPromo}
+        onTerminalHover={handleTerminalHover}
+        onPromoClose={handlePromoClose}
       />
 </div>
       {/* CONTROLS – volume + CC */}
