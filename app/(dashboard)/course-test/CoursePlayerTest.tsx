@@ -2827,7 +2827,7 @@ useEffect(() => {
       opacity: 0,
     }}
   >
-    <div className="relative w-[375px] h-[250px] rounded-lg bg-black/85 text-white shadow-md overflow-hidden flex flex-col">
+    <div className="relative w-[375px] h-[250px] rounded-lg bg-white/90 text-[#001f40] shadow-md overflow-hidden flex flex-col">
       <div
         ref={hoverTooltipTimeRef}
         className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import PublicHeader from "@/app/(public)/_PublicHeader";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
@@ -7,8 +8,10 @@ import CourseTimeline from "@/components/YT-Timeline";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import Loader from "@/components/loader";
+import VerifyPhoneModal from "@/components/VerifyPhoneModal"
 
-  /* ------------------------------------------------------
+
+/* ------------------------------------------------------
     TYPES
   ------------------------------------------------------ */
   type ModuleRow = {
@@ -85,6 +88,9 @@ import Loader from "@/components/loader";
     const scrubActive = useRef(false);
     const scrubSeekSecondsRef = useRef<number | null>(null);
 
+    const [showVerifyModal, setShowVerifyModal] = useState(false)
+    const [userId, setUserId] = useState("")
+    
     // module and lesson tracking
     const [modules, setModules] = useState<ModuleRow[]>([]);
     const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
@@ -321,7 +327,7 @@ import Loader from "@/components/loader";
           if (!slide) return;
           if (entry?.signedUrl) {
             thumbCacheRef.current.set(slide.id, entry.signedUrl);
-            const img = new Image();
+            const img = new window.Image();
             img.src = entry.signedUrl;
             img.decode?.().catch(() => {});
           }
@@ -642,6 +648,63 @@ import Loader from "@/components/loader";
       window.addEventListener("keydown", handleContinueHotkey)
       return () => window.removeEventListener("keydown", handleContinueHotkey)
     }, [showContinueInstruction])
+
+  // -------------------------------------------------------------
+  // REQUIRED POPUP LOGIN HANDLER
+  // -------------------------------------------------------------
+
+    useEffect(() => {
+  async function handlePopupMessage(event: MessageEvent) {
+    if (!event.origin.startsWith(window.location.origin)) return;
+    if (event.data?.type !== "authSuccess") return;
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData?.session?.user;
+    if (!user) return;
+
+    await supabase.auth.updateUser({
+      data: { session_2fa_verified: false },
+    });
+
+    setUserId(user.id);
+    setShowVerifyModal(true);
+  }
+
+  window.addEventListener("message", handlePopupMessage);
+  return () => window.removeEventListener("message", handlePopupMessage);
+}, []);
+
+// -------------------------------------------------------------
+//  GOOGLE OAUTH HANDLER
+// -------------------------------------------------------------
+
+async function handleGoogleSignup() {
+  try {
+    const redirect = `${window.location.origin}/auth/callback`;
+
+    const res = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: redirect, skipBrowserRedirect: true },
+    });
+
+    if (res?.data?.url) {
+      window.open(
+        res.data.url,
+        "GoogleLogin",
+        `width=520,height=650,top=${window.screenY + 80},left=${window.screenX + 120}`
+      );
+      return;
+    }
+
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: redirect },
+    });
+  } catch (err) {
+    console.error("Google Sign-Up Error:", err);
+  }
+}
+
 
   // -------------------------------------------------------------
   // DEBUG: Core gate values (helps detect infinite steering wheel)
@@ -1544,6 +1607,19 @@ useEffect(() => {
     router.push(`/course-test?module=${i}`);
   }
 
+  // ------------------------------
+  // HYDRATION
+  // ------------------------------
+
+    useEffect(() => {
+      async function checkSession() {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) return; // already logged in, continue course
+      }
+      checkSession();
+    }, []);
+
+
   // Show steering wheel ONLY during very first load
   if (!initialHydrationDone) {
     if (!progressReady || !contentReady) {
@@ -1555,221 +1631,218 @@ useEffect(() => {
 
   // AFTER initial hydration → do NOT block the UI with the loader
 
-  function togglePlay() {
-    revealTimelineFor3s()
-    setIsPaused((prev) => !prev)
-  }
+function togglePlay() {
+  revealTimelineFor3s()
+  setIsPaused((prev) => !prev)
+}
 
-  return (
-    <div className="relative min-h-screen bg-white flex flex-col">
-
-  <PublicHeader />
-
-      <div className="fixed top-0 left-0 right-0 z-40 h-2 bg-gray-200">
-        <div
-          className="h-full bg-[#ca5608] transition-[width] duration-700 ease-linear"
-          style={{ width: `${progressPercentage}%` }}
-        />
-      </div>
-
+    return (
       <div
-        className="relative flex-1 w-screen h-screen overflow-hidden pt-0 md:pt-10 pb-[160px] z-0"
-        onClick={(e) => {
-          const tgt = e.target as HTMLElement;
-          if (
-            tgt.closest("button") ||
-            tgt.closest("input") ||
-            tgt.closest("select") ||
-            tgt.closest("a")
-          )
-            return;
-          // do nothing for now
+        className="
+          relative min-h-screen w-screen
+          flex flex-col overflow-hidden
+          bg-cover bg-center bg-no-repeat
+        "
+        style={{
+          backgroundImage:
+            "url('https://yslhlomlsomknyxwtbtb.supabase.co/storage/v1/object/public/uploads/slides/1764517713623-LA-freeway2.jpg')",
         }}
+      >   
+        <PublicHeader />
+          <section className="flex-1 flex items-center justify-center overflow-auto pt-6">
+            <div
+              className="
+                flex flex-col items-center text-center max-w-md w-full
+                bg-white/90 
+                rounded-xl
+                p-10
+                shadow-xl
+              "
+            > 
 
-      >
-        <SlideView currentImage={currentImage} />
+        <Image
+          src="/logo.png"
+          alt="Florida Permit Training"
+          width={520}
+          height={200}
+          className="object-contain max-h-[180px] mb-10"
+          priority
+        />
+        <button
+          onClick={handleGoogleSignup}
+          className="
+            flex items-center justify-center 
+            border border-[#001f40] bg-white text-[#001f40] 
+            text-[22px] font-bold px-6 rounded-md 
+            cursor-pointer hover:shadow-lg transition-all
+          "
+        >
+          <Image
+            src="/Google-Icon.png"
+            alt="Google Icon"
+            width={26}
+            height={26}
+            className="mr-3"
+          />
+          Continue with Google
+        </button>
+        <p className="text-[15px] text-[#001f40] text-center mt-4">
+          Don’t have a Google account?{" "}
+          <a
+            href="https://accounts.google.com/signup"
+            target="_blank"
+            className="text-[#ca5608] underline"
+          >
+            Create one
+          </a>.
+        </p>
       </div>
-
+    </section>
+    {showVerifyModal && (
+      <VerifyPhoneModal
+        userId={userId}
+        onComplete={() => {
+          setShowVerifyModal(false);
+          router.replace("/course");
+        }}
+      />
+    )}
+    {showTimeline && (
+      <div
+        ref={hoverTooltipRef}
+        className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60"
+        style={{
+          left: 0,
+          bottom: 115,
+          opacity: 0,
+        }}
+      >
+        <div className="relative w-[375px] h-[250px] rounded-lg bg-white/90 text-black shadow-md overflow-hidden flex flex-col">
+          <div
+            ref={hoverTooltipTimeRef}
+            className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"
+            style={{ display: "none" }}
+          />
+          <img
+            ref={hoverTooltipImageRef}
+            alt=""
+            className="h-[165px] w-full object-cover rounded-t-lg"
+            style={{ display: "none" }}
+          />
+          <div
+            ref={hoverTooltipPlaceholderRef}
+            className="h-[165px] w-full bg-white/10 rounded-t-lg"
+          />
+          <div
+            ref={hoverTooltipTextRef}
+            className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1"
+          />
+        </div>
+      </div>
+    )}
+    <div
+      className="fixed bottom-0 left-0 right-0 z-40 px-0 pb-[0px]"
+      onMouseEnter={() => {
+        revealTimelineFor3s();
+      }}
+      onMouseLeave={() => {
+        if (scrubActiveRef.current) return;
+        scheduleTimelineAutoHide();
+      }}
+    >
       <div
         className={`
-          fixed bottom-[250px] left-0 right-0
-          flex justify-center z-40
-          transition-all duration-500 ease-out
+          transition-all duration-300 ease-out
           ${
-            showContinueInstruction
-              ? "opacity-100 translate-y-0 pointer-events-auto"
-              : "opacity-0 translate-y-4 pointer-events-none"
+            showTimeline
+              ? "opacity-100 translate-y-0"
+              : "opacity-0 translate-y-3"
           }
         `}
       >
-        <button
-          onClick={() => {
-            goNext()
+        <div
+          id="timeline-region"
+          className="fixed bottom-[25px] left-0 right-0 z-40 min-h-[6rem]"
+          onMouseEnter={() => {
+            isHoveringTimelineRef.current = true;
+            setShowTimeline(true);
+            setPromoSticky(true);
+            setPromoStickyVisible(true);
+            clearTimelineAutoHideTimer();
           }}
-          className="
-            px-12 py-5
-            rounded-full
-            bg-black/90
-            text-white font-semibold text-xl
-            ring-4 ring-white/70
-            backdrop-blur-sm
-            cursor-pointer
-            transition
-            hover:bg-black/70
-          "
+          onMouseLeave={() => {
+            isHoveringTimelineRef.current = false;
+            scheduleTimelineAutoHide();
+          }}
         >
-          Continue
-        </button>
-      </div>
-          
-{/* THUMBNAILS */}
-{showTimeline && (
-  <div
-    ref={hoverTooltipRef}
-    className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60"
-    style={{
-      left: 0,
-      bottom: 115, // above timeline rail which is fixed bottom-[25px]
-      opacity: 0,
-    }}
-  >
-    <div className="relative w-[375px] h-[250px] rounded-lg bg-black/85 text-white shadow-md overflow-hidden flex flex-col">
-      <div
-        ref={hoverTooltipTimeRef}
-        className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"
-        style={{ display: "none" }}
-      />
-
-      <img
-        ref={hoverTooltipImageRef}
-        alt=""
-        className="h-[165px] w-full object-cover rounded-t-lg"
-        style={{ display: "none" }}
-      />
-      <div
-        ref={hoverTooltipPlaceholderRef}
-        className="h-[165px] w-full bg-white/10 rounded-t-lg"
-      />
-
-      <div
-        ref={hoverTooltipTextRef}
-        className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1"
-      />
-    </div>
-  </div>
-)}
-
-  {/* HOVER REVEAL AREA */}
-  <div
-    className="
-      fixed bottom-0 left-0 right-0
-      z-40 px-0 pb-[0px]
-    "
-    onMouseEnter={() => {
-      revealTimelineFor3s();
-    }}
-    onMouseLeave={() => {
-      if (scrubActiveRef.current) return;
-      scheduleTimelineAutoHide();
-    }}
-
-  >
-    <div
-      className={`
-        transition-all duration-300 ease-out
-        ${showTimeline
-          ? "opacity-100 translate-y-0"
-          : "opacity-0 translate-y-3"
-        }
-      `}
-    >
-  <div
-  id="timeline-region"
-  className="fixed bottom-[25px] left-0 right-0 z-40 min-h-[6rem]"
-  onMouseEnter={() => {
-    isHoveringTimelineRef.current = true;
-    setShowTimeline(true);
-    setPromoSticky(true);
-    setPromoStickyVisible(true);
-    clearTimelineAutoHideTimer();
-  }}
-  onMouseLeave={() => {
-    isHoveringTimelineRef.current = false;
-    scheduleTimelineAutoHide();
-  }}
->
-
-        {/* TIMELINE */}
-      <CourseTimeline
-        key={timelineVersion}
-        modules={modules}
-        currentModuleIndex={currentModuleIndex}
-        maxCompletedIndex={maxCompletedIndex}
-        goToModule={goToModule}
-        allowedSeekSecondsRef={allowedSeekSecondsRef}
-        playedSecondsRef={playedSecondsRef}
-        examPassed={examPassed}
-        paymentPaid={paymentPaid}
-        togglePlay={togglePlay}
-        isPaused={isPaused}
-        currentSeconds={elapsedSeconds}
-        totalSeconds={totalModuleSeconds}
-        elapsedCourseSeconds={elapsedCourseSeconds}
-        totalCourseSeconds={totalCourseSeconds}
-        moduleDurations={moduleDurationSeconds}
-        onScrub={handleScrub}
-        onScrubStart={handleScrubStart}
-        onScrubEnd={handleScrubEnd}
-        onHoverResolve={handleHoverResolve}
-        onHoverEnd={handleHoverEnd}
-        timelineContainerRef={timelineHoverRef}
-        thumbCacheRef={thumbCacheRef}
-        promoOffsetBottom={115}
-        showTimeline={showTimeline}
-        setShowTimeline={setShowTimeline}
-        promoVisible={promoStickyVisible}
-        promoDismissedRef={promoDismissedRef}
-        onTimelineHover={() => {
-          setPromoSticky(true)
-          setPromoStickyVisible(true)
-        }}
-        onTerminalHover={() => {
-          setPromoSticky(true)
-          setPromoStickyVisible(true)
-        }}
-        onPromoClose={handlePromoClose}
-      />
-</div>
-      <div
-        className="fixed bottom-[45px] left-0 right-0 z-[200] pointer-events-none"
-      >
-        <div className="md:max-w-6xl md:mx-auto px-4">
-          <div className="flex items-center gap-4 text-[#001f40]">
-            <div
-              className="
-                h-6 px-4
-                flex items-center
-                rounded-full
-                bg-[#fff]/10
-                text-[#fff]
-                text-sm
-                tabular-nums
-                opacity-100
-                translate-x-[45px]
-                whitespace-nowrap
-              "
-            >
-              {formatTime(elapsedCourseSeconds)} /{" "}
-              {formatTime(courseTotals.totalSeconds)}
+          <CourseTimeline
+            key={timelineVersion}
+            modules={modules}
+            currentModuleIndex={currentModuleIndex}
+            maxCompletedIndex={maxCompletedIndex}
+            goToModule={goToModule}
+            allowedSeekSecondsRef={allowedSeekSecondsRef}
+            playedSecondsRef={playedSecondsRef}
+            examPassed={examPassed}
+            paymentPaid={paymentPaid}
+            togglePlay={togglePlay}
+            isPaused={isPaused}
+            currentSeconds={elapsedSeconds}
+            totalSeconds={totalModuleSeconds}
+            elapsedCourseSeconds={elapsedCourseSeconds}
+            totalCourseSeconds={totalCourseSeconds}
+            moduleDurations={moduleDurationSeconds}
+            onScrub={handleScrub}
+            onScrubStart={handleScrubStart}
+            onScrubEnd={handleScrubEnd}
+            onHoverResolve={handleHoverResolve}
+            onHoverEnd={handleHoverEnd}
+            timelineContainerRef={timelineHoverRef}
+            thumbCacheRef={thumbCacheRef}
+            promoOffsetBottom={115}
+            showTimeline={showTimeline}
+            setShowTimeline={setShowTimeline}
+            promoVisible={promoStickyVisible}
+            promoDismissedRef={promoDismissedRef}
+            onTimelineHover={() => {
+              setPromoSticky(true);
+              setPromoStickyVisible(true);
+            }}
+            onTerminalHover={() => {
+              setPromoSticky(true);
+              setPromoStickyVisible(true);
+            }}
+            onPromoClose={handlePromoClose}
+          />
+        </div>
+        <div className="fixed bottom-[45px] left-0 right-0 z-[200] pointer-events-none">
+          <div className="md:max-w-6xl md:mx-auto px-4">
+            <div className="flex items-center gap-4 text-[#001f40]">
+              <div
+                className="
+                  h-6 px-4
+                  flex items-center
+                  rounded-full
+                  bg-[#fff]/10
+                  text-[#fff]
+                  text-sm
+                  tabular-nums
+                  opacity-100
+                  translate-x-[45px]
+                  whitespace-nowrap
+                "
+              >
+                {formatTime(elapsedCourseSeconds)} /{" "}
+                {formatTime(courseTotals.totalSeconds)}
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
   </div>
- </div>
-    );
-  }
+);
+}
 
   function formatTime(seconds: number) {
     if (!isFinite(seconds)) return "0:00";
@@ -1807,7 +1880,7 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
   useEffect(() => {
     if (!currentImage) return
 
-    const img = new Image()
+    const img = new window.Image();
     img.onload = () => {
       // only swap when loaded
       setSrc(currentImage)

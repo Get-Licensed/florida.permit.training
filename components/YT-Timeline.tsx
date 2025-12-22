@@ -859,7 +859,7 @@ return (
                         {!isLast && <div className="w-[2px] h-full" />}
                       </div>
 
-                      <div className="mt-3 text-[9px] font-medium text-[#fff] text-center opacity-80 px-1">
+                            <div className="mt-3 text-[9px] font-medium text-black text-center opacity-80 px-1 bg-white/90 rounded-md px-2 py-[1px]">
                         {seg.label}
                       </div>
                     </div>
@@ -883,8 +883,8 @@ return (
     <div
       className="
         w-full h-full
-        rounded-lg bg-black/90 shadow-xl
-        backdrop-blur-sm text-white p-4
+        rounded-lg bg-white/90 shadow-xl
+        backdrop-blur-sm text-[#001f40] p-4
         pointer-events-auto overflow-hidden
         flex flex-col justify-center items-center gap-6
         relative
