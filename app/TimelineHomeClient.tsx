@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import PublicHeader from "@/app/(public)/_PublicHeader";
+import PublicHeader from "@/app/(public)/_PublicHeader2";
 import { supabase } from "@/utils/supabaseClient";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import CourseTimeline from "@/components/YT-Timeline";
@@ -80,7 +80,7 @@ import Loader from "@/components/loader";
   ------------------------------------------------------ */
   export const allowedSeekSecondsRef = { current: 0 };
 
-  export default function CoursePlayerClient() {
+  export default function TimelineHomeClient() {
     const playedSecondsRef = useRef(0);
     const scrubActive = useRef(false);
     const scrubSeekSecondsRef = useRef<number | null>(null);
@@ -777,45 +777,44 @@ function togglePlay() {
 }
 
     return (
-      <div
-        className="
-          relative min-h-screen w-screen
-          flex flex-col overflow-hidden
-          bg-cover bg-center bg-no-repeat
-        "
-        style={{
-          backgroundImage:
-            "url('https://yslhlomlsomknyxwtbtb.supabase.co/storage/v1/object/public/uploads/slides/1764517713623-LA-freeway2.jpg')",
-        }}
-      >   
+    <div
+  className="
+    relative min-h-screen w-screen
+    flex flex-col overflow-hidden
+    bg-cover bg-center bg-no-repeat
+  "
+  style={{
+    backgroundImage: "url('/drone-car.jpg')",
+  }}
+>
+        <div className="absolute inset-0 bg-[#001f40]/10" />
         <PublicHeader />
-          <section className="flex-1 flex items-center justify-center overflow-auto pt-6">
+          <section className="relative flex-1 flex items-center justify-center overflow-auto px-6 pt-8 pb-24">
             <div
               className="
                 flex flex-col items-center text-center max-w-md w-full
-                bg-white/90 
-                rounded-xl
-                p-10
-                shadow-xl
-                -mt-[170px]
+                bg-white/0
+                border border-white/40
+                rounded-2xl
+                p-8 sm:p-10
+                shadow-[0_12px_40px_rgba(0,31,64,0.25)]
+                backdrop-blur-md
+                -mt-[160px]
               "
             > 
+<h1 className="text-white text-[1.5rem] pb-6">
+  Florida 6-Hour Driver Education Traffic Safety Course
+</h1>
 
-        <Image
-          src="/logo.png"
-          alt="Florida Permit Training"
-          width={520}
-          height={200}
-          className="object-contain max-h-[180px] mb-10"
-          priority
-        />
         <button
           onClick={handleGoogleSignup}
           className="
-            flex items-center justify-center 
-            border border-[#001f40] bg-white text-[#001f40] 
-            text-[22px] font-bold px-6 rounded-md
-            cursor-pointer hover:shadow-lg transition-all
+            flex items-center justify-center
+            border border-[#001f40]/60 bg-white text-[#001f40]
+            text-[21px] font-semibold px-6 py-3 rounded-xl
+            cursor-pointer transition-all
+            hover:bg-white hover:shadow-[0_10px_24px_rgba(0,31,64,0.18)]
+            hover:-translate-y-0.5
           "
         >
           <Image
@@ -827,12 +826,12 @@ function togglePlay() {
           />
           Continue with Google
         </button>
-        <p className="text-[15px] text-[#001f40] text-center mt-4">
+        <p className="text-[15px] text-[#fff]/90 text-center mt-5">
           Don’t have a Google account?{" "}
           <a
             href="https://accounts.google.com/signup"
             target="_blank"
-            className="text-[#ca5608] underline"
+            className="text-[#ff7c24] underline underline-offset-4"
           >
             Create one
           </a>.
@@ -858,23 +857,23 @@ function togglePlay() {
           opacity: 0,
         }}
       >
-        <div className="relative w-[375px] h-[250px] rounded-lg bg-white/90 text-black shadow-md overflow-hidden flex flex-col">
+        <div className="relative w-[375px] h-[250px] rounded-xl bg-white/90 text-black shadow-[0_12px_30px_rgba(0,0,0,0.18)] overflow-hidden flex flex-col border border-white/60">
           <div
             ref={hoverTooltipTimeRef}
-            className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"
+            className="absolute top-2 left-2 px-2.5 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none shadow-sm"
             style={{ display: "none" }}
           />
           <img
             ref={hoverTooltipImageRef}
             alt=""
-            className="h-[165px] w-full object-cover rounded-t-lg"
+            className="h-[165px] w-full object-cover rounded-t-xl"
             style={{ display: "none" }}
           />
        <div
           ref={hoverTooltipPlaceholderRef}
           className="
             h-[165px] w-full
-            rounded-t-lg
+            rounded-t-xl
             flex items-center justify-center
             bg-white/10
           "
@@ -883,7 +882,7 @@ function togglePlay() {
         </div>
           <div
             ref={hoverTooltipTextRef}
-            className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1"
+            className="px-4 py-3 text-[13px] leading-snug line-clamp-3 flex-1 text-[#001f40]"
           />
         </div>
       </div>
@@ -968,7 +967,7 @@ function togglePlay() {
                   h-6 px-4
                   flex items-center
                   rounded-full
-                  bg-[#fff]/10
+                  bg-[#001f40]/60
                   text-[#fff]
                   text-sm
                   tabular-nums
