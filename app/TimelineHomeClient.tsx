@@ -121,6 +121,8 @@ import Loader from "@/components/loader";
     const isHoveringTimelineRef = useRef(false);
     const scrubActiveRef = scrubActive;
     const [isPaused, setIsPaused] = useState(true);
+    const [showTimelineHint, setShowTimelineHint] = useState(true);
+    const timelineHintDismissedRef = useRef(false);
 
     const timelineAutoHideTimerRef = useRef<number | null>(null)
     const [promoStickyVisible, setPromoStickyVisible] = useState(false)
@@ -167,6 +169,12 @@ import Loader from "@/components/loader";
         clearTimelineAutoHideTimer();
         scheduleTimelineAutoHide();
       }
+
+    const dismissTimelineHint = useCallback(() => {
+      if (timelineHintDismissedRef.current) return;
+      timelineHintDismissedRef.current = true;
+      setShowTimelineHint(false);
+    }, []);
 
 
     const courseIndex = useMemo(() => {
@@ -487,6 +495,7 @@ import Loader from "@/components/loader";
       setPromoSticky(true);
       setPromoStickyVisible(true);
       setIsPaused(true);
+      dismissTimelineHint();
     }, [clearTimelineAutoHideTimer]);
 
   // -------------------------------------------------------------
@@ -696,6 +705,18 @@ useEffect(() => {
 }, [clearTimelineAutoHideTimer, scheduleTimelineAutoHide, showTimeline]);
 
 useEffect(() => {
+  if (showTimeline) {
+    dismissTimelineHint();
+  }
+}, [dismissTimelineHint, showTimeline]);
+
+useEffect(() => {
+  if (promoStickyVisible) {
+    dismissTimelineHint();
+  }
+}, [dismissTimelineHint, promoStickyVisible]);
+
+useEffect(() => {
   return () => {
     clearTimelineAutoHideTimer();
   };
@@ -887,6 +908,9 @@ function togglePlay() {
         </div>
       </div>
     )}
+    {showTimelineHint && (
+      <TimelineHoverHint />
+    )}
     <div
       className="fixed bottom-0 left-0 right-0 z-40 px-0 pb-[0px]"
       onMouseEnter={() => {
@@ -1043,4 +1067,57 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
       )}
     </div>
   )
+}
+
+function TimelineHoverHint() {
+  return (
+    <div
+      className="fixed left-1/2 bottom-[50px] z-30 -translate-x-1/2 pointer-events-none"
+      aria-hidden="true"
+    >
+      <div className="timeline-hint-orb" />
+      <style jsx>{`
+        .timeline-hint-orb {
+          width: 12px;
+          height: 12px;
+          border-radius: 9999px;
+          background: #fff;
+          box-shadow:
+            0 0 10px rgba(0, 31, 64, 0.55),
+            0 0 20px rgba(0, 31, 64, 0.3);
+          animation:
+            timelineHintPulse 3.8s ease-in-out infinite,
+            timelineHintFloat 5.5s ease-in-out infinite;
+          opacity: 0.6;
+        }
+
+        @keyframes timelineHintPulse {
+          0% {
+            transform: scale(1);
+            opacity: 0.1;
+          }
+          50% {
+            transform: scale(2);
+            opacity: 0.8;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 0.1;
+          }
+        }
+
+        @keyframes timelineHintFloat {
+          0% {
+            translate: 0 0;
+          }
+          50% {
+            translate: 0 -6px;
+          }
+          100% {
+            translate: 0 0;
+          }
+        }
+      `}</style>
+    </div>
+  );
 }

@@ -126,7 +126,6 @@ export default function CourseTimeline({
   // remember play state across scrub
   const wasPlayingBeforeScrubRef = useRef(false)
   const playedTrackRef = useRef<HTMLDivElement | null>(null)
-  const furthestTrackRef = useRef<HTMLDivElement | null>(null)
   const maxCompletedSecondsRef = useRef(0)
   const playedSecondsRefResolved = playedSecondsRef ?? allowedSeekSecondsRef
 
@@ -343,7 +342,8 @@ export default function CourseTimeline({
           )
         : 0
     const clampedPlayed = Math.max(0, Math.min(timelineWidth, playedWidth))
-    playedTrackRef.current.style.background = `linear-gradient(to right, #ca5608 ${clampedPlayed}px, #d1d5db ${clampedPlayed}px)`
+      playedTrackRef.current.style.background = "#ff0000"
+      playedTrackRef.current.style.width = `${clampedPlayed}px`
   }, [
     allowedSeekSecondsRef,
     modulePortionRatio,
@@ -351,20 +351,6 @@ export default function CourseTimeline({
     timelineRef,
     totalCourseSeconds,
   ])
-
-  const updateFurthestTrack = useCallback(() => {
-    if (!furthestTrackRef.current) return
-    const rect = timelineRef.current?.getBoundingClientRect()
-    const timelineWidth = rect ? rect.width * modulePortionRatio : 0
-    if (timelineWidth <= 0) return
-
-    const furthestPx = Math.min(
-      (maxCompletedSecondsRef.current / totalCourseSeconds) * timelineWidth,
-      timelineWidth
-    )
-
-    furthestTrackRef.current.style.background = `linear-gradient(to right, #f6b27a ${furthestPx}px, #d1d5db ${furthestPx}px)`
-  }, [modulePortionRatio, timelineRef, totalCourseSeconds])
 
   const syncHandleTransform = useCallback((px: number) => {
     if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) return
@@ -438,7 +424,6 @@ export default function CourseTimeline({
     let frame: number | null = null
 
     const tick = () => {
-      updateFurthestTrack()
       updatePlayedTrack()
       frame = requestAnimationFrame(tick)
     }
@@ -448,7 +433,7 @@ export default function CourseTimeline({
     return () => {
       if (frame !== null) cancelAnimationFrame(frame)
     }
-  }, [updateFurthestTrack, updatePlayedTrack])
+  }, [updatePlayedTrack])
 
   useEffect(() => {
     function handleMove(e: MouseEvent) {
@@ -557,15 +542,22 @@ return (
       <div className="md:max-w-6xl md:mx-auto p-4">
 
         {/* FLEX ROW: button + timeline */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pr-4">
 
         {/* PLAY / PAUSE BUTTON */} 
         <button
           onClick={handlePlayPauseClick}
-          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#fff]/10 transition"
-        >
+          className="
+            w-8 h-8
+            mr-4
+            flex items-center justify-center
+            bg-black/40
+            rounded-full
+            hover:bg-black/50
+            transition
+          "        >
           {isPaused ? (
-            <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white">
+            <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white/80">
               <path d="M8 5v14l11-7z" />
             </svg>
           ) : (
@@ -576,11 +568,14 @@ return (
         </button>
 
 {/* MODULE SCRUBBER */}
+
+{/* TIMELINE BACKGROUND LINE */}
+
 <div
   ref={timelineRef}
   className={`
     flex-1 relative
-    h-3 rounded-full bg-white/90 shadow-sm px-1
+    h-3 px-0
     select-none cursor-pointer
   `}
 
@@ -710,8 +705,8 @@ return (
           absolute top-1.5
           w-4.5 h-4.5 rounded-full
           shadow-md
-          border-2 border-white
-          bg-[#001f40]
+          border-none
+          bg-[#ff0000]
           shadow-[0_0_8px_rgba(0,0,0,0.6)]
           z-[10000]
         "
@@ -745,77 +740,83 @@ return (
   style={{ minWidth: 0 }}
 >
   <div
-    className="absolute left-0 top-[2px] bottom-[2px] z-[1] rounded-l-full rounded-r-none pointer-events-none"
-    ref={furthestTrackRef}
-    style={{
-      width: `${modulePortionRatio * 100}%`,
-      background: "linear-gradient(to right, #f6b27a 0px, #d1d5db 0px)",
-    }}
-  />
-  <div
     ref={playedTrackRef}
-    className="absolute left-[-2px] top-[1px] bottom-[.5px] z-[2] rounded-l-full rounded-r-none pointer-events-none"
+    className="absolute left-[-2px] top-0 bottom-0 z-[2] rounded-l-none rounded-r-none pointer-events-none"
     style={{
       width: `${modulePortionRatio * 100}%`,
-      background: "linear-gradient(to right, #ca5608 0px, #d1d5db 0px)",
+      background: "transparent",
     }}
   />
-  {modules.map((m, i) => {
-    const isCompleted = i <= maxCompletedIndex
-    const isActive = i === currentModuleIndex
-    const isUnlocked = i <= maxCompletedIndex
-    const widthPct =
-      totalDur > 0 ? ((moduleDurations[i] ?? 0) / totalDur) * 100 : 0
-    const moduleWidthPct = widthPct * modulePortionRatio
+{modules.map((m, i) => {
+  // Active module index (used only for logic, NOT visual highlight)
+  const isActive = i === currentModuleIndex
 
-    let bg = "#001f40"
-    let glow = "none"
+  // Determines whether the module is clickable / previewable
+  const isUnlocked = i <= maxCompletedIndex
 
-    if (isCompleted) bg = "#ca5608"
-    if (isActive) {
-      bg = "#ca5608"
-    }
+  // Width calculation based on module duration
+  const widthPct =
+    totalDur > 0 ? ((moduleDurations[i] ?? 0) / totalDur) * 100 : 0
 
-    return (
+  const moduleWidthPct = widthPct * modulePortionRatio
+
+  /**
+   * VISUAL RULES
+   * - No completed-state highlighting
+   * - No active-state highlighting
+   * - Progress is shown ONLY via the progress bar (YouTube-style)
+   * - Locked modules are darker
+   */
+  let bg = "#3a3a3ac5" // default: neutral module color
+  let glow = "none"
+
+  if (!isUnlocked) {
+    bg = "#3a3a3ac5" // locked modules are darker
+  }
+
+  return (
+    <div
+      key={m.id}
+      style={{ width: `${moduleWidthPct}%` }}
+      className={`relative z-[1] h-full flex items-center justify-center ${
+        isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+      }`}
+      onClick={() => {
+        // Prevent accidental click after scrubbing
+        if (suppressModuleClickRef.current) return
+
+        // Only allow navigation to unlocked modules
+        if (isUnlocked && goToModule) {
+          goToModule(i)
+        }
+      }}
+    >
+      {/* MODULE BAR */}
       <div
-        key={m.id}
-        style={{ width: `${moduleWidthPct}%` }}
-        className={`relative z-[1] h-full flex items-center justify-center translate-y-[2px] ${
-          isUnlocked ? "cursor-pointer" : "cursor-pointer opacity-45"
-        }`}
-        onClick={() => {
-          if (suppressModuleClickRef.current) return
-          if (isUnlocked && goToModule) goToModule(i)
+        className="flex-1 h-full"
+        style={{
+          backgroundColor: bg,
+          boxShadow: glow,
         }}
-      >
-        <div
-          className="flex-1 h-2"
-          style={{
-            backgroundColor: bg,
-            boxShadow: glow,
-            borderTopLeftRadius: i === 0 ? 999 : 0,
-            borderBottomLeftRadius: i === 0 ? 999 : 0,
-          }}
-        />
-        <div className="w-[2px] h-full" />
-      </div>
-    )
-  })}
+      />
+
+      {/* SEPARATOR */}
+      <div className="w-[4px] h-full" />
+    </div>
+  )
+})}
 
                 {TERMINAL_SEGMENTS.map((seg, i) => {
                   const isLast = i === TERMINAL_SEGMENTS.length - 1
 
-                  let bg = "#001f40"
-                  let glow = "none"
+                  let bg = "#3a3a3a";
 
-                  if (seg.id === "exam") {
-                    bg = examPassed ? "#ca5608" : "#001f40"
-                    if (onExamPage) glow = examPassed ? "0 0 6px #ca5608" : "0 0 6px #001f40"
+                  if (seg.id === "exam" && examPassed) {
+                    bg = "#ff0000";
                   }
 
-                  if (seg.id === "payment") {
-                    bg = paymentPaid ? "#ca5608" : "#001f40"
-                    if (onPaymentPage) glow = paymentPaid ? "0 0 6px #ca5608" : "0 0 6px #001f40"
+                  if (seg.id === "payment" && paymentPaid) {
+                    bg = "#ff0000";
                   }
 
                   const isFinalActions = seg.id === "payment" || seg.id === "exam"
@@ -845,19 +846,16 @@ return (
                         if (!isFinalActions) return;
                       }}
                                           >
-                      <div className="w-full flex items-center justify-center h-2 translate-y-[2.2px]">
+                      <div className="w-full flex items-center justify-center h-3">
                         <div
-                          className="flex-1 h-2"
+                          className="flex-1 h-full"
                           style={{
                             backgroundColor: bg,
-                            boxShadow: glow,
-                            borderTopRightRadius: isLast ? 999 : 0,
-                            borderBottomRightRadius: isLast ? 999 : 0,
+                            borderRadius: 0
                           }}
                         />
-                        {!isLast && <div className="w-[2px] h-full" />}
-                      </div>
-
+                        {!isLast && <div className="w-[2px] h-full bg-black" />}                      
+                            </div>
                             <div className="mt-3 text-[8px] font-bold text-black text-center opacity-80 px-1 bg-white/90 rounded-md px-2 py-[1px]">
                         {seg.label}
                       </div>
@@ -882,8 +880,8 @@ return (
     <div
       className="
         w-full h-full
-        rounded-lg bg-white/90 shadow-xl
-        backdrop-blur-sm text-[#001f40] p-4
+        rounded-lg bg-white/70 shadow-xl
+        backdrop-blur-sm text-[#001F40] p-4
         pointer-events-auto overflow-hidden
         flex flex-col justify-center items-center gap-6
         relative
@@ -897,7 +895,7 @@ return (
       }}
         className="
           absolute top-2 right-2
-          text-white text-xl font-bold
+          text-white text-md font-bold
           bg-black/50 hover:bg-black/70
           rounded-full px-2 pb-[2px]
           pointer-events-auto

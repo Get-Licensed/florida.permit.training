@@ -2827,7 +2827,7 @@ useEffect(() => {
       opacity: 0,
     }}
   >
-    <div className="relative w-[375px] h-[250px] rounded-lg bg-white/90 text-[#001f40] shadow-md overflow-hidden flex flex-col">
+    <div className="relative w-[375px] h-[250px] rounded-lg backdrop-blur-md bg-white/30 text-[#001f40] shadow-md overflow-hidden flex flex-col">
       <div
         ref={hoverTooltipTimeRef}
         className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"
@@ -2938,7 +2938,7 @@ useEffect(() => {
                 h-6 px-4
                 flex items-center
                 rounded-full
-                bg-[#fff]/10
+                bg-[#001f40]/60
                 text-[#fff]
                 text-sm
                 tabular-nums
@@ -3187,7 +3187,7 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
     const currentSlide = slides?.[slideIndex] || null;
 
     return (
-      <div className="fixed bottom-[0px] left-0 right-0 bg-white border-t shadow-inner h-[150px] z-50">
+      <div className="fixed bottom-[0px] left-0 right-0 bg-white/60 backdrop-blur-sm border-t shadow-inner h-[150px] z-50">
         <div className="h-full max-w-6xl mx-auto px-6 flex items-start justify-between relative pt-4 text-[#001f40]">
 
           {/* KARAOKE CAPTIONS */}
@@ -3242,7 +3242,7 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
   <span
     key={wi}
     style={{ display: "inline" }}
-    className={wi === currentWordIndex ? "text-[#ca5608]" : "opacity-80"}
+    className={wi === currentWordIndex ? "text-[#ca5608]" : "opacity-100"}
   >
     {word + " "}
   </span>
