@@ -2544,20 +2544,19 @@ useEffect(() => {
       className={`
         w-20 h-20
         rounded-full
-        bg-black/90
+        bg-black/60
         flex items-center justify-center
         backdrop-blur-sm
         cursor-pointer
         transition
-        ring-4 ring-white/70
         ${isIdle ? "idle-fade" : ""}
-        hover:bg-black/70    
+        hover:bg-black/80    
         `}
     >
       {isPaused ? (
         <svg
           viewBox="0 0 24 24"
-          className="w-18 h-20 fill-white"
+          className="w-18 h-20 fill-white/80"
           style={{ transform: "translateX(-1.5px)" }}
         >
           <path d="M8.5 5a1.5 1.5 0 00-1.5 1.5v11a1.5 1.5 0 001.5 1.5L21.5 12z" />
@@ -2565,7 +2564,7 @@ useEffect(() => {
       ) : (
         <svg
           viewBox="0 0 24 24"
-          className="w-15 h-15 fill-white"
+          className="w-15 h-15 fill-white/80"
           style={{ transform: "translateX(-2.5px)" }}
         >
           <path d="M6.8 5.5a1.1 1.1 0 011.1-1.1h2.2a1.1 1.1 0 011.1 1.1v13a1.1 1.1 0 01-1.1 1.1H7.9a1.1 1.1 0 01-1.1-1.1z M14.9 5.5a1.1 1.1 0 011.1-1.1h2.2a1.1 1.1 0 011.1 1.1v13a1.1 1.1 0 01-1.1 1.1H16a1.1 1.1 0 01-1.1-1.1z" />
@@ -2827,10 +2826,10 @@ useEffect(() => {
       opacity: 0,
     }}
   >
-    <div className="relative w-[375px] h-[250px] rounded-lg backdrop-blur-md bg-white/30 text-[#001f40] shadow-md overflow-hidden flex flex-col">
+    <div className="relative w-[375px] h-[250px] rounded-lg backdrop-blur-md bg-white/60 text-[#001f40] shadow-md overflow-hidden flex flex-col">
       <div
         ref={hoverTooltipTimeRef}
-        className="absolute top-2 left-2 px-2 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none"
+        className="absolute top-2 left-2 px-2 py-[2px] rounded-full backdrop-blur-md bg-white/60 text-[#001f40] text-[11px] font-medium pointer-events-none"
         style={{ display: "none" }}
       />
 
@@ -2928,22 +2927,22 @@ useEffect(() => {
 </div>
       {/* CONTROLS – volume + CC */}
       <div
-        className="fixed bottom-[160px] left-0 right-0 z-[200] pointer-events-auto"
+        className="fixed bottom-[160px] translate-x-[35px] left-0 right-0 z-[200] pointer-events-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="md:max-w-6xl md:mx-auto px-4">
           <div className="flex items-center gap-4 text-[#001f40]">
             <div
               className="
-                h-6 px-4
+                h-8 px-4
                 flex items-center
+                bg-black/60
                 rounded-full
-                bg-[#001f40]/60
                 text-[#fff]
                 text-sm
                 tabular-nums
+                translate-x-[25px]
                 opacity-100
-                translate-x-[45px]
                 whitespace-nowrap
               "
             >
@@ -2964,7 +2963,7 @@ useEffect(() => {
                   e.stopPropagation()
                   toggleMute()
                 }}
-                className="cursor-pointer translate-x-[20px]"
+                className="cursor-pointer translate-x-[15px]"
               >
                 {muted ? (
                   <svg
@@ -3186,67 +3185,69 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
 
     const currentSlide = slides?.[slideIndex] || null;
 
-    return (
-      <div className="fixed bottom-[0px] left-0 right-0 bg-white/60 backdrop-blur-sm border-t shadow-inner h-[150px] z-50">
-        <div className="h-full max-w-6xl mx-auto px-6 flex items-start justify-between relative pt-4 text-[#001f40]">
+return (
+  <div className="
+    fixed bottom-0 left-0 right-0
+    bg-white/73 backdrop-blur-sm
+    border-t shadow-inner
+    h-[120px] sm:h-[135px] md:h-[150px]
+    z-50
+  ">
+    <div className="
+      h-full max-w-6xl mx-auto
+      px-2 sm:px-3 md:px-4
+      flex items-center justify-center
+      text-[#001f40]
+    ">
+      <KaraokeCaption
+        captions={captions}
+        currentSlide={currentSlide}
+        currentWordIndex={currentWordIndex}
+      />
+    </div>
+  </div>
+);
 
-          {/* KARAOKE CAPTIONS */}
-          <KaraokeCaption
-            captions={captions}
-            currentSlide={currentSlide}
-            currentWordIndex={currentWordIndex}
-          />
-
-        </div>
-      </div>
-    );
   }
-
   /* -----------------------------------------------------------
     KARAOKE CAPTION RENDERER
   ----------------------------------------------------------- */
-  function KaraokeCaption({
-    captions,
-    currentSlide,
-    currentWordIndex
-  }: any) {
+function KaraokeCaption({
+  captions,
+  currentSlide,
+  currentWordIndex
+}: any) {
+  if (!currentSlide) return null;
 
-    if (!currentSlide) return null;
+  const fullText = (captions[currentSlide.id] || [])
+    .map((c: any) => c.caption.trim())
+    .join(" ")
+    .replace(/\s+/g, " ");
 
-    const fullText = (captions[currentSlide.id] || [])
-      .map((c: any) => c.caption.trim())
-      .join(" ")
-      .replace(/\s+/g, " ");
+  const words = tokenizeCaption(fullText);
 
-    const words = tokenizeCaption(fullText);
-
-    return (
-      <div
-        className="
-          text-xl leading-[32px]
-          whitespace-normal
-          text-center
-          text-[#001f40]
-          w-full px-5 mx-auto
-        "
-        style={{
-          minWidth: 0,          
-          maxWidth: "100%",
-          overflow: "visible",
-          wordBreak: "normal",
-          overflowWrap: "break-word",
-          hyphens: "none"
-        }}
-      >
-        {words.map((word: string, wi: number) => (
-  <span
-    key={wi}
-    style={{ display: "inline" }}
-    className={wi === currentWordIndex ? "text-[#ca5608]" : "opacity-100"}
-  >
-    {word + " "}
-  </span>
-        ))}
-      </div>
-    );
-  }
+  return (
+    <div
+      className="
+        w-full text-center
+        text-[0.72rem] sm:text-[0.85rem] md:text-[1.05rem] lg:text-[1.2rem]
+        leading-[17px] sm:leading-[20px] md:leading-[26px] lg:leading-[32px]
+        tracking-[-0.015em] sm:tracking-normal
+        px-2 sm:px-3 md:px-5
+        max-h-[88px] sm:max-h-[104px] md:max-h-[120px]
+        overflow-hidden
+        whitespace-normal
+        text-[#001f40]
+      "
+    >
+      {words.map((word: string, wi: number) => (
+        <span
+          key={wi}
+          className={wi === currentWordIndex ? "text-[#ca5608]" : ""}
+        >
+          {word + " "}
+        </span>
+      ))}
+    </div>
+  );
+}

@@ -10,7 +10,7 @@ type ModuleRow = {
 }
 
 const TERMINAL_SEGMENTS = [
-  { id: "exam", label: "Final Exam", href: "/exam" },
+  { id: "exam", label: <>Final<br />Exam</>, href: "/exam" },
   { id: "payment", label: "Pay & Submit to FLHSMV.gov", href: "/payment" }
 ]
 
@@ -126,6 +126,7 @@ export default function CourseTimeline({
   // remember play state across scrub
   const wasPlayingBeforeScrubRef = useRef(false)
   const playedTrackRef = useRef<HTMLDivElement | null>(null)
+  const furthestTrackRef = useRef<HTMLDivElement | null>(null)
   const maxCompletedSecondsRef = useRef(0)
   const playedSecondsRefResolved = playedSecondsRef ?? allowedSeekSecondsRef
 
@@ -342,7 +343,7 @@ export default function CourseTimeline({
           )
         : 0
     const clampedPlayed = Math.max(0, Math.min(timelineWidth, playedWidth))
-      playedTrackRef.current.style.background = "#ff0000"
+      playedTrackRef.current.style.background = "#D60000"
       playedTrackRef.current.style.width = `${clampedPlayed}px`
   }, [
     allowedSeekSecondsRef,
@@ -351,6 +352,20 @@ export default function CourseTimeline({
     timelineRef,
     totalCourseSeconds,
   ])
+
+  const updateFurthestTrack = useCallback(() => {
+    if (!furthestTrackRef.current) return
+    const rect = timelineRef.current?.getBoundingClientRect()
+    const timelineWidth = rect ? rect.width * modulePortionRatio : 0
+    if (timelineWidth <= 0) return
+
+    const furthestPx = Math.min(
+      (maxCompletedSecondsRef.current / totalCourseSeconds) * timelineWidth,
+      timelineWidth
+    )
+furthestTrackRef.current.style.background = "transparent"
+furthestTrackRef.current.style.width = `${furthestPx}px`
+  }, [modulePortionRatio, timelineRef, totalCourseSeconds])
 
   const syncHandleTransform = useCallback((px: number) => {
     if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) return
@@ -424,6 +439,7 @@ export default function CourseTimeline({
     let frame: number | null = null
 
     const tick = () => {
+      updateFurthestTrack()
       updatePlayedTrack()
       frame = requestAnimationFrame(tick)
     }
@@ -433,7 +449,7 @@ export default function CourseTimeline({
     return () => {
       if (frame !== null) cancelAnimationFrame(frame)
     }
-  }, [updatePlayedTrack])
+  }, [updateFurthestTrack, updatePlayedTrack])
 
   useEffect(() => {
     function handleMove(e: MouseEvent) {
@@ -549,19 +565,20 @@ return (
           onClick={handlePlayPauseClick}
           className="
             w-8 h-8
-            mr-4
+            mr-2
             flex items-center justify-center
-            bg-black/40
+            bg-black/70
             rounded-full
-            hover:bg-black/50
+            hover:bg-black/90
             transition
+            translate-y-[2px]
           "        >
           {isPaused ? (
-            <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white/80">
-              <path d="M8 5v14l11-7z" />
+            <svg viewBox="0 0 24 24" className="w-6 h-6 fill-white/80">
+          <path d="M8.5 5a1.5 1.5 0 00-1.5 1.5v11a1.5 1.5 0 001.5 1.5L21.5 12z" />
             </svg>
           ) : (
-            <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white">
+            <svg viewBox="0 0 24 24" className="w-5 h-6 fill-white/80">
               <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
             </svg>
           )}
@@ -702,11 +719,11 @@ return (
       <div
         ref={handleRef}
         className="
-          absolute top-1.5
-          w-4.5 h-4.5 rounded-full
+          absolute top-2
+          w-6 h-6 rounded-full
           shadow-md
           border-none
-          bg-[#ff0000]
+          bg-[#D60000]
           shadow-[0_0_8px_rgba(0,0,0,0.6)]
           z-[10000]
         "
@@ -721,8 +738,8 @@ return (
     <div
       ref={ghostHandleRef}
       className="
-        absolute top-1.5
-        w-4.5 h-4.5 rounded-full
+        absolute top-2
+        w-6 h-6 rounded-full
         shadow-sm
         bg-[#fff]/40
       "
@@ -733,136 +750,72 @@ return (
       }}
     />
   </div>
-{/* ===== TRACK + MODULE + TERMINAL CELLS (scrubbable modules only) ===== */}
-<div
-  ref={modulesRef}
-  className="relative z-[1] flex items-center h-full flex-1"
-  style={{ minWidth: 0 }}
->
+{/* MODULE + TERMINAL ROW */}
+<div className="relative z-[1] flex items-center h-4 w-full">
+
+  {/* MODULE SCRUB RAIL */}
   <div
-    ref={playedTrackRef}
-    className="absolute left-[-2px] top-0 bottom-0 z-[2] rounded-l-none rounded-r-none pointer-events-none"
-    style={{
-      width: `${modulePortionRatio * 100}%`,
-      background: "transparent",
-    }}
-  />
-{modules.map((m, i) => {
-  // Active module index (used only for logic, NOT visual highlight)
-  const isActive = i === currentModuleIndex
-
-  // Determines whether the module is clickable / previewable
-  const isUnlocked = i <= maxCompletedIndex
-
-  // Width calculation based on module duration
-  const widthPct =
-    totalDur > 0 ? ((moduleDurations[i] ?? 0) / totalDur) * 100 : 0
-
-  const moduleWidthPct = widthPct * modulePortionRatio
-
-  /**
-   * VISUAL RULES
-   * - No completed-state highlighting
-   * - No active-state highlighting
-   * - Progress is shown ONLY via the progress bar (YouTube-style)
-   * - Locked modules are darker
-   */
-  let bg = "#3a3a3ac5" // default: neutral module color
-  let glow = "none"
-
-  if (!isUnlocked) {
-    bg = "#3a3a3ac5" // locked modules are darker
-  }
-
-  return (
+    ref={modulesRef}
+    className="relative flex items-center h-full flex-1"
+    style={{ minWidth: 0 }}
+  >
     <div
-      key={m.id}
-      style={{ width: `${moduleWidthPct}%` }}
-      className={`relative z-[1] h-full flex items-center justify-center ${
-        isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-50"
-      }`}
-      onClick={() => {
-        // Prevent accidental click after scrubbing
-        if (suppressModuleClickRef.current) return
-
-        // Only allow navigation to unlocked modules
-        if (isUnlocked && goToModule) {
-          goToModule(i)
-        }
+      ref={playedTrackRef}
+      className="absolute left-0 top-0 bottom-0 z-[2] pointer-events-none"
+      style={{
+        width: "0px",
+        background: "#D60000",
       }}
-    >
-      {/* MODULE BAR */}
-      <div
-        className="flex-1 h-full"
-        style={{
-          backgroundColor: bg,
-          boxShadow: glow,
-        }}
-      />
+    />
 
-      {/* SEPARATOR */}
-      <div className="w-[4px] h-full" />
-    </div>
-  )
-})}
+    {modules.map((m, i) => {
+      const isUnlocked = i <= maxCompletedIndex
+      const widthPct =
+        totalDur > 0 ? ((moduleDurations[i] ?? 0) / totalDur) * 100 : 0
 
-                {TERMINAL_SEGMENTS.map((seg, i) => {
-                  const isLast = i === TERMINAL_SEGMENTS.length - 1
+      return (
+        <div
+          key={m.id}
+          style={{ width: `${widthPct}%` }}
+          className={`relative h-full flex items-center ${
+            isUnlocked ? "cursor-pointer" : "cursor-pointer opacity-80"
+          }`}
+          onClick={() => {
+            if (suppressModuleClickRef.current) return
+            if (isUnlocked && goToModule) goToModule(i)
+          }}
+        >
+          <div className="flex-1 h-full bg-[#aeaeaecc]" />
+          <div className="w-[6px] h-full" />
+        </div>
+      )
+    })}
+  </div>
 
-                  let bg = "#3a3a3a";
+  {/* TERMINAL SEGMENTS (FIXED WIDTH, SAME ROW) */}
+  <div className="flex items-center h-full">
+    {TERMINAL_SEGMENTS.map((seg, i) => {
+      let bg = "#aeaeaecc"
+      if (seg.id === "exam" && examPassed) bg = "#D60000"
+      if (seg.id === "payment" && paymentPaid) bg = "#D60000"
 
-                  if (seg.id === "exam" && examPassed) {
-                    bg = "#ff0000";
-                  }
+      return (
+        <div
+          key={seg.id}
+          className="relative h-full flex items-center cursor-pointer"
+          style={{ width: 80 }}
+          onClick={() => (window.location.href = seg.href)}
+        >
+          <div className="flex-1 h-full" style={{ backgroundColor: bg }} />
+          {i < TERMINAL_SEGMENTS.length - 1 && (
+            <div className="w-[6px] h-full bg-transparent" />
+          )}
+        </div>
+      )
+    })}
+  </div>
 
-                  if (seg.id === "payment" && paymentPaid) {
-                    bg = "#ff0000";
-                  }
-
-                  const isFinalActions = seg.id === "payment" || seg.id === "exam"
-
-                  return (
-                    <div
-                      key={seg.id}
-                      className="relative h-full flex flex-col items-center justify-start cursor-pointer"
-                      style={{ width: `${terminalWidth}%` }}
-                      onClick={() => (window.location.href = seg.href)}
-
-                      /* PROMO HOVER EVENTS (phase-2 wiring) */
-                      onMouseEnter={(e) => {
-                        if (!isFinalActions) return;
-
-                        // notify parent instead of mutating promo state here
-                        onTerminalHover?.();
-                        setPromoX(e.clientX);
-                      }}
-
-                      onMouseMove={(e) => {
-                        if (!isFinalActions) return;
-                        setPromoX(e.clientX);
-                      }}
-
-                      onMouseLeave={() => {
-                        if (!isFinalActions) return;
-                      }}
-                                          >
-                      <div className="w-full flex items-center justify-center h-3">
-                        <div
-                          className="flex-1 h-full"
-                          style={{
-                            backgroundColor: bg,
-                            borderRadius: 0
-                          }}
-                        />
-                        {!isLast && <div className="w-[2px] h-full bg-black" />}                      
-                            </div>
-                            <div className="mt-3 text-[8px] font-bold text-black text-center opacity-80 px-1 bg-white/90 rounded-md px-2 py-[1px]">
-                        {seg.label}
-                      </div>
-                    </div>
-                  )
-                })}
-             </div>
+</div>
            </div>
           </div>
         </div>
@@ -880,7 +833,7 @@ return (
     <div
       className="
         w-full h-full
-        rounded-lg bg-white/70 shadow-xl
+        rounded-lg bg-white/73 shadow-xl
         backdrop-blur-sm text-[#001F40] p-4
         pointer-events-auto overflow-hidden
         flex flex-col justify-center items-center gap-6
@@ -895,8 +848,7 @@ return (
       }}
         className="
           absolute top-2 right-2
-          text-white text-md font-bold
-          bg-black/50 hover:bg-black/70
+          text-[#001F40] text-md font-bold
           rounded-full px-2 pb-[2px]
           pointer-events-auto
         "
@@ -914,7 +866,7 @@ return (
             className="text-center w-[120px]"
             style={{ transform: 'translateX(-20px)' }}
           >
-            Exam
+            Final Exam
           </span>
 
           <span
@@ -926,8 +878,8 @@ return (
         </div>
 
         {/* column details */}
-        <div className="flex justify-center items-start gap-4 
-        text-[12px] leading-snug relative w-full max-w-[320px]">
+        <div className="flex justify-center items-start gap-[6px]
+                        text-[12px] leading-snug relative w-full max-w-[320px]">
 
           <div className="text-center w-[150px]">
             ✔ 40 questions<br />

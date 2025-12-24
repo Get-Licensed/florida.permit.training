@@ -170,6 +170,16 @@ import Loader from "@/components/loader";
         scheduleTimelineAutoHide();
       }
 
+      useEffect(() => {
+        return () => {
+          if (hoverTooltipRafRef.current !== null) {
+            cancelAnimationFrame(hoverTooltipRafRef.current);
+            hoverTooltipRafRef.current = null;
+          }
+        };
+      }, []);
+
+
     const dismissTimelineHint = useCallback(() => {
       if (timelineHintDismissedRef.current) return;
       timelineHintDismissedRef.current = true;
@@ -388,49 +398,66 @@ import Loader from "@/components/loader";
       scheduleTimelineAutoHide,
     ]);
 
-    const scheduleTooltipUpdate = useCallback(() => {
-      if (hoverTooltipRafRef.current !== null) return;
-      hoverTooltipRafRef.current = requestAnimationFrame(() => {
-        hoverTooltipRafRef.current = null;
-        const tooltip = hoverTooltipRef.current;
-        if (!tooltip) return;
+const scheduleTooltipUpdate = useCallback(() => {
+  if (hoverTooltipRafRef.current !== null) return;
 
-        const { imgUrl, text, timeLabel } = previewDataRef.current;
-        tooltip.style.left = `${previewXRef.current}px`;
-        tooltip.style.opacity = tooltipVisibleRef.current ? "1" : "0";
-        tooltip.style.pointerEvents = tooltipVisibleRef.current
-          ? "auto"
-          : "none";
+  hoverTooltipRafRef.current = requestAnimationFrame(() => {
+    hoverTooltipRafRef.current = null;
 
-        if (hoverTooltipImageRef.current) {
-          if (imgUrl) {
-            hoverTooltipImageRef.current.src = imgUrl;
-            hoverTooltipImageRef.current.style.display = "block";
-            hoverTooltipImageRef.current.onload = () => {
-              hoverTooltipPlaceholderRef.current!.style.display = "none";
-            };
-          } else {
-            hoverTooltipImageRef.current.removeAttribute("src");
-            hoverTooltipImageRef.current.style.display = "none";
+    // timeline may have auto-hidden between frames
+    if (!showTimeline) return;
+
+    const tooltip = hoverTooltipRef.current;
+    if (!tooltip) return;
+
+    const { imgUrl, text, timeLabel } = previewDataRef.current;
+
+    // position + visibility
+    tooltip.style.left = `${previewXRef.current}px`;
+    tooltip.style.opacity = tooltipVisibleRef.current ? "1" : "0";
+    tooltip.style.pointerEvents = tooltipVisibleRef.current ? "auto" : "none";
+
+    // SAFE element refs
+    const imgEl = hoverTooltipImageRef.current;
+    const placeholderEl = hoverTooltipPlaceholderRef.current;
+
+      if (imgEl) {
+      // clear any previous onload handler to avoid late firing
+      imgEl.onload = null;
+
+      if (imgUrl) {
+        imgEl.src = imgUrl;
+        imgEl.style.display = "block";
+
+        imgEl.onload = () => {
+          if (placeholderEl) {
+            placeholderEl.style.display = "none";
           }
-        }
+        };
+      } else {
+        imgEl.removeAttribute("src");
+        imgEl.style.display = "none";
+      }
+    }
 
-        if (hoverTooltipPlaceholderRef.current) {
-          hoverTooltipPlaceholderRef.current.style.display = imgUrl
-            ? "none"
-            : "block";
-        }
 
-        if (hoverTooltipTextRef.current) {
-          hoverTooltipTextRef.current.textContent = text ?? "";
-        }
+    // placeholder
+    if (placeholderEl) {
+      placeholderEl.style.display = imgUrl ? "none" : "block";
+    }
 
-        if (hoverTooltipTimeRef.current) {
-          hoverTooltipTimeRef.current.textContent = timeLabel ?? "";
-          hoverTooltipTimeRef.current.style.display = timeLabel ? "block" : "none";
-        }
-      });
-    }, []);
+    // text
+    if (hoverTooltipTextRef.current) {
+      hoverTooltipTextRef.current.textContent = text ?? "";
+    }
+
+    // time
+    if (hoverTooltipTimeRef.current) {
+      hoverTooltipTimeRef.current.textContent = timeLabel ?? "";
+      hoverTooltipTimeRef.current.style.display = timeLabel ? "block" : "none";
+    }
+  });
+}, [showTimeline]);
 
     const handleHoverResolve = useCallback(
       (seconds: number, clientX: number) => {
@@ -878,12 +905,13 @@ function togglePlay() {
           opacity: 0,
         }}
       >
-        <div className="relative w-[375px] h-[250px] rounded-xl bg-white/90 text-black shadow-[0_12px_30px_rgba(0,0,0,0.18)] overflow-hidden flex flex-col border border-white/60">
-          <div
-            ref={hoverTooltipTimeRef}
-            className="absolute top-2 left-2 px-2.5 py-[2px] rounded-full bg-white/90 text-black text-[11px] font-medium pointer-events-none shadow-sm"
-            style={{ display: "none" }}
-          />
+          <div className="relative w-[375px] h-[250px] rounded-lg backdrop-blur-md bg-white/60 text-[#001f40] shadow-md overflow-hidden flex flex-col">
+            <div
+              ref={hoverTooltipTimeRef}
+              className="absolute top-2 left-2 px-2 py-[2px] rounded-full backdrop-blur-md bg-white/60 text-[#001f40] text-[11px] font-medium pointer-events-none"
+              style={{ display: "none" }}
+            />
+
           <img
             ref={hoverTooltipImageRef}
             alt=""
@@ -933,7 +961,7 @@ function togglePlay() {
       >
         <div
           id="timeline-region"
-          className="fixed bottom-[25px] left-0 right-0 z-40 min-h-[6rem]"
+          className="fixed bottom-[15px] left-0 right-0 z-40 min-h-[6rem]"
           onMouseEnter={() => {
             isHoveringTimelineRef.current = true;
             setShowTimeline(true);
@@ -983,21 +1011,21 @@ function togglePlay() {
             onPromoClose={handlePromoClose}
           />
         </div>
-        <div className="fixed bottom-[45px] left-0 right-0 z-[200] pointer-events-none">
+        <div className="fixed bottom-[35px] left-0 right-0 z-[200] pointer-events-none">
           <div className="md:max-w-6xl md:mx-auto px-4">
             <div className="flex items-center gap-4 text-[#001f40]">
               <div
                 className="
-                  h-6 px-4
-                  flex items-center
-                  rounded-full
-                  bg-[#001f40]/60
-                  text-[#fff]
-                  text-sm
-                  tabular-nums
-                  opacity-100
-                  translate-x-[45px]
-                  whitespace-nowrap
+                h-6 px-4
+                flex items-center
+                bg-black/60
+                rounded-full
+                text-[#fff]
+                text-sm
+                tabular-nums
+                translate-x-[45px]
+                opacity-100
+                whitespace-nowrap
                 "
               >
                 {formatTime(elapsedCourseSeconds)} / {formatTime(totalCourseSeconds)}
@@ -1072,51 +1100,44 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
 function TimelineHoverHint() {
   return (
     <div
-      className="fixed left-1/2 bottom-[50px] z-30 -translate-x-1/2 pointer-events-none"
+      className="fixed left-1/2 bottom-[67px] z-30 -translate-x-1/2 pointer-events-none"
       aria-hidden="true"
     >
-      <div className="timeline-hint-orb" />
+      <div className="w-6 h-6 timeline-hint-orb" />
       <style jsx>{`
-        .timeline-hint-orb {
-          width: 12px;
-          height: 12px;
-          border-radius: 9999px;
-          background: #fff;
-          box-shadow:
-            0 0 10px rgba(0, 31, 64, 0.55),
-            0 0 20px rgba(0, 31, 64, 0.3);
-          animation:
-            timelineHintPulse 3.8s ease-in-out infinite,
-            timelineHintFloat 5.5s ease-in-out infinite;
-          opacity: 0.6;
-        }
+.timeline-hint-orb {
+  position: relative;
+  border-radius: 9999px;
+  background: #ffffff71;
+  box-shadow: 0 0 6px rgba(0, 31, 64, 0.6);
+  animation:
+    timelineHintFloat 5.5s ease-in-out infinite;
+}
 
-        @keyframes timelineHintPulse {
-          0% {
-            transform: scale(1);
-            opacity: 0.1;
-          }
-          50% {
-            transform: scale(2);
-            opacity: 0.8;
-          }
-          100% {
-            transform: scale(1);
-            opacity: 0.1;
-          }
-        }
+/* STRONG RING */
+.timeline-hint-orb::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  border: 2px solid rgba(0, 31, 64, 0.85);
+  animation: timelineHintRing 3.8s ease-in-out infinite;
+}
 
-        @keyframes timelineHintFloat {
-          0% {
-            translate: 0 0;
-          }
-          50% {
-            translate: 0 -6px;
-          }
-          100% {
-            translate: 0 0;
-          }
-        }
+@keyframes timelineHintRing {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+}
       `}</style>
     </div>
   );

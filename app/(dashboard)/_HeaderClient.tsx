@@ -469,36 +469,36 @@ async function cropToSquare(file: File): Promise<Blob> {
   </div>
 </div>
 
-      {previewOpen && profile && (
-        <div
-          className="
-            absolute left-full top-1/2 -translate-y-1/2
-            ml-6 px-4 py-3 z-50
-            min-w-[820px]
-          "
-          onClick={(e) => e.stopPropagation()}
-        >
-        <div
-        className="
-          grid
-          grid-cols-[1.4fr_1fr_1fr]
-          gap-8
-          items-center
-          text-sm text-[#001f40]
-          whitespace-nowrap
-          w-full
-          translate-x-[15%]
-        "
-      >
-          {/* ADDRESS */}
+{previewOpen && profile && (
+  <div
+    className="
+      absolute left-full top-1/2 -translate-y-1/2
+      ml-6 px-4 py-3 z-50
+      min-w-[1120px]
+      translate-x-[15%]
+
+    "
+    onClick={(e) => e.stopPropagation()}
+  >
+    <div
+      className="
+        grid
+        grid-cols-[1.4fr_1fr_1fr_1fr_auto]
+        gap-8
+        text-sm text-[#001f40]
+        whitespace-nowrap
+        w-full
+      "
+    >
+      {/* ADDRESS */}
       <div
         className="text-md cursor-pointer hover:text-[#ca5608] truncate"
-        onClick={() => setEditField("address")}
+        onClick={() => setEditField('address')}
       >
         {profile.street ? (
           <>
             {profile.street}
-            {profile.apt ? `, ${profile.apt}` : ""}{" "}
+            {profile.apt ? `, ${profile.apt}` : ''}{' '}
             {profile.city}, {profile.state} {profile.zip}
           </>
         ) : (
@@ -509,7 +509,7 @@ async function cropToSquare(file: File): Promise<Blob> {
       {/* PHONE */}
       <div
         className="cursor-pointer hover:text-[#ca5608] flex justify-center"
-        onClick={() => setEditField("phone")}
+        onClick={() => setEditField('phone')}
       >
         <div className="text-md text-center w-full">
           {profile.home_phone ? (
@@ -523,7 +523,7 @@ async function cropToSquare(file: File): Promise<Blob> {
       {/* DOB */}
       <div
         className="cursor-pointer hover:text-[#ca5608] flex justify-center"
-        onClick={() => setEditField("dob")}
+        onClick={() => setEditField('dob')}
       >
         <div className="text-md text-center w-full">
           {profile.dob ? (
@@ -537,31 +537,30 @@ async function cropToSquare(file: File): Promise<Blob> {
         </div>
       </div>
 
-          </div>
-        </div>
-      )}
+      {/* LOG OUT */}
+      <button
+        className="
+          text-md font-semibold
+          text-[#001f40]
+          hover:text-[#ca5608]
+          transition
+          justify-self-end
+        "
+        onClick={async () => {
+          setPreviewOpen(false);
+          await supabase.auth.signOut();
+          router.replace('/');
+        }}
+      >
+        Log Out
+      </button>
+    </div>
+  </div>
+)}
     </div>
 
-      {/* LOGOUT */}
-      <div className="ml-auto pr-[7px]">
-        <button
-          className="
-            text-md font-semibold
-            text-[#001f40]
-            hover:text-[#ca5608]
-            transition
-          "
-          onClick={async (e) => {
-            e.stopPropagation();
-            await supabase.auth.signOut();
-            router.replace("/");
-          }}
-        >
-          Log Out
-        </button>
       </div>
   </div>
-</div>
         </header>
 <div className="h-px bg-gray-200 shadow-sm w-full" />
 

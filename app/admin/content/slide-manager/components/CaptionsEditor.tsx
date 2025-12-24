@@ -472,6 +472,8 @@ async function duplicateSlide(slide: Slide) {
               caption_hash_d: null,
               caption_hash_o: null,
               caption_hash_j: null,
+              seconds: null
+
             })
         .in(
           "slide_id",
@@ -545,7 +547,7 @@ const totalLessonSeconds = captions.reduce(
 );
 
 /* -------------------------------------------------------------
-    COUNT TIME FOR LESSONS
+  SPINNER
  ------------------------------------------------------------- */
 
       function Spinner() {
@@ -553,6 +555,84 @@ const totalLessonSeconds = captions.reduce(
           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
         );
       }
+
+/* -------------------------------------------------------------
+  SAVE and DELETE SLIDES IN BULK
+ ------------------------------------------------------------- */
+
+      async function saveAllSlides() {
+  if (!slides.length) return;
+
+  // Save slides (image_path + order_index)
+  for (const s of slides) {
+    await supabase
+      .from("lesson_slides")
+      .update({
+        image_path: s.image_path,
+        order_index: s.order_index,
+      })
+      .eq("id", s.id);
+  }
+
+  // Save captions
+  for (const c of captions) {
+    await supabase
+      .from("slide_captions")
+      .update({
+        caption: c.caption,
+        seconds: c.seconds,
+        line_index: c.line_index,
+      })
+      .eq("id", c.id);
+  }
+
+  showToast("All slides saved");
+}
+
+async function deleteSelectedSlides() {
+  if (selectedSlides.size === 0) return;
+
+  if (
+    !globalThis.confirm(
+      `Delete ${selectedSlides.size} selected slides?\nThis cannot be undone.`
+    )
+  )
+    return;
+
+  const ids = Array.from(selectedSlides);
+
+  // 1. Delete slides (CASCADE deletes captions + audio)
+  await supabase
+    .from("lesson_slides")
+    .delete()
+    .in("id", ids);
+
+  // 2. Reload remaining slides
+  if (selectedLessonId) {
+    const { data: remaining } = await supabase
+      .from("lesson_slides")
+      .select("*")
+      .eq("lesson_id", Number(selectedLessonId))
+      .order("order_index", { ascending: true });
+
+    // 3. Reindex order_index cleanly
+    if (remaining) {
+      let index = 0;
+      for (const s of remaining) {
+        await supabase
+          .from("lesson_slides")
+          .update({ order_index: index++ })
+          .eq("id", s.id);
+      }
+    }
+
+    await loadLessonData(selectedLessonId);
+  }
+
+  setSelectedSlides(new Set());
+  showToast("Selected slides deleted");
+}
+
 
     /* ---------------------------------------------------------
       RENDER
@@ -706,7 +786,7 @@ const totalLessonSeconds = captions.reduce(
         <span className="text-sm text-[#001f40] font-bold">Bulk Audio Editor</span>
 
         <div className="flex gap-3">
-
+   
       {/* GENERATE ALL AUDIO */}
         <button
           type="button"
@@ -781,11 +861,12 @@ const totalLessonSeconds = captions.reduce(
         <span className="text-sm text-[#001f40] font-bold">
           {selectedSlides.size > 0
             ? `${selectedSlides.size} selected`
-            : "Bulk Image Selector"}
+            : "Bulk Slide Tools"}
         </span>
 
+
         <div className="flex gap-3">
-          <button
+         <button
             type="button"
             onClick={() =>
               setSelectedSlides(new Set(slides.map((s) => String(s.id))))
@@ -795,14 +876,32 @@ const totalLessonSeconds = captions.reduce(
             Select All
           </button>
 
+      {/* CLEAR SELECTION SLIDES */}
           <button
             type="button"
             onClick={() => setSelectedSlides(new Set())}
-            className="px-3 py-1.5 text-xs bg-gray-200 rounded hover:bg-gray-300 cursor-pointer"
+            className="px-3 py-1.5 bg-gray-600 text-white text-xs rounded cursor-pointer hover:bg-gray-5  00"
           >
-            Clear
+            Clear Selection
           </button>
-
+     
+      {/* DELETE ALL SLIDES */}
+          <button
+            type="button"
+            onClick={deleteSelectedSlides}
+            disabled={selectedSlides.size === 0}
+            className={`
+              px-3 py-1.5 text-xs rounded
+              ${
+                selectedSlides.size > 0
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }
+            `}
+          >
+            Delete Selected Slides
+          </button>
+  
           <button
             type="button"
             onClick={() => selectedSlides.size > 0 && setMediaModalOpen(true)}
@@ -816,8 +915,17 @@ const totalLessonSeconds = captions.reduce(
               }
             `}
           >
-            Change Image
+            Update Images
           </button>
+      
+             {/* SAVE ALL SLIDES */}
+          <button
+            type="button"
+            onClick={saveAllSlides}
+            className="px-3 py-1.5 text-xs bg-[#001f40] text-white rounded hover:bg-[#003266]"
+          >
+            Save All Slides
+          </button> 
         </div>
       </div>
     </div>
