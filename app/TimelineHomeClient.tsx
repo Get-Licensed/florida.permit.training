@@ -837,55 +837,71 @@ function togglePlay() {
 >
         <div className="absolute inset-0 bg-[#001f40]/10" />
         <PublicHeader />
-          <section className="relative flex-1 flex items-center justify-center overflow-auto px-6 pt-8 pb-24">
+          <section className="relative flex-1 flex 
+          items-center justify-center overflow-auto 
+          px-4 sm:px-6 pt-6 sm:pt-8 pb-20 sm:pb-24">
             <div
               className="
-                flex flex-col items-center text-center max-w-md w-full
-                bg-white/0
+                flex flex-col items-center text-center
+                min-h-[min(42vh,400px)]
+                max-w-[min(96vw,446px)] sm:max-w-md w-full
+                justify-center
+                bg-[#001f40]/20
                 border border-white/40
                 rounded-2xl
-                p-8 sm:p-10
+                p-5 sm:p-8 md:p-10
                 shadow-[0_12px_40px_rgba(0,31,64,0.25)]
                 backdrop-blur-md
-                -mt-[160px]
+                -mt-[80px] sm:-mt-[120px] md:-mt-[160px]
               "
-            > 
-<h1 className="text-white text-[1.5rem] pb-6">
-  Florida 6-Hour Driver Education Traffic Safety Course
-</h1>
+            >
+              <h1 className="text-white text-[1.45rem] sm:text-[1.65rem] md:text-[1.75rem] leading-tight pb-4 sm:pb-6">
+                Florida 6-Hour Driver Education Traffic Safety Course
+              </h1>
 
-        <button
-          onClick={handleGoogleSignup}
-          className="
-            flex items-center justify-center
-            border border-[#001f40]/60 bg-white text-[#001f40]
-            text-[21px] font-semibold px-6 py-3 rounded-xl
-            cursor-pointer transition-all
-            hover:bg-white hover:shadow-[0_10px_24px_rgba(0,31,64,0.18)]
-            hover:-translate-y-0.5
-          "
-        >
-          <Image
-            src="/Google-Icon.png"
-            alt="Google Icon"
-            width={26}
-            height={26}
-            className="mr-3"
-          />
-          Continue with Google
-        </button>
-        <p className="text-[15px] text-[#fff]/90 text-center mt-5">
-          Don’t have a Google account?{" "}
-          <a
-            href="https://accounts.google.com/signup"
-            target="_blank"
-            className="text-[#ff7c24] underline underline-offset-4"
-          >
-            Create one
-          </a>.
-        </p>
-      </div>
-    </section>
+              <div className="relative group inline-flex">
+                <button
+                  onClick={handleGoogleSignup}
+                  className="
+                    relative z-10
+                    flex items-center justify-center
+                    border border-[#001f40]/60 bg-white text-[#001f40]
+                    text-[16px] sm:text-[18px] md:text-[21px]
+                    font-semibold
+                    px-5 sm:px-6 py-2.5 sm:py-3
+                    rounded-xl
+                    cursor-pointer
+                    transition-all duration-200
+                    hover:shadow-[0_10px_24px_rgba(0,31,64,0.18)]
+                    hover:-translate-y-0.5
+                  "
+                >
+                  <Image
+                    src="/Google-Icon.png"
+                    alt="Google Icon"
+                    width={22}
+                    height={22}
+                    className="mr-3 sm:w-[26px] sm:h-[26px]"
+                  />
+                  Continue with Google
+                </button>
+
+                {/* Hover ring */}
+                <span className="google-hover-ring" />
+              </div>
+
+              <p className="text-[13px] sm:text-[15px] text-[#fff]/90 text-center mt-4 sm:mt-5">
+                Don’t have a Google account?{" "}
+                <a
+                  href="https://accounts.google.com/signup"
+                  target="_blank"
+                  className="text-[#ff7c24] underline underline-offset-4"
+                >
+                  Create one
+                </a>.
+              </p>
+            </div>
+          </section>
     {showVerifyModal && (
       <VerifyPhoneModal
         userId={userId}
@@ -895,6 +911,8 @@ function togglePlay() {
         }}
       />
     )}
+
+
     {showTimeline && (
       <div
         ref={hoverTooltipRef}
@@ -915,7 +933,7 @@ function togglePlay() {
           <img
             ref={hoverTooltipImageRef}
             alt=""
-            className="h-[165px] w-full object-cover rounded-t-xl"
+            className="h-[165px] w-full object-cover"
             style={{ display: "none" }}
           />
        <div
@@ -931,7 +949,7 @@ function togglePlay() {
         </div>
           <div
             ref={hoverTooltipTextRef}
-            className="px-4 py-3 text-[13px] leading-snug line-clamp-3 flex-1 text-[#001f40]"
+            className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1"
           />
         </div>
       </div>
@@ -959,9 +977,11 @@ function togglePlay() {
           }
         `}
       >
+
+{/* Timeline Distance from Bottom */}
         <div
           id="timeline-region"
-          className="fixed bottom-[15px] left-0 right-0 z-40 min-h-[6rem]"
+          className="fixed bottom-[15px] left-0 right-0 z-40 min-h-[5rem]"
           onMouseEnter={() => {
             isHoveringTimelineRef.current = true;
             setShowTimeline(true);
@@ -1104,41 +1124,76 @@ function TimelineHoverHint() {
       aria-hidden="true"
     >
       <div className="w-6 h-6 timeline-hint-orb" />
-      <style jsx>{`
-.timeline-hint-orb {
-  position: relative;
-  border-radius: 9999px;
-  background: #ffffff71;
-  box-shadow: 0 0 6px rgba(0, 31, 64, 0.6);
-  animation:
-    timelineHintFloat 5.5s ease-in-out infinite;
-}
+            <style jsx global>{`
+      .timeline-hint-orb {
+        position: relative;
+        border-radius: 9999px;
+        background: #ffffff71;
+        box-shadow: 0 0 6px rgba(0, 31, 64, 0.6);
+        animation:
+          timelineHintFloat 5.5s ease-in-out infinite;
+      }
 
-/* STRONG RING */
-.timeline-hint-orb::after {
-  content: "";
-  position: absolute;
-  inset: -6px;
-  border-radius: 9999px;
-  border: 2px solid rgba(0, 31, 64, 0.85);
-  animation: timelineHintRing 3.8s ease-in-out infinite;
-}
+      /* STRONG RING */
+      .timeline-hint-orb::after {
+        content: "";
+        position: absolute;
+        inset: -6px;
+        border-radius: 9999px;
+        border: 2px solid rgba(0, 31, 64, 0.85);
+        animation: timelineHintRing 3.8s ease-in-out infinite;
+      }
 
-@keyframes timelineHintRing {
-  0% {
-    transform: scale(0.8);
-    opacity: 0;
-  }
-  50% {
-    transform: scale(1.8);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(0.8);
-    opacity: 0;
-  }
-}
+      @keyframes timelineHintRing {
+        0% {
+          transform: scale(0.8);
+          opacity: 0;
+        }
+        50% {
+          transform: scale(1.8);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(0.8);
+          opacity: 0;
+        }
+      }
+
+      /* -------------------------------------------------
+        GOOGLE BUTTON HOVER RING (FASTER)
+      -------------------------------------------------- */
+
+      .google-hover-ring {
+        pointer-events: none;
+        position: absolute;
+        inset: -6px;
+        border-radius: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.9);
+        opacity: 0;
+        transform: scale(0.7);
+      }
+
+      .group:hover .google-hover-ring {
+        animation: googleRingPulse .5s ease-out;
+        opacity: 1;
+      }
+
+      @keyframes googleRingPulse {
+        0% {
+          transform: scale(0.92);
+          opacity: 0;
+        }
+        40% {
+          transform: scale(1.05);
+          opacity: .2;
+        }
+        100% {
+          transform: scale(1.18);
+          opacity: 0;
+        }
+      }
       `}</style>
+
     </div>
   );
 }

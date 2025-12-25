@@ -113,77 +113,136 @@ async function verifyCode() {
   onComplete();
 }
 
-  /* ---------------------------------------------------------
-     UI
-  --------------------------------------------------------- */
-  return (
-    <div className="fixed inset-0 bg-black/40 z-[200] flex items-center justify-center">
-      <div className="bg-white p-6 rounded-lg shadow-xl w-[90%] max-w-sm">
-        <h2 className="text-lg font-bold text-[#001f40] mb-4">
-          Verify It's You
-        </h2>
+/* ---------------------------------------------------------
+   UI
+--------------------------------------------------------- */
+return (
+    <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center">
+      <div
+        className="
+          flex flex-col
+          w-full
+          justify-center
+          min-h-[min(46vh,450px)]
+          max-w-[min(96vw,446px)]
+          bg-white/30
+          border border-white/40
+          rounded-2xl
+          p-5 sm:p-8
+          shadow-[0_12px_40px_rgba(0,31,64,0.25)]
+          backdrop-blur-md
+          -translate-y-[60px] sm:-translate-y-[70px] md:-translate-y-[80px]
+        "
+      >
+      <h2 className="text-[#001f40] text-[1.45rem] sm:text-[1.65rem] md:text-[1.75rem] font-semibold mb-4 text-center">
+        Verify It’s You
+      </h2>
 
-        <form onSubmit={handleSubmit}>
-          {/* ENTER PHONE */}
-          {step === "enter-phone" && (
-            <>
-              <input
-                type="tel"
-                placeholder="Phone Number"
-                className="w-full border px-3 py-2 rounded mb-3 text-[#001f40] placeholder:text-gray-400"
-                value={phone}
-                onChange={(e) => setPhone(formatPhone(e.target.value))}
-                maxLength={14}
-                autoFocus
-              />
+      <form onSubmit={handleSubmit} className="w-full">
+        {/* ENTER PHONE */}
+        {step === "enter-phone" && (
+          <>
+            <input
+              type="tel"
+              placeholder="Phone Number"
+              className="
+                w-full
+                bg-white/80
+                border border-[#001f40]/30
+                px-4 py-2.5
+                rounded-xl
+                mb-4
+                text-[#001f40]
+                placeholder:text-[#001f40]/40
+                outline-none
+                focus:border-[#001f40]
+              "
+              value={phone}
+              onChange={(e) => setPhone(formatPhone(e.target.value))}
+              maxLength={14}
+              autoFocus
+            />
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#001f40] text-white py-2 rounded"
-              >
-                {loading ? "Sending…" : "Send Code"}
-              </button>
-            </>
-          )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="
+                w-full
+                bg-[#001f40]
+                text-white
+                py-2.5
+                rounded-xl
+                font-semibold
+                transition
+                hover:bg-[#001f40]/90
+                disabled:opacity-60
+              "
+            >
+              {loading ? "Sending…" : "Send Code"}
+            </button>
+          </>
+        )}
 
-          {/* ENTER CODE */}
-          {step === "enter-code" && (
-            <>
-              <input
-                type="text"
-                maxLength={6}
-                placeholder="• • • • • •"
-                inputMode="numeric"
-                className="w-full border px-3 py-2 rounded mb-3 text-[#001f40] placeholder:text-gray-400 text-center text-xl tracking-widest"
-                value={code}
-                onChange={(e) =>
-                  setCode(e.target.value.replace(/\D/g, ""))
-                }
-                autoFocus
-              />
+        {/* ENTER CODE */}
+        {step === "enter-code" && (
+          <>
+            <input
+              type="text"
+              maxLength={6}
+              placeholder="• • • • • •"
+              inputMode="numeric"
+              className="
+                w-full
+                bg-white/80
+                border border-[#001f40]/30
+                px-4 py-2.5
+                rounded-xl
+                mb-4
+                text-[#001f40]
+                placeholder:text-[#001f40]/40
+                text-center
+                text-xl
+                tracking-widest
+                outline-none
+                focus:border-[#001f40]
+              "
+              value={code}
+              onChange={(e) =>
+                setCode(e.target.value.replace(/\D/g, ""))
+              }
+              autoFocus
+            />
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#001f40] text-white py-2 rounded"
-              >
-                {loading ? "Verifying…" : "Verify"}
-              </button>
-            </>
-          )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="
+                w-full
+                bg-[#001f40]
+                text-white
+                py-2.5
+                rounded-xl
+                font-semibold
+                transition
+                hover:bg-[#001f40]/90
+                disabled:opacity-60
+              "
+            >
+              {loading ? "Verifying…" : "Verify"}
+            </button>
+          </>
+        )}
 
-          {error && (
-            <p className="text-red-600 text-sm mt-3 text-center">
-              {error}
-            </p>
-          )}
-        </form>
-      </div>
+        {error && (
+          <p className="text-red-600 text-sm mt-4 text-center">
+            {error}
+          </p>
+        )}
+      </form>
     </div>
-  );
+  </div>
+);
 }
-
 /* ---------------------------------------------------------
    HELPERS
 --------------------------------------------------------- */

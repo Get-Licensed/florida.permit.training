@@ -61,7 +61,7 @@ export default function PublicMenuHeader({
         <img
           src="/logo.png"
           alt="Florida Permit Training"
-          className="h-26 w-26 absolute left-3 top-[22px] z-[80]"
+          className="h-[clamp(56px,8vw,104px)] w-[clamp(56px,8vw,104px)] absolute left-3 top-[22px] z-[80]"
           style={{
             filter: `
             drop-shadow(0 0 1px white)

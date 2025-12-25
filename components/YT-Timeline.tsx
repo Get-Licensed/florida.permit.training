@@ -94,17 +94,12 @@ export default function CourseTimeline({
   const hoverSecondsRef = useRef<number | null>(null)
   const hoverPreviewRafRef = useRef<number | null>(null)
   const totalSegments = modules.length + TERMINAL_SEGMENTS.length
-  const remainingPct =
-    totalSegments > 0 ? (TERMINAL_SEGMENTS.length / totalSegments) * 100 : 0
-  const terminalWidth =
-    TERMINAL_SEGMENTS.length > 0 ? remainingPct / TERMINAL_SEGMENTS.length : 0
-  const modulePortionRatio = 1 - remainingPct / 100
   const totalDur =
     moduleDurations.reduce((sum, dur) => sum + dur, 0) || totalCourseSeconds
   const pathname = typeof window !== "undefined" ? window.location.pathname : ""
   const onPaymentPage = pathname.startsWith("/payment")
   const onExamPage = pathname.startsWith("/exam")
-  const modulesRef = useRef<HTMLDivElement | null>(null)
+  const segmentsRowRef = useRef<HTMLDivElement | null>(null)
   const internalTimelineRef = useRef<HTMLDivElement | null>(null)
   const timelineRef = timelineContainerRef ?? internalTimelineRef
   const handleRef = useRef<HTMLDivElement | null>(null)
@@ -130,20 +125,57 @@ export default function CourseTimeline({
   const maxCompletedSecondsRef = useRef(0)
   const playedSecondsRefResolved = playedSecondsRef ?? allowedSeekSecondsRef
 
-  // % of timeline reserved for terminal segments
-  const TERMINAL_PCT_PER = 5; // each terminal = 5%
-  const GAP_PCT = 0.3;       // approx 2–4px depending on width
-  const TERMINAL_COUNT = TERMINAL_SEGMENTS.length;
-  const MODULE_COUNT = modules.length;
+  const totalModuleWeight = totalDur
+  const hasDurations = totalModuleWeight > 0
+  const terminalWeight = hasDurations
+    ? totalModuleWeight / Math.max(modules.length, 1)
+    : 1
+  const totalSegmentWeight = hasDurations
+    ? totalModuleWeight + terminalWeight * TERMINAL_SEGMENTS.length
+    : totalSegments
 
-  const TOTAL_TERMINAL_PCT = TERMINAL_COUNT * TERMINAL_PCT_PER;
-  const TOTAL_GAP_PCT =
-    (MODULE_COUNT + TERMINAL_COUNT - 1) * GAP_PCT;
-
-  const MODULES_TOTAL_PCT = Math.max(
-    0,
-    100 - TOTAL_TERMINAL_PCT - TOTAL_GAP_PCT
-  );
+  const getLayoutMetrics = useCallback(() => {
+    if (!timelineRef.current) return null
+    const rect =
+      railRectRef.current ?? timelineRef.current.getBoundingClientRect()
+    const rowStyle = segmentsRowRef.current
+      ? window.getComputedStyle(segmentsRowRef.current)
+      : null
+    const gapValue = rowStyle?.columnGap || rowStyle?.gap || "0"
+    const gapPx = Number.parseFloat(gapValue || "0") || 0
+    const totalGapWidth = Math.max(0, totalSegments - 1) * gapPx
+    const availableWidth = Math.max(0, rect.width - totalGapWidth)
+    if (!hasDurations) {
+      return {
+        rect,
+        gapPx,
+        availableWidth,
+        totalWeight: totalSegmentWeight,
+        moduleAreaWidth:
+          availableWidth + gapPx * Math.max(0, modules.length - 1),
+      }
+    }
+    const moduleSegmentsWidth =
+      totalSegmentWeight > 0
+        ? availableWidth * (totalModuleWeight / totalSegmentWeight)
+        : 0
+    const moduleAreaWidth =
+      moduleSegmentsWidth + gapPx * Math.max(0, modules.length - 1)
+    return {
+      rect,
+      gapPx,
+      availableWidth,
+      totalWeight: totalSegmentWeight,
+      moduleAreaWidth,
+    }
+  }, [
+    hasDurations,
+    modules.length,
+    timelineRef,
+    totalModuleWeight,
+    totalSegmentWeight,
+    totalSegments,
+  ])
 
 
 
@@ -188,23 +220,22 @@ export default function CourseTimeline({
   const getScrubSeconds = useCallback(
     (clientX: number, clampToModuleEnd: boolean) => {
       if (!timelineRef.current) return null
-      if (!modulesRef.current) return null
-      if (modulePortionRatio <= 0) return null
       if (totalDur <= 0) return null
+      const metrics = getLayoutMetrics()
+      if (!metrics) return null
 
-      const rect =
-        railRectRef.current ?? timelineRef.current.getBoundingClientRect()
-      const moduleWidth = rect.width * modulePortionRatio
-      if (moduleWidth <= 0) return null
+      const { rect, gapPx, availableWidth, totalWeight, moduleAreaWidth } =
+        metrics
+      if (moduleAreaWidth <= 0 || totalWeight <= 0) return null
 
       let x = clientX - rect.left
       if (x < 0) x = 0
-      if (x > moduleWidth) {
+      if (x > moduleAreaWidth) {
         // allow hover beyond locked seek boundary
         if (!clampToModuleEnd) {
-          x = moduleWidth
+          x = moduleAreaWidth
         }
-        x = moduleWidth
+        x = moduleAreaWidth
       }
 
       let accPx = 0
@@ -212,7 +243,7 @@ export default function CourseTimeline({
 
       for (let i = 0; i < moduleDurations.length; i++) {
         const dur = moduleDurations[i] ?? 0
-        const segWidth = moduleWidth * (dur / totalDur)
+        const segWidth = availableWidth * (dur / totalWeight)
         if (x <= accPx + segWidth || i === moduleDurations.length - 1) {
           const local = segWidth > 0 ? (x - accPx) / segWidth : 0
           let computedSeconds = accSeconds + local * dur
@@ -226,36 +257,49 @@ export default function CourseTimeline({
         }
         accPx += segWidth
         accSeconds += dur
+        if (i < moduleDurations.length - 1) {
+          if (x <= accPx + gapPx) {
+            return clampToModuleEnd
+              ? Math.min(accSeconds, allowedSeekSecondsRef.current)
+              : Math.min(accSeconds, totalDur)
+          }
+          accPx += gapPx
+        }
       }
 
       return clampToModuleEnd
         ? Math.min(totalDur, allowedSeekSecondsRef.current)
         : totalDur
     },
-    [allowedSeekSecondsRef, moduleDurations, modulePortionRatio, totalDur]
+    [
+      allowedSeekSecondsRef,
+      getLayoutMetrics,
+      moduleDurations,
+      totalDur,
+    ]
   )
 
   const getHoverSeconds = useCallback(
     (clientX: number) => {
       if (!timelineRef.current) return null
-      if (!modulesRef.current) return null
-      if (modulePortionRatio <= 0) return null
       if (totalDur <= 0) return null
+      const metrics = getLayoutMetrics()
+      if (!metrics) return null
 
-      const rect = timelineRef.current.getBoundingClientRect()
-      const moduleWidth = rect.width * modulePortionRatio
-      if (moduleWidth <= 0) return null
+      const { rect, gapPx, availableWidth, totalWeight, moduleAreaWidth } =
+        metrics
+      if (moduleAreaWidth <= 0 || totalWeight <= 0) return null
 
       let x = clientX - rect.left
       if (x < 0) x = 0
-      if (x > moduleWidth) return null
+      if (x > moduleAreaWidth) return null
 
       let accPx = 0
       let accSeconds = 0
 
       for (let i = 0; i < moduleDurations.length; i++) {
         const dur = moduleDurations[i] ?? 0
-        const segWidth = moduleWidth * (dur / totalDur)
+        const segWidth = availableWidth * (dur / totalWeight)
         if (x <= accPx + segWidth || i === moduleDurations.length - 1) {
           const local = segWidth > 0 ? (x - accPx) / segWidth : 0
           const computedSeconds = accSeconds + local * dur
@@ -263,62 +307,68 @@ export default function CourseTimeline({
         }
         accPx += segWidth
         accSeconds += dur
+        if (i < moduleDurations.length - 1) {
+          if (x <= accPx + gapPx) {
+            return Math.min(accSeconds, totalDur)
+          }
+          accPx += gapPx
+        }
       }
 
       return totalDur
     },
-    [moduleDurations, modulePortionRatio, totalDur]
+    [getLayoutMetrics, moduleDurations, totalDur]
   )
 
   const getScrubPx = useCallback(
     (clientX: number, clampToModuleEnd: boolean) => {
       if (!timelineRef.current) return null
-      if (!modulesRef.current) return null
-      if (modulePortionRatio <= 0) return null
+      const metrics = getLayoutMetrics()
+      if (!metrics) return null
 
-      const rect =
-        railRectRef.current ?? timelineRef.current.getBoundingClientRect()
-      const moduleWidth = rect.width * modulePortionRatio
-      if (moduleWidth <= 0) return null
+      const { rect, moduleAreaWidth } = metrics
+      if (moduleAreaWidth <= 0) return null
 
       let x = clientX - rect.left
       if (x < 0) x = 0
-      if (x > moduleWidth) {
+      if (x > moduleAreaWidth) {
         if (!clampToModuleEnd) return null
-        x = moduleWidth
+        x = moduleAreaWidth
       }
 
       return x
     },
-    [modulePortionRatio]
+    [getLayoutMetrics]
   )
 
   const getPxFromSeconds = useCallback(
     (seconds: number) => {
       if (!timelineRef.current) return null
-      if (!modulesRef.current) return null
       if (totalDur <= 0) return null
-
-      const rect = timelineRef.current.getBoundingClientRect()
-      const moduleWidth = rect.width * modulePortionRatio
+      const metrics = getLayoutMetrics()
+      if (!metrics) return null
+      const { availableWidth, gapPx, totalWeight } = metrics
       const clamped = Math.min(Math.max(seconds, 0), totalDur)
       let accPx = 0
       let accSeconds = 0
 
       for (let i = 0; i < moduleDurations.length; i++) {
         const dur = moduleDurations[i] ?? 0
-        const segWidth = moduleWidth * (dur / totalDur)
+        const segWidth = availableWidth * (dur / totalWeight)
         if (clamped <= accSeconds + dur || i === moduleDurations.length - 1) {
           const local = dur > 0 ? (clamped - accSeconds) / dur : 0
           return accPx + local * segWidth
         }
         accPx += segWidth
         accSeconds += dur
+        if (i < moduleDurations.length - 1) {
+          accPx += gapPx
+        }
       }
 
-      return moduleWidth
+      return accPx
     },
-    [moduleDurations, modulePortionRatio, totalDur]
+    [getLayoutMetrics, moduleDurations, totalDur]
   )
 
   const scheduleHoverPreviewUpdate = useCallback(() => {
@@ -345,8 +395,8 @@ export default function CourseTimeline({
   const updatePlayedTrack = useCallback(() => {
     if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) return
     if (!playedTrackRef.current) return
-    const rect = timelineRef.current?.getBoundingClientRect()
-    const timelineWidth = rect ? rect.width * modulePortionRatio : 0
+    const metrics = getLayoutMetrics()
+    const timelineWidth = metrics ? metrics.moduleAreaWidth : 0
     const scrubberPositionPx = Math.max(
       0,
       Math.min(currentPxRef.current, timelineWidth)
@@ -364,7 +414,7 @@ export default function CourseTimeline({
       playedTrackRef.current.style.width = `${clampedPlayed}px`
   }, [
     allowedSeekSecondsRef,
-    modulePortionRatio,
+    getLayoutMetrics,
     playedSecondsRefResolved,
     timelineRef,
     totalCourseSeconds,
@@ -372,17 +422,17 @@ export default function CourseTimeline({
 
   const updateFurthestTrack = useCallback(() => {
     if (!furthestTrackRef.current) return
-    const rect = timelineRef.current?.getBoundingClientRect()
-    const timelineWidth = rect ? rect.width * modulePortionRatio : 0
+    const metrics = getLayoutMetrics()
+    const timelineWidth = metrics ? metrics.moduleAreaWidth : 0
     if (timelineWidth <= 0) return
 
     const furthestPx = Math.min(
       (maxCompletedSecondsRef.current / totalCourseSeconds) * timelineWidth,
       timelineWidth
     )
-furthestTrackRef.current.style.background = "transparent"
-furthestTrackRef.current.style.width = `${furthestPx}px`
-  }, [modulePortionRatio, timelineRef, totalCourseSeconds])
+    furthestTrackRef.current.style.background = "transparent"
+    furthestTrackRef.current.style.width = `${furthestPx}px`
+  }, [getLayoutMetrics, timelineRef, totalCourseSeconds])
 
   const syncHandleTransform = useCallback((px: number) => {
     if (enableFreezeElapsedSync && freezeElapsedSyncRef.current) return
@@ -571,11 +621,11 @@ furthestTrackRef.current.style.width = `${furthestPx}px`
   
 
 return (
-    <div className="w-full px-4 md:px-0">
-      <div className="md:max-w-6xl md:mx-auto p-4">
+    <div className="w-full px-2 md:px-0">
+      <div className="md:max-w-6xl md:mx-auto px-2 md:px-0">
 
         {/* FLEX ROW: button + timeline */}
-        <div className="flex items-center gap-3 pr-4">
+        <div className="flex items-center gap-3">
 
         {/* PLAY / PAUSE BUTTON */} 
         <button
@@ -608,9 +658,9 @@ return (
 <div
   ref={timelineRef}
   className={`
-      flex-1 relative
-      h-3 px-0
-      select-none cursor-pointer
+    flex-1 relative
+    h-[10px] px-0
+    select-none cursor-pointer
   `}
 
   onMouseEnter={(e) => {
@@ -736,13 +786,11 @@ return (
       <div
         ref={handleRef}
         className="
-          absolute top-2
-          w-6 h-6 rounded-full
+          absolute top-[6px]
+          w-5 h-5 rounded-full
           shadow-md
           border-none
           bg-[#D60000]
-          shadow-[0_0_8px_rgba(0,0,0,0.6)]
-          z-[10000]
         "
         style={{
         left: 0,
@@ -768,73 +816,63 @@ return (
     />
   </div>
 {/* MODULE + TERMINAL ROW */}
-<div className="relative z-[1] flex items-center h-4 w-full min-w-0">
-
-  {/* MODULE SCRUB RAIL */}
+<div
+  ref={segmentsRowRef}
+      className="relative z-[1]
+      flex items-center
+      h-[12px]
+      w-full min-w-0
+      gap-[3px] sm:gap-[6px] md:gap-[8px]
+    "
+    >
   <div
-    ref={modulesRef}
-    className="relative flex items-center h-full flex-1 min-w-0"
-    style={{ minWidth: 0 }}
-  >
-    <div
-      ref={playedTrackRef}
-      className="absolute left-0 top-0 bottom-0 z-[2] pointer-events-none"
-      style={{
-        width: "0px",
-        background: "#D60000",
-      }}
-    />
+    ref={playedTrackRef}
+    className="absolute left-0 top-0 bottom-0 z-[2] pointer-events-none"
+    style={{
+      width: "0px",
+      background: "#D60000",
+    }}
+  />
 
-    {modules.map((m, i) => {
-      const isUnlocked = i <= maxCompletedIndex
-      const widthPct =
-        totalDur > 0
-          ? ((moduleDurations[i] ?? 0) / totalDur) * MODULES_TOTAL_PCT
-          : 0;
+  {modules.map((m, i) => {
+    const isUnlocked = i <= maxCompletedIndex
+    const weight = hasDurations
+      ? Math.max(moduleDurations[i] ?? 0, 0.0001)
+      : 1
 
+    return (
+      <div
+        key={m.id}
+        style={{ flexGrow: weight, flexBasis: 0 }}
+        className={`relative h-full flex items-center min-w-0 ${
+          isUnlocked ? "cursor-pointer" : "cursor-pointer opacity-80"
+        }`}
+        onClick={() => {
+          if (suppressModuleClickRef.current) return
+          if (isUnlocked && goToModule) goToModule(i)
+        }}
+      >
+        <div className="flex-1 h-full bg-[#aeaeaecc]" />
+      </div>
+    )
+  })}
 
-      return (
-        <div
-          key={m.id}
-          style={{ width: `${widthPct}%` }}
-          className={`relative h-full flex items-center ${
-            isUnlocked ? "cursor-pointer" : "cursor-pointer opacity-80"
-          }`}
-          onClick={() => {
-            if (suppressModuleClickRef.current) return
-            if (isUnlocked && goToModule) goToModule(i)
-          }}
-        >
-          <div className="flex-1 h-full bg-[#aeaeaecc]" />
-          <div style={{ width: `${GAP_PCT}%` }} />
-        </div>
-      )
-    })}
-  </div>
+  {TERMINAL_SEGMENTS.map((seg) => {
+    let bg = "#aeaeaecc"
+    if (seg.id === "exam" && examPassed) bg = "#D60000"
+    if (seg.id === "payment" && paymentPaid) bg = "#D60000"
 
-  {/* TERMINAL SEGMENTS (FIXED WIDTH, SAME ROW) */}
-  <div className="flex items-center h-full">
-    {TERMINAL_SEGMENTS.map((seg, i) => {
-      let bg = "#aeaeaecc"
-      if (seg.id === "exam" && examPassed) bg = "#D60000"
-      if (seg.id === "payment" && paymentPaid) bg = "#D60000"
-
-      return (
-       <div
-          key={seg.id}
-            className="relative h-full flex items-center cursor-pointer"
-              style={{ width: `${TERMINAL_PCT_PER}%` }}
-              onClick={() => (window.location.href = seg.href)}
-            >
-          <div className="flex-1 h-full" style={{ backgroundColor: bg }} />
-          {i < TERMINAL_SEGMENTS.length - 1 && (
-            <div className="w-[6px] h-full bg-transparent" />
-          )}
-        </div>
-      )
-    })}
-  </div>
-
+    return (
+      <div
+        key={seg.id}
+        className="relative h-full flex items-center cursor-pointer min-w-0"
+        style={{ flexGrow: terminalWeight, flexBasis: 0 }}
+        onClick={() => (window.location.href = seg.href)}
+      >
+        <div className="flex-1 h-full" style={{ backgroundColor: bg }} />
+      </div>
+    )
+  })}
 </div>
            </div>
           </div>

@@ -220,6 +220,7 @@
     const shouldAutoPlayRef = useRef(false);
     const autoPausedRef = useRef(false);
     const isPlayingRef = useRef(false);
+    const [volumeOpen, setVolumeOpen] = useState(false)
     const [muted, setMuted] = useState(false)
     const toggleMute = useCallback(() => {
       console.log("MUTE_CLICK");
@@ -257,6 +258,8 @@
     const [voice, setVoice] = useState("en-US-Neural2-D");
     const [audioTime, setAudioTime] = useState(0);
     const [audioDuration, setAudioDuration] = useState(0);
+    const [voiceOpen, setVoiceOpen] = useState(false)
+
      // keep mute state synced with the real audio
    useEffect(() => {
      if (!audioRef.current) return
@@ -961,6 +964,18 @@ const handleScrubStart = useCallback(() => {
       window.addEventListener("keydown", handleContinueHotkey)
       return () => window.removeEventListener("keydown", handleContinueHotkey)
     }, [showContinueInstruction])
+
+// VOLUME VERTICAL CLOSE ON HIDE or TAP
+    useEffect(() => {
+      if (!showTimeline) setVolumeOpen(false)
+    }, [showTimeline])
+
+    useEffect(() => {
+      const close = () => setVolumeOpen(false)
+      window.addEventListener("click", close)
+      return () => window.removeEventListener("click", close)
+    }, [])
+
 
   // -------------------------------------------------------------
   // DEBUG: Core gate values (helps detect infinite steering wheel)
@@ -2836,12 +2851,12 @@ useEffect(() => {
       <img
         ref={hoverTooltipImageRef}
         alt=""
-        className="h-[165px] w-full object-cover rounded-t-lg"
+        className="h-[165px] w-full object-cover rounded-lg"
         style={{ display: "none" }}
       />
       <div
         ref={hoverTooltipPlaceholderRef}
-        className="h-[165px] w-full bg-white/10 rounded-t-lg"
+        className="h-[165px] w-full bg-white/10 rounded-lg"
       />
 
       <div
@@ -2878,7 +2893,8 @@ useEffect(() => {
     >
 <div
   id="timeline-region"
-  className="fixed bottom-[145px] left-0 right-0 z-40 min-h-[6rem]"
+  className="fixed bottom-[135px] sm:bottom-[135px] md:bottom-[150px] left-0 right-0 z-40 
+  min-h-[4rem] sm:min-h-[5rem] md:min-h-[4rem]"
   onMouseEnter={() => {
     isHoveringTimelineRef.current = true;
     setShowTimeline(true);
@@ -2925,150 +2941,203 @@ useEffect(() => {
         onPromoClose={handlePromoClose}
       />
 </div>
-      {/* CONTROLS – volume + CC */}
-      <div
-        className="fixed bottom-[160px] translate-x-[35px] left-0 right-0 z-[200] pointer-events-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="md:max-w-6xl md:mx-auto px-4">
-          <div className="flex items-center gap-4 text-[#001f40]">
-            <div
-              className="
-                h-8 px-4
-                flex items-center
-                bg-black/60
-                rounded-full
-                text-[#fff]
-                text-sm
-                tabular-nums
-                translate-x-[25px]
-                opacity-100
-                whitespace-nowrap
-              "
-            >
-              {formatTime(elapsedCourseSeconds)} /{" "}
-              {formatTime(courseTotals.totalSeconds)}
-            </div>
+       
+       
+        {/* CONTROLS – time + volume + CC */}
+        <div
+          className="
+            absolute
+            bottom-[125px] sm:bottom-[140px] md:bottom-[150px]
+            left-0 right-0
+            z-[200]
+            pointer-events-auto
+          "
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="md:max-w-6xl md:mx-auto py-1 px-4">
+            <div className="flex items-center justify-left gap-3 text-[#001f40] translate-x-[35px]">
 
-            {/* VOLUME */}
-            <div
-              className="
-                h-10 px-4
-                flex items-center gap-2
-                rounded-full
-              "
-            >
-             <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  toggleMute()
-                }}
-                className="cursor-pointer translate-x-[15px]"
-              >
-                {muted ? (
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="w-5 h-5 fill-white drop-shadow-sm"
-                  >
-                    <path d="M5 9v6h4l5 4V5L9 9H5z" />
-                    <line x1="18" y1="6" x2="22" y2="10" stroke="white" strokeWidth="2"/>
-                    <line x1="22" y1="6" x2="18" y2="10" stroke="white" strokeWidth="2"/>
-                  </svg>
-                ) : (
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="w-5 h-5 fill-white drop-shadow-sm"
-                  >
-                    <path d="M5 9v6h4l5 4V5L9 9H5z" />
-                    <path d="M15 8a4 4 0 010 8" stroke="white" strokeWidth="2" fill="none"/>
-                    <path d="M17 6a6 6 0 010 12" stroke="white" strokeWidth="2" fill="none"/>
-                  </svg>
-                )}
-              </button>
-              <div className="relative w-24">
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={volume}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setVolume(v);
-                    if (audioRef.current) audioRef.current.volume = v;
-                  }}
-                  className="vol-range w-24 shadow-sm -translate-y-[4px] translate-x-[20px] shadow-black/10 relative z-10"
-                />
-              </div>
-            </div>
-
-            {/* CC + voice */}
-            <div className="relative z-50">
-
-              <select
-                value={voice}
-                onChange={(e) => switchVoice(e.target.value)}
-                className="
-                  voice-hidden
-                  h-10 pl-8 pr-10
-                  rounded-full
-                  text-xs
-                  outline-none
-                  cursor-pointer
-                  appearance-none
-                  pl-[20px]
-                  w-20
-                "
-              >
-                {VOICES.map((v) => (
-                  <option key={v.code} value={v.code}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-
+              {/* TIME */}
               <div
                 className="
-                  pointer-events-none absolute inset-0 flex items-center
-                  pl-2 text-white text-xs font-medium
-                  z-10
+                  h-8 px-3
+                  flex items-center
+                  bg-black/70
+                  rounded-full
+                  text-white
+                  text-xs
+                  tabular-nums
+                  whitespace-nowrap
                 "
               >
-                <span
-                  className="
-                    inline-flex items-center justify-center
-                    border-2 border-white
-                    bg-black/60
-                    px-1 py-[2px] mx-1
-                    text-xs leading-none
-                    rounded-sm
-                    font-bold
-                  "
-                >
-                  CC
-                </span>
-                {voiceLabel}
+                {formatTime(elapsedCourseSeconds)} /{" "}
+                {formatTime(courseTotals.totalSeconds)}
               </div>
 
-              <svg
-                className="
-                  pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 translate-x-[30px]
-                  w-4 h-4 fill-white opacity-80
-                  z-[999]
-                "
-                viewBox="0 0 24 24"
+              {/* VOLUME (YouTube-style) */}
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setVolumeOpen(v => !v)
+                  }}
+                  className="
+                    w-8 h-8
+                    flex items-center justify-center
+                    bg-black/70
+                    rounded-full
+                    hover:bg-black/90
+                    transition
+                  "
+                >
+                  {muted || volume === 0 ? (
+                    <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white -translate-x-[2px]">
+                      <path d="M5 9v6h4l5 4V5L9 9H5z" />
+                      <line x1="18" y1="6" x2="22" y2="10" stroke="white" strokeWidth="2" />
+                      <line x1="22" y1="6" x2="18" y2="10" stroke="white" strokeWidth="2" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white -translate-x-[2px]">
+                      <path d="M5 9v6h4l5 4V5L9 9H5z" />
+                      <path d="M15 8a4 4 0 010 8" stroke="white" strokeWidth="2" fill="none" />
+                      <path d="M17 6a6 6 0 010 12" stroke="white" strokeWidth="2" fill="none" />
+                    </svg>
+                  )}
+                </button>
+
+                {volumeOpen && (
+                  <div
+                    className="
+                      absolute
+                      bottom-full mb-2
+                      left-1/2 -translate-x-1/2
+                      h-28 w-10
+                      bg-black/80
+                      rounded-xl
+                      flex items-center justify-center
+                      backdrop-blur
+                      shadow-lg
+                    "
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={volume}
+                  onChange={(e) => {
+                    const v = Number(e.target.value)
+                    setVolume(v)
+                    if (audioRef.current) {
+                      audioRef.current.volume = v
+                      audioRef.current.muted = v === 0
+                    }
+                  }}
+                  className="
+                    h-20 w-1
+                    appearance-none
+                    bg-white/30
+                    rounded
+                    accent-white
+                    [writing-mode:vertical-lr]
+                    rotate-180
+                    origin-center
+                  "
+                />
+                  </div>
+                )}
+              </div>
+
+              {/* CC + VOICE — CUSTOM DROPDOWN */}
+              <div
+                className="relative z-50"
+                onClick={(e) => e.stopPropagation()}
               >
-                <path d="M7 10l5 5 5-5z" />
-              </svg>
+                {/* Trigger */}
+                <button
+                  onClick={() => setVoiceOpen(v => !v)}
+                  className="
+                    h-8 px-3
+                    flex items-center gap-2
+                    rounded-full
+                    bg-black/70
+                    hover:bg-black/90
+                    transition
+                    text-white text-xs
+                    cursor-pointer
+                  "
+                >
+                  <span
+                    className="
+                      inline-flex items-center justify-center
+                      border border-white
+                      bg-black/60
+                      px-1 py-[2px]
+                      text-[10px]
+                      rounded-sm
+                      font-bold
+                    "
+                  >
+                    CC
+                  </span>
 
+                  <span>{voiceLabel}</span>
+
+                  <svg
+                    className={`
+                      w-4 h-4 fill-white opacity-80
+                      transition-transform
+                      ${voiceOpen ? "rotate-180" : ""}
+                    `}
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M7 10l5 5 5-5z" />
+                  </svg>
+                </button>
+
+                {/* Dropdown */}
+                {voiceOpen && (
+                  <div
+                    className="
+                      absolute bottom-full mb-2 left-0
+                      min-w-[120px]
+                      bg-black/90
+                      rounded-lg
+                      shadow-xl
+                      overflow-hidden
+                      backdrop-blur
+                    "
+                  >
+                    {VOICES.map(v => (
+                      <button
+                        key={v.code}
+                        onClick={() => {
+                          switchVoice(v.code)
+                          setVoiceOpen(false)
+                        }}
+                        className={`
+                          w-full text-left px-3 py-2
+                          text-sm
+                          transition
+                          ${
+                            v.code === voice
+                              ? "bg-white/10 text-white"
+                              : "text-white/90 hover:bg-white/10"
+                          }
+                        `}
+                      >
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-
           </div>
         </div>
       </div>
-
     </div>
-  </div>
 
 
   {/* unchanged footer nav */}
@@ -3188,7 +3257,7 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
 return (
   <div className="
     fixed bottom-0 left-0 right-0
-    bg-white/73 backdrop-blur-sm
+    bg-white/83 backdrop-blur-sm
     border-t shadow-inner
     h-[120px] sm:h-[135px] md:h-[150px]
     z-50
