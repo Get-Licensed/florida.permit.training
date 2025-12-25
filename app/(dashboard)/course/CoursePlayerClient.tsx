@@ -275,6 +275,38 @@
       })
     }, [])
 
+    // CC button above thumbnails
+    const ccButtonRef = useRef<HTMLButtonElement | null>(null)
+    const [ccPopoverPosition, setCcPopoverPosition] = useState<{
+      left: number
+      bottom: number
+    } | null>(null)
+    const updateCcPopoverPosition = useCallback(() => {
+      const btn = ccButtonRef.current
+      if (!btn) return
+
+      const rect = btn.getBoundingClientRect()
+
+      setCcPopoverPosition({
+        left: rect.left + rect.width / 2,
+        bottom: window.innerHeight - rect.bottom + 8,
+      })
+    }, [])
+
+    useEffect(() => {
+      if (!voiceOpen) return
+      
+
+      updateCcPopoverPosition()
+      window.addEventListener("resize", updateCcPopoverPosition)
+      window.addEventListener("scroll", updateCcPopoverPosition, true)
+
+      return () => {
+        window.removeEventListener("resize", updateCcPopoverPosition)
+        window.removeEventListener("scroll", updateCcPopoverPosition, true)
+      }
+    }, [voiceOpen, updateCcPopoverPosition])
+
     useEffect(() => {
       if (!volumeOpen) return
       updateVolumePopoverPosition()
@@ -3101,6 +3133,7 @@ useEffect(() => {
               >
                 {/* Trigger */}
                 <button
+                  ref={ccButtonRef}
                   onClick={() => setVoiceOpen(v => !v)}
                   className="
                     h-8 px-3
@@ -3142,41 +3175,52 @@ useEffect(() => {
                 </button>
 
                 {/* Dropdown */}
-                {voiceOpen && (
-                  <div
-                    className="
-                      absolute bottom-full mb-2 left-0
-                      min-w-[120px]
-                      bg-black/90
-                      rounded-lg
-                      shadow-xl
-                      overflow-hidden
-                      backdrop-blur
-                    "
-                  >
-                    {VOICES.map(v => (
-                      <button
-                        key={v.code}
-                        onClick={() => {
-                          switchVoice(v.code)
-                          setVoiceOpen(false)
-                        }}
-                        className={`
-                          w-full text-left px-3 py-2
-                          text-sm
-                          transition
-                          ${
-                            v.code === voice
-                              ? "bg-white/10 text-white"
-                              : "text-white/90 hover:bg-white/10"
-                          }
-                        `}
-                      >
-                        {v.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+{voiceOpen &&
+  overlayRoot &&
+  ccPopoverPosition &&
+  createPortal(
+    <div
+      data-cc-popover
+      className="
+        fixed
+        z-[1000001]
+        max-w-[100px]
+        bg-black/90
+        rounded-lg
+        shadow-xl
+        backdrop-blur
+        pointer-events-auto
+      "
+      style={{
+        left: ccPopoverPosition.left,
+        bottom: ccPopoverPosition.bottom + 25,
+        transform: "translateX(-50%)",
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {VOICES.map(v => (
+        <button
+          key={v.code}
+          onClick={() => {
+            switchVoice(v.code)
+            setVoiceOpen(false)
+          }}
+          className={`
+            w-full text-left px-3 py-2
+            text-sm transition
+            ${
+              v.code === voice
+                ? "bg-white/15 text-white"
+                : "text-white/90 hover:bg-white/10"
+            }
+          `}
+        >
+          {v.label}
+        </button>
+      ))}
+    </div>,
+    overlayRoot
+  )}
               </div>
             </div>
           </div>
