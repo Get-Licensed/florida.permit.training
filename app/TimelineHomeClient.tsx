@@ -913,60 +913,65 @@ function togglePlay() {
     )}
 
 
-    {showTimeline && (
-      <div
-        ref={hoverTooltipRef}
-        className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60"
-        style={{
-          left: 0,
-          bottom: 115,
-          opacity: 0,
-        }}
-      >
-          <div className="relative w-[375px] h-[250px] rounded-lg backdrop-blur-md bg-white/60 text-[#001f40] shadow-md overflow-hidden flex flex-col">
+    <div
+      id="timeline-hover-zone"
+      className="fixed bottom-[-180px] left-0 right-0 z-40 min-h-[180px] w-full px-0 pb-[0px]"
+      onPointerEnter={() => {
+        setShowTimeline(true);
+        setPromoSticky(true);
+        setPromoStickyVisible(true);
+        isHoveringTimelineRef.current = true;
+        clearTimelineAutoHideTimer();
+      }}
+      onPointerLeave={() => {
+        if (scrubActiveRef.current) return;
+        isHoveringTimelineRef.current = false;
+        handleHoverEnd();
+        scheduleTimelineAutoHide();
+      }}
+    >
+      {showTimeline && (
+        <div
+          ref={hoverTooltipRef}
+          className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60"
+          style={{
+            left: 0,
+            bottom: 115,
+            opacity: 0,
+          }}
+        >
+          <div className="relative w-[375px] h-[250px] rounded-lg backdrop-blur-md bg-white/60 text-[#001f40] shadow-md overflow-hidden flex flex-col pointer-events-auto">
             <div
               ref={hoverTooltipTimeRef}
               className="absolute top-2 left-2 px-2 py-[2px] rounded-full backdrop-blur-md bg-white/60 text-[#001f40] text-[11px] font-medium pointer-events-none"
               style={{ display: "none" }}
             />
 
-          <img
-            ref={hoverTooltipImageRef}
-            alt=""
-            className="h-[165px] w-full object-cover"
-            style={{ display: "none" }}
-          />
-       <div
-          ref={hoverTooltipPlaceholderRef}
-          className="
-            h-[165px] w-full
-            rounded-t-xl
-            flex items-center justify-center
-            bg-white/10
-          "
-        >
-          <div className="w-6 h-6 border-2 border-[#001f40]/30 border-t-[#001f40] rounded-full animate-spin" />
+            <img
+              ref={hoverTooltipImageRef}
+              alt=""
+              className="h-[165px] w-full object-cover"
+              style={{ display: "none" }}
+            />
+            <div
+              ref={hoverTooltipPlaceholderRef}
+              className="
+                h-[165px] w-full
+                rounded-t-xl
+                flex items-center justify-center
+                bg-white/10
+              "
+            >
+              <div className="w-6 h-6 border-2 border-[#001f40]/30 border-t-[#001f40] rounded-full animate-spin" />
+            </div>
+            <div
+              ref={hoverTooltipTextRef}
+              className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1"
+            />
+          </div>
         </div>
-          <div
-            ref={hoverTooltipTextRef}
-            className="px-3 py-2 text-[13px] leading-snug line-clamp-3 flex-1"
-          />
-        </div>
-      </div>
-    )}
-    {showTimelineHint && (
-      <TimelineHoverHint />
-    )}
-    <div
-      className="fixed bottom-0 left-0 right-0 z-40 px-0 pb-[0px]"
-      onMouseEnter={() => {
-        revealTimelineFor3s();
-      }}
-      onMouseLeave={() => {
-        if (scrubActiveRef.current) return;
-        scheduleTimelineAutoHide();
-      }}
-    >
+      )}
+      {showTimelineHint && <TimelineHoverHint />}
       <div
         className={`
           transition-all duration-300 ease-out
@@ -982,17 +987,6 @@ function togglePlay() {
         <div
           id="timeline-region"
           className="fixed bottom-[15px] left-0 right-0 z-40 min-h-[5rem]"
-          onMouseEnter={() => {
-            isHoveringTimelineRef.current = true;
-            setShowTimeline(true);
-            setPromoSticky(true);
-            setPromoStickyVisible(true);
-            clearTimelineAutoHideTimer();
-          }}
-          onMouseLeave={() => {
-            isHoveringTimelineRef.current = false;
-            scheduleTimelineAutoHide();
-          }}
         >
           <CourseTimeline
             key={timelineVersion}

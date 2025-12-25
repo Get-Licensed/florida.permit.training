@@ -205,41 +205,57 @@ const goToModule = (i: number) => {
 };
 
 
-  return (
-  <>
-    <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <Wrapper>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-          <div>
-            <h1 className="text-2xl font-bold mb-4">
-              Florida Permit Training — Payment
-            </h1>
-            <h2 className="text-[2em] text-[#ca5608] font-bold">$59.95</h2>
-            <p className="text-sm italic mb-3">One-time fee</p>
-            <p className="mb-6">
-              This one-time administrative payment allows us to securely
-              submit your completion record to the DMV.
-            </p>
+return (
+  <div className="relative h-[100svh] overflow-hidden">
+    {/* SCROLLABLE CONTENT */}
+    <div
+      className="
+        relative
+        h-full
+        overflow-y-auto
+        overscroll-contain
+        touch-pan-y
+        md:overflow-visible
+      "
+    >
+      <Elements stripe={stripePromise} options={{ clientSecret }}>
+        <Wrapper>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div>
+              <h1 className="text-2xl font-bold mb-4">
+                Florida Permit Training — Payment
+              </h1>
+              <h2 className="text-[2em] text-[#ca5608] font-bold">$59.95</h2>
+              <p className="text-sm italic mb-3">One-time fee</p>
+              <p className="mb-6">
+                This one-time administrative payment allows us to securely
+                submit your completion record to the DMV.
+              </p>
+            </div>
+
+            <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-6">
+              <StripeCheckoutForm />
+            </div>
           </div>
 
-          <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-6">
-            <StripeCheckoutForm />
-          </div>
-        </div>
-      </Wrapper>
-    </Elements>
+          {/* Spacer so content doesn’t hide behind timeline */}
+          <div className="h-[120px] md:h-0" />
+        </Wrapper>
+      </Elements>
+    </div>
 
- <CourseTimeline
-  modules={modules}
-  currentModuleIndex={maxCompletedIndex}   // where they actually are
-  maxCompletedIndex={maxCompletedIndex}    // what is actually completed
-  currentLessonIndex={0}
-  elapsedSeconds={1}
-  totalModuleSeconds={1}
-  examPassed={examPassed}
-  paymentPaid={paid}
-  goToModule={goToModule}
-/>
-  </>
+    {/* FIXED TIMELINE (NON-SCROLLING) */}
+    <CourseTimeline
+      modules={modules}
+      currentModuleIndex={maxCompletedIndex}
+      maxCompletedIndex={maxCompletedIndex}
+      currentLessonIndex={0}
+      elapsedSeconds={1}
+      totalModuleSeconds={1}
+      examPassed={examPassed}
+      paymentPaid={paid}
+      goToModule={goToModule}
+    />
+  </div>
 );
 }

@@ -71,15 +71,12 @@ export default function CourseTimeline({
   onHoverResolve,
   onHoverEnd,
   onTimelineHover,
-  onTimelineLeave,
   onTerminalHover,
   onPromoClose,
   timelineContainerRef,
   promoOffsetBottom,
   promoVisible = false,
   promoDismissedRef,
-  showTimeline,
-  setShowTimeline = () => {},
 }: CourseTimelineProps) {
 
   type ScrubberReleaseFix = "none" | "A" | "B" | "C"
@@ -116,7 +113,6 @@ export default function CourseTimeline({
   // Promo box
   const [promoX, setPromoX] = useState<number | null>(null)
   const freezeElapsedTimeoutRef = useRef<number | null>(null)
-  const isHoveringRef = useRef(false)
 
   // remember play state across scrub
   const wasPlayingBeforeScrubRef = useRef(false)
@@ -203,7 +199,6 @@ export default function CourseTimeline({
   }, [])
 
   function revealTimelineFor3s() {
-    setShowTimeline(true);
     onTimelineHover?.()
 
     if (onHoverResolve) {
@@ -663,21 +658,8 @@ return (
     select-none cursor-pointer
   `}
 
-  onMouseEnter={(e) => {
-    isHoveringRef.current = true
-    setShowTimeline(true)
-    onTimelineHover?.()
-
-    if (promoX === null && timelineRef.current) {
-      const rect = timelineRef.current.getBoundingClientRect()
-      const mid = rect.left + rect.width - 40
-      setPromoX(mid)
-    }
-  }}
-
-  onMouseDown={(e) => {
+  onPointerDown={(e) => {
     if (e.button !== 0) return;
-    setShowTimeline(true);
 
     const sec = getScrubSeconds(e.clientX, false);
     const px = getScrubPx(e.clientX, false);
@@ -714,28 +696,8 @@ return (
     if (onHoverResolve) onHoverResolve(sec, e.clientX);
   }}
 
-  onMouseMove={(e) => {
-    isHoveringRef.current = true;
-    setShowTimeline(true);
-
+  onPointerMove={(e) => {
     if (dragging) return;
-
-    const rect = timelineRef.current?.getBoundingClientRect();
-    const pad = 10;
-
-    const within =
-      rect &&
-      e.clientX >= rect.left &&
-      e.clientX <= rect.right &&
-      e.clientY >= rect.top - pad &&
-      e.clientY <= rect.bottom + pad;
-
-    if (!within) {
-      hoverSecondsRef.current = null;
-      scheduleHoverPreviewUpdate();
-      if (onHoverEnd) onHoverEnd();
-      return;
-    }
 
     const sec = getHoverSeconds(e.clientX);
     if (sec === null) {
@@ -750,32 +712,6 @@ return (
     if (onHoverResolve) onHoverResolve(sec, e.clientX);
   }}
 
-  onMouseLeave={(e) => {
-    isHoveringRef.current = false;
-    onTimelineLeave?.()
-
-    if (promoDismissedRef?.current) {
-      setShowTimeline(false);
-    }
-
-    if (dragging) return;
-
-    const rect = timelineRef.current?.getBoundingClientRect();
-    const pad = 10;
-
-    const within =
-      rect &&
-      e.clientX >= rect.left &&
-      e.clientX <= rect.right &&
-      e.clientY >= rect.top - pad &&
-      e.clientY <= rect.bottom + pad;
-
-    if (!within) {
-      hoverSecondsRef.current = null;
-      scheduleHoverPreviewUpdate();
-      if (onHoverEnd) onHoverEnd();
-    }
-  }}
 >
 
   {/* SCRUB LAYER */}

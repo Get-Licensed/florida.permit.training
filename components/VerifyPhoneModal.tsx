@@ -132,7 +132,7 @@ return (
           min-h-[min(46vh,450px)]
           max-w-[min(96vw,446px)]
           bg-white/30
-          border border-white/40
+          border border-white/70
           rounded-2xl
           p-5 sm:p-8
           shadow-[0_12px_40px_rgba(0,31,64,0.25)]
