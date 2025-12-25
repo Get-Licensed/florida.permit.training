@@ -1031,28 +1031,26 @@ function togglePlay() {
             onPromoClose={handlePromoClose}
           />
         </div>
-        <div className="fixed bottom-[35px] left-0 right-0 z-[200] pointer-events-none">
-          <div className="md:max-w-6xl md:mx-auto px-4">
-            <div className="flex items-center gap-4 text-[#001f40]">
-              <div
-                className="
-                h-6 px-4
-                flex items-center
-                bg-black/60
-                rounded-full
-                text-[#fff]
-                text-sm
-                tabular-nums
-                translate-x-[45px]
-                opacity-100
-                whitespace-nowrap
-                "
-              >
-                {formatTime(elapsedCourseSeconds)} / {formatTime(totalCourseSeconds)}
-              </div>
-            </div>
-          </div>
-        </div>
+<div className="absolute bottom-[32px] left-0 right-0 z-[200] pointer-events-none">
+  <div className="md:max-w-6xl md:mx-auto px-4">
+    <div className="flex items-center gap-3 text-[#001f40] translate-x-[35px]">
+      <div
+        className="
+          h-8 px-3
+          flex items-center
+          bg-black/70
+          rounded-full
+          text-white
+          text-xs
+          tabular-nums
+          whitespace-nowrap
+        "
+      >
+        {formatTime(elapsedCourseSeconds)} / {formatTime(totalCourseSeconds)}
+      </div>
+    </div>
+  </div>
+</div>
       </div>
     </div>
   </div>
@@ -1171,6 +1169,7 @@ function TimelineHoverHint() {
         border: 2px solid rgba(255, 255, 255, 0.9);
         opacity: 0;
         transform: scale(0.7);
+        z-index: 20; 
       }
 
       .group:hover .google-hover-ring {

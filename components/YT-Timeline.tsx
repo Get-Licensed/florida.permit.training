@@ -791,6 +791,7 @@ return (
           shadow-md
           border-none
           bg-[#D60000]
+          z-[10000]
         "
         style={{
         left: 0,
@@ -803,10 +804,11 @@ return (
     <div
       ref={ghostHandleRef}
       className="
-        absolute top-2
-        w-6 h-6 rounded-full
+        absolute top-[6px]
+        w-5 h-5 rounded-full
         shadow-sm
         bg-[#fff]/40
+        z-[9999]
       "
       style={{
         left: 0,

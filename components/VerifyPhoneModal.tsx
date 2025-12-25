@@ -113,6 +113,11 @@ async function verifyCode() {
   onComplete();
 }
 
+function handleClose() {
+  // simply close the modal without verifying
+  onComplete();
+}
+
 /* ---------------------------------------------------------
    UI
 --------------------------------------------------------- */
@@ -120,7 +125,8 @@ return (
     <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center">
       <div
         className="
-          flex flex-col
+        relative  
+        flex flex-col
           w-full
           justify-center
           min-h-[min(46vh,450px)]
@@ -134,6 +140,37 @@ return (
           -translate-y-[60px] sm:-translate-y-[70px] md:-translate-y-[80px]
         "
       >
+
+      <button
+        type="button"
+        onClick={onComplete}
+        aria-label="Close"
+        className="
+          absolute top-3 right-3
+          w-9 h-9
+          flex items-center justify-center
+          rounded-full
+          text-[#001f40]
+          hover:bg-[#001f40]/10
+          transition
+          focus:outline-none
+        "
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="w-5 h-5"
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+
+
       <h2 className="text-[#001f40] text-[1.45rem] sm:text-[1.65rem] md:text-[1.75rem] font-semibold mb-4 text-center">
         Verify It’s You
       </h2>
