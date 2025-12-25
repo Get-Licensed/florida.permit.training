@@ -130,6 +130,23 @@ export default function CourseTimeline({
   const maxCompletedSecondsRef = useRef(0)
   const playedSecondsRefResolved = playedSecondsRef ?? allowedSeekSecondsRef
 
+  // % of timeline reserved for terminal segments
+  const TERMINAL_PCT_PER = 5; // each terminal = 5%
+  const GAP_PCT = 0.3;       // approx 2–4px depending on width
+  const TERMINAL_COUNT = TERMINAL_SEGMENTS.length;
+  const MODULE_COUNT = modules.length;
+
+  const TOTAL_TERMINAL_PCT = TERMINAL_COUNT * TERMINAL_PCT_PER;
+  const TOTAL_GAP_PCT =
+    (MODULE_COUNT + TERMINAL_COUNT - 1) * GAP_PCT;
+
+  const MODULES_TOTAL_PCT = Math.max(
+    0,
+    100 - TOTAL_TERMINAL_PCT - TOTAL_GAP_PCT
+  );
+
+
+
   useEffect(() => {
     if (!promoVisible) return
     if (promoX !== null) return
@@ -591,9 +608,9 @@ return (
 <div
   ref={timelineRef}
   className={`
-    flex-1 relative
-    h-3 px-0
-    select-none cursor-pointer
+      flex-1 relative
+      h-3 px-0
+      select-none cursor-pointer
   `}
 
   onMouseEnter={(e) => {
@@ -751,12 +768,12 @@ return (
     />
   </div>
 {/* MODULE + TERMINAL ROW */}
-<div className="relative z-[1] flex items-center h-4 w-full">
+<div className="relative z-[1] flex items-center h-4 w-full min-w-0">
 
   {/* MODULE SCRUB RAIL */}
   <div
     ref={modulesRef}
-    className="relative flex items-center h-full flex-1"
+    className="relative flex items-center h-full flex-1 min-w-0"
     style={{ minWidth: 0 }}
   >
     <div
@@ -771,7 +788,10 @@ return (
     {modules.map((m, i) => {
       const isUnlocked = i <= maxCompletedIndex
       const widthPct =
-        totalDur > 0 ? ((moduleDurations[i] ?? 0) / totalDur) * 100 : 0
+        totalDur > 0
+          ? ((moduleDurations[i] ?? 0) / totalDur) * MODULES_TOTAL_PCT
+          : 0;
+
 
       return (
         <div
@@ -786,7 +806,7 @@ return (
           }}
         >
           <div className="flex-1 h-full bg-[#aeaeaecc]" />
-          <div className="w-[6px] h-full" />
+          <div style={{ width: `${GAP_PCT}%` }} />
         </div>
       )
     })}
@@ -800,12 +820,12 @@ return (
       if (seg.id === "payment" && paymentPaid) bg = "#D60000"
 
       return (
-        <div
+       <div
           key={seg.id}
-          className="relative h-full flex items-center cursor-pointer"
-          style={{ width: 80 }}
-          onClick={() => (window.location.href = seg.href)}
-        >
+            className="relative h-full flex items-center cursor-pointer"
+              style={{ width: `${TERMINAL_PCT_PER}%` }}
+              onClick={() => (window.location.href = seg.href)}
+            >
           <div className="flex-1 h-full" style={{ backgroundColor: bg }} />
           {i < TERMINAL_SEGMENTS.length - 1 && (
             <div className="w-[6px] h-full bg-transparent" />
