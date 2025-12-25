@@ -4,6 +4,7 @@
 
   import { supabase } from "@/utils/supabaseClient";
   import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+  import { createPortal } from "react-dom";
   import CourseTimeline from "@/components/YT-Timeline";
   import { useSearchParams } from "next/navigation";
   import { useRouter } from "next/navigation";
@@ -221,6 +222,11 @@
     const autoPausedRef = useRef(false);
     const isPlayingRef = useRef(false);
     const [volumeOpen, setVolumeOpen] = useState(false)
+    const volumeButtonRef = useRef<HTMLButtonElement | null>(null)
+    const [volumePopoverPosition, setVolumePopoverPosition] = useState<{
+      left: number
+      bottom: number
+    } | null>(null)
     const [muted, setMuted] = useState(false)
     const toggleMute = useCallback(() => {
       console.log("MUTE_CLICK");
@@ -259,6 +265,26 @@
     const [audioTime, setAudioTime] = useState(0);
     const [audioDuration, setAudioDuration] = useState(0);
     const [voiceOpen, setVoiceOpen] = useState(false)
+    const updateVolumePopoverPosition = useCallback(() => {
+      const button = volumeButtonRef.current
+      if (!button) return
+      const rect = button.getBoundingClientRect()
+      setVolumePopoverPosition({
+        left: rect.left + rect.width / 2,
+        bottom: window.innerHeight - rect.top + 8,
+      })
+    }, [])
+
+    useEffect(() => {
+      if (!volumeOpen) return
+      updateVolumePopoverPosition()
+      window.addEventListener("resize", updateVolumePopoverPosition)
+      window.addEventListener("scroll", updateVolumePopoverPosition, true)
+      return () => {
+        window.removeEventListener("resize", updateVolumePopoverPosition)
+        window.removeEventListener("scroll", updateVolumePopoverPosition, true)
+      }
+    }, [updateVolumePopoverPosition, volumeOpen])
 
      // keep mute state synced with the real audio
    useEffect(() => {
@@ -2508,8 +2534,17 @@ useEffect(() => {
       })
     }
 
+  const overlayRoot =
+    typeof document !== "undefined"
+      ? document.getElementById("ui-overlay-root")
+      : null
+
   return (
     <div className="relative min-h-screen bg-white flex flex-col">
+      <div
+        id="ui-overlay-root"
+        className="fixed inset-0 z-[1000000] pointer-events-none"
+      />
 
       <div className="fixed top-0 left-0 right-0 z-40 h-2 bg-gray-200">
         <div
@@ -2977,6 +3012,7 @@ useEffect(() => {
               {/* VOLUME (YouTube-style) */}
               <div className="relative">
                 <button
+                  ref={volumeButtonRef}
                   onClick={(e) => {
                     e.stopPropagation()
                     setVolumeOpen(v => !v)
@@ -3005,48 +3041,57 @@ useEffect(() => {
                   )}
                 </button>
 
-                {volumeOpen && (
-                  <div
-                    className="
-                      absolute
-                      bottom-full mb-2
-                      left-1/2 -translate-x-1/2
-                      h-28 w-10
-                      bg-black/80
-                      rounded-xl
-                      flex items-center justify-center
-                      backdrop-blur
-                      shadow-lg
-                    "
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={volume}
-                  onChange={(e) => {
-                    const v = Number(e.target.value)
-                    setVolume(v)
-                    if (audioRef.current) {
-                      audioRef.current.volume = v
-                      audioRef.current.muted = v === 0
-                    }
-                  }}
-                  className="
-                    h-20 w-1
-                    appearance-none
-                    bg-white/30
-                    rounded
-                    accent-white
-                    [writing-mode:vertical-lr]
-                    rotate-180
-                    origin-center
-                  "
-                />
-                  </div>
-                )}
+                {volumeOpen &&
+                  overlayRoot &&
+                  volumePopoverPosition &&
+                  createPortal(
+                    <div
+                      className="
+                        fixed
+                        z-[1000001]
+                        h-28 w-10
+                        bg-black/80
+                        rounded-xl
+                        flex items-center justify-center
+                        backdrop-blur
+                        shadow-lg
+                        pointer-events-auto
+                      "
+                      style={{
+                        left: volumePopoverPosition.left,
+                        bottom: volumePopoverPosition.bottom,
+                        transform: "translateX(-50%)",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={volume}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          setVolume(v)
+                          if (audioRef.current) {
+                            audioRef.current.volume = v
+                            audioRef.current.muted = v === 0
+                          }
+                        }}
+                        className="
+                          h-20 w-1
+                          appearance-none
+                          bg-white/30
+                          rounded
+                          accent-white
+                          [writing-mode:vertical-lr]
+                          rotate-180
+                          origin-center
+                        "
+                      />
+                    </div>,
+                    overlayRoot
+                  )}
               </div>
 
               {/* CC + VOICE — CUSTOM DROPDOWN */}
