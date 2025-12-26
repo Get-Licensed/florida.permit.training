@@ -1093,18 +1093,23 @@ const handleScrubStart = useCallback(() => {
   // ------------------------------------------------------
   const courseCompletionSentRef = useRef(false);
 
-  async function markCourseCompletedOnce() {
-    if (courseCompletionSentRef.current) return;
-    courseCompletionSentRef.current = true;
+async function markCourseCompletedOnce() {
+  if (courseCompletionSentRef.current) return;
+  courseCompletionSentRef.current = true;
 
-    try {
-      await fetch("/api/course/complete", {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) return;
+
+  await fetch("/api/course/complete", {
     method: "POST",
-    credentials: "include",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
   });
-    } catch (e) {
-    }
-  }
+}
 
   // ------------------------------------------------------
   // AUDIO FADE HELPERS

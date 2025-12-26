@@ -1,8 +1,10 @@
+// app/api/course/complete/route.ts
+
 import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
 export async function POST(req: Request) {
+  /* ───────── AUTH ───────── */
   const authHeader = req.headers.get("authorization");
-
   if (!authHeader?.startsWith("Bearer ")) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
@@ -19,18 +21,19 @@ export async function POST(req: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const course_id = "FL_PERMIT_TRAINING";
   const now = new Date().toISOString();
 
+  /* ───────── IDEMPOTENT COMPLETION ───────── */
   await supabase
     .from("course_status")
     .upsert(
       {
         user_id: user.id,
-        course_id: "FL_PERMIT_TRAINING",
+        course_id,
         completed_at: now,
-        status: "completed_unpaid",
       },
-      { onConflict: "user_id" }
+      { onConflict: "user_id,course_id" }
     )
     .throwOnError();
 
