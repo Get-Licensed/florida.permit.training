@@ -99,9 +99,9 @@ body {
 /* wobble */
 @keyframes steer {
   0%   { transform: rotate(0deg);   opacity: 1; }
-  25%  { transform: rotate(-6deg);  opacity: .5; } /* half rotation */
+  25%  { transform: rotate(-6deg);  opacity: .7; }
   75%  { transform: rotate(6deg);   opacity: 1; }
-  100% { transform: rotate(0deg);   opacity: .5; }
+  100% { transform: rotate(0deg);   opacity: .7; }
 }
 
 .fl-loader-wheel {
@@ -204,38 +204,58 @@ select.voice-hidden option {
   animation: idleFade 3s ease-in-out infinite;
 }
 
-
 /* -------------------------------------------------
-   BUTTON HOVER RING (REUSABLE)
+   BUTTON HOVER RING (REUSABLE — SAFE VERSION)
 -------------------------------------------------- */
 
+/* Wrapper must be position: relative */
 .google-hover-ring {
   pointer-events: none;
   position: absolute;
   inset: -6px;
   border-radius: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.9);
+
+  /* Use box-shadow instead of border (no seams) */
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.85);
+
   opacity: 0;
-  transform: scale(0.7);
+  transform: scale(0.92);
   z-index: 20;
+
+  /* Prevent stale GPU layers */
+  will-change: transform, opacity;
 }
 
+/* Trigger */
 .group:hover .google-hover-ring {
-  animation: googleRingPulse 0.5s ease-out;
-  opacity: 1;
+  animation: googleRingPulse 0.45s ease-out forwards;
 }
 
+/* Explicit reset when hover ends */
+.group:not(:hover) .google-hover-ring {
+  animation: none;
+  opacity: 0;
+  transform: scale(0.92);
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+}
+
+/* Keyframes */
 @keyframes googleRingPulse {
   0% {
+    opacity: 0;
     transform: scale(0.92);
-    opacity: 0;
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0);
   }
-  40% {
-    transform: scale(1.05);
-    opacity: 0.2;
+
+  35% {
+    opacity: 0.25;
+    transform: scale(1.03);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
   }
+
   100% {
-    transform: scale(1.18);
     opacity: 0;
+    transform: scale(1.12);
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.0);
   }
 }

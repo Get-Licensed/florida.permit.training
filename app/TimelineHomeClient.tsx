@@ -1,3 +1,4 @@
+//app\TimelineHomeClient.tsx
 "use client";
 
 import Image from "next/image";
@@ -806,16 +807,12 @@ useEffect(() => {
     ? resolveImage(currentSlide.image_path)
     : null;
 
-
-  function goToModule(i: number) {
-    if (scrubActive.current) return;
-
-    setCurrentModuleIndex(i);
-    setSlideIndex(0);
-    setIsPaused(true);
-
-    // No DB gating and no reload URL push needed on homepage
-  }
+    //--------------------------------------------------------------------
+    // module jumping DISABLED — homepage is time-only
+    //--------------------------------------------------------------------
+    const goToModule = useCallback((_: number) => {
+      return;
+    }, []);
 
   // ------------------------------
   // HYDRATION

@@ -1,3 +1,4 @@
+//components\YT-Timeline.tsx
 "use client"
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
@@ -110,6 +111,14 @@ export default function CourseTimeline({
   const suppressModuleClickRef = useRef(false)
   const suppressModuleClickTimeoutRef = useRef<number | null>(null)
   const railRectRef = useRef<DOMRect | null>(null)
+  function isWithinRailY(clientY: number) {
+    const rect =
+      railRectRef.current ??
+      timelineRef.current?.getBoundingClientRect()
+
+    if (!rect) return false
+    return clientY >= rect.top && clientY <= rect.bottom
+  }
   // Promo box
   const [promoX, setPromoX] = useState<number | null>(null)
   const freezeElapsedTimeoutRef = useRef<number | null>(null)
@@ -514,8 +523,11 @@ export default function CourseTimeline({
   }, [updateFurthestTrack, updatePlayedTrack])
 
   useEffect(() => {
-    function handleMove(e: MouseEvent) {
+    function handleMove(e: PointerEvent) {
       if (!draggingRef.current) return
+      if (!isWithinRailY(e.clientY)) return
+        e.preventDefault()
+
       const sec = getScrubSeconds(e.clientX, true)
       const px = getScrubPx(e.clientX, true)
       if (sec === null) return
@@ -530,11 +542,15 @@ export default function CourseTimeline({
       if (onHoverResolve) onHoverResolve(sec, e.clientX)
     }
 
-    function handleUp() {
+     function handleUp(e: PointerEvent) {
       if (!draggingRef.current) return
+
+      timelineRef.current?.releasePointerCapture(e.pointerId)
+      document.body.style.cursor = ""
 
       draggingRef.current = false
       document.body.style.userSelect = ""
+
 
       if (enableFreezeElapsedSync) {
         freezeElapsedSyncRef.current = true
@@ -579,13 +595,15 @@ export default function CourseTimeline({
       if (onHoverEnd) onHoverEnd()
     }
 
-    window.addEventListener("mousemove", handleMove)
-    window.addEventListener("mouseup", handleUp)
+    window.addEventListener("pointermove", handleMove)
+    window.addEventListener("pointerup", handleUp)
+    window.addEventListener("pointercancel", handleUp)
 
-    return () => {
-      window.removeEventListener("mousemove", handleMove)
-      window.removeEventListener("mouseup", handleUp)
-    }
+   return () => {
+    window.removeEventListener("pointermove", handleMove)
+    window.removeEventListener("pointerup", handleUp)
+    window.removeEventListener("pointercancel", handleUp)
+        }
   }, [
     animate,
     getScrubPx,
@@ -633,7 +651,7 @@ return (
             rounded-full
             hover:bg-black/90
             transition
-            translate-y-[2px]
+            translate-y-[0px]
           "        >
           {isPaused ? (
             <svg viewBox="0 0 24 24" className="w-6 h-6 fill-white/80">
@@ -660,11 +678,17 @@ return (
 
   onPointerDown={(e) => {
     if (e.button !== 0) return;
+    if (!isWithinRailY(e.clientY)) return;
+    if (draggingRef.current) return;
+
 
     const sec = getScrubSeconds(e.clientX, false);
     const px = getScrubPx(e.clientX, false);
     if (sec === null) return;
     if (px === null) return;
+
+      timelineRef.current?.setPointerCapture(e.pointerId)
+      document.body.style.cursor = "grabbing"
 
     e.preventDefault();
     document.body.style.userSelect = "none";
@@ -698,6 +722,12 @@ return (
 
   onPointerMove={(e) => {
     if (dragging) return;
+    if (!isWithinRailY(e.clientY)) {
+      hoverSecondsRef.current = null;
+      scheduleHoverPreviewUpdate();
+      if (onHoverEnd) onHoverEnd();
+      return;
+    }
 
     const sec = getHoverSeconds(e.clientX);
     if (sec === null) {
@@ -711,8 +741,7 @@ return (
     scheduleHoverPreviewUpdate();
     if (onHoverResolve) onHoverResolve(sec, e.clientX);
   }}
-
->
+  >
 
   {/* SCRUB LAYER */}
   <div className="absolute inset-0 pointer-events-none z-[9999]">
@@ -819,64 +848,90 @@ return (
 {promoVisible && promoX !== null && (
   <div
     className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-100"
-    style={{
-      left: promoX - 187.5,
-      bottom: promoOffsetBottom ?? 240,
-      width: 375,
-      height: 250,
-    }}
+    style={(() => {
+      const vw =
+        typeof window !== "undefined" ? window.innerWidth : 1024;
+
+      const margin = 8; // matches 16px total safe padding
+      const maxBoxWidth = 375;
+      const boxWidth = Math.min(
+        maxBoxWidth,
+        Math.max(0, vw - margin * 2)
+      );
+      const half = boxWidth / 2;
+
+      // Desired center:
+      // - Mobile: viewport center
+      // - Desktop: promoX anchor
+      const desiredCenter =
+        vw < 400 ? vw / 2 : promoX;
+
+      // Clamp center so box never clips
+      const clampedCenter = Math.min(
+        Math.max(desiredCenter, margin + half),
+        vw - margin - half
+      );
+
+      return {
+        left: `${clampedCenter}px`,
+        transform: "translateX(-50%)",
+        bottom: promoOffsetBottom ?? 240,
+        width: `${boxWidth}px`,
+        height: 250,
+      };
+    })()}
   >
     <div
       className="
         w-full h-full
-        rounded-lg bg-white/73 shadow-xl
-        backdrop-blur-sm text-[#001F40] p-4
+        rounded-lg bg-white/70 shadow-xl
+        backdrop-blur-lg text-[#001F40] p-4
         pointer-events-auto overflow-hidden
         flex flex-col justify-center items-center gap-6
         relative
       "
     >
-
       {/* CLOSE BUTTON */}
       <button
         onClick={() => {
-        onPromoClose?.()
-      }}
+          onPromoClose?.();
+        }}
         className="
-          absolute top-2 right-2
-          text-[#001F40] text-md font-bold
-          rounded-full px-2 pb-[2px]
-          pointer-events-auto
-        "
+          absolute top-3 right-3
+          w-9 h-9
+          flex items-center justify-center
+          rounded-full
+          text-[#001f40]
+          bg-[#001f40]/4
+          hover:bg-[#001f40]/10
+          transition
+          focus:outline-none        
+          "
       >
         ✕
       </button>
 
-      {/* top group */}
+      {/* TOP GROUP */}
       <div className="flex flex-col items-center justify-center">
-
-        {/* column labels */}
-        <div className="flex items-start text-[14px] font-semibold 
-        uppercase tracking-wide mb-1">
+        {/* COLUMN LABELS */}
+        <div className="flex items-start text-[14px] font-semibold uppercase tracking-wide mb-1">
           <span
             className="text-center w-[120px]"
-            style={{ transform: 'translateX(-20px)' }}
+            style={{ transform: "translateX(-20px)" }}
           >
             Final Exam
           </span>
 
           <span
             className="text-center w-[120px]"
-            style={{ transform: 'translateX(20px)' }}
+            style={{ transform: "translateX(20px)" }}
           >
             Payment
           </span>
         </div>
 
-        {/* column details */}
-        <div className="flex justify-center items-start gap-[6px]
-                        text-[12px] leading-snug relative w-full max-w-[320px]">
-
+        {/* COLUMN DETAILS */}
+        <div className="flex justify-center items-start gap-[6px] text-[12px] leading-snug relative w-full max-w-[320px]">
           <div className="text-center w-[150px]">
             ✔ 40 questions<br />
             ✔ 80% to pass<br />
@@ -884,17 +939,17 @@ return (
           </div>
 
           <div className="text-center w-[150px]">
-            ✔ $59.95 one-time fee <br />
+            ✔ $59.95 one-time fee<br />
             ✔ Verified submission of<br />
             course + exam to FL DMV
           </div>
         </div>
       </div>
 
-      {/* divider */}
+      {/* DIVIDER */}
       <div className="border-b border-white/30 w-full" />
 
-      {/* DMV section */}
+      {/* DMV SECTION */}
       <div className="flex flex-col items-center justify-center text-center leading-snug">
         <p className="text-[14px] font-semibold uppercase tracking-wide mb-1">
           DMV Photo Appointment
@@ -903,7 +958,7 @@ return (
         <p className="text-[12px]">What to bring:</p>
 
         <p className="text-[12px] mt-1 leading-snug">
-          ✔ $48 Card/Check  ✔ 2 Proofs of Address  ✔ 2 Proofs of ID
+          ✔ $48 Card/Check &nbsp; ✔ 2 Proofs of Address &nbsp; ✔ 2 Proofs of ID
         </p>
       </div>
     </div>

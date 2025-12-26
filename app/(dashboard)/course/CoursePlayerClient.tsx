@@ -1,4 +1,5 @@
-  // deno-lint-ignore-file
+//app\(dashboard)\course\CoursePlayerClient.tsx
+// deno-lint-ignore-file
 
   "use client";
 
@@ -13,7 +14,7 @@
 
 
   /* ------------------------------------------------------
-    KARAOKE HELPERS  (MOVE THESE OUTSIDE THE COMPONENT)
+    KARAOKE HELPERS 
   ------------------------------------------------------ */
 
   function tokenizeCaption(text: string): string[] {
@@ -229,7 +230,6 @@
     } | null>(null)
     const [muted, setMuted] = useState(false)
     const toggleMute = useCallback(() => {
-      console.log("MUTE_CLICK");
       setMuted(prev => {
         const next = !prev;
         const audio = audioRef.current;
@@ -421,6 +421,7 @@
       timelineAutoHideTimerRef.current = window.setTimeout(() => {
         if (scrubActiveRef.current) return
         if (isHoveringTimelineRef.current) return
+        if (timelineUIInteractingRef.current) return
         setShowTimeline(false)
         tooltipVisibleRef.current = false
       }, 3000)
@@ -443,6 +444,20 @@
 
         // do NOT touch cancelAutoplay here
       }, []);
+
+      // Prevent timeline from auto-hiding
+      const timelineUIInteractingRef = useRef(false)
+
+      const beginTimelineUIInteraction = useCallback(() => {
+        timelineUIInteractingRef.current = true
+        clearTimelineAutoHideTimer()
+        setShowTimeline(true)
+      }, [clearTimelineAutoHideTimer])
+
+      const endTimelineUIInteraction = useCallback(() => {
+        timelineUIInteractingRef.current = false
+        scheduleTimelineAutoHide()
+      }, [scheduleTimelineAutoHide])
 
       const switchVoice = useCallback(
         (newVoiceId: string) => {
@@ -971,10 +986,21 @@
       function handleDocClick(e: MouseEvent) {
         const target = e.target as HTMLElement;
 
-        if (target.closest("#timeline-region") || target.closest(".promo-box")) {
+        // ✅ Never close timeline when interacting with timeline-related UI:
+        // - timeline-region (scrubber handle)
+        // - promo box
+        // - audio controls container
+        // - portal overlays (volume + cc popovers)
+        if (
+          target.closest("#timeline-region") ||
+          target.closest(".promo-box") ||
+          target.closest("[data-timeline-controls]") ||
+          target.closest("[data-timeline-popover]")
+        ) {
           return;
         }
 
+        if (timelineUIInteractingRef.current) return; // ✅ NEW
         if (scrubActiveRef.current) return;
         if (isHoveringTimelineRef.current) return;
         if (promoStickyVisible && promoSticky) return;
@@ -1048,26 +1074,6 @@ const handleScrubStart = useCallback(() => {
       return () => window.removeEventListener("click", close)
     }, [])
 
-
-  // -------------------------------------------------------------
-  // DEBUG: Core gate values (helps detect infinite steering wheel)
-  // -------------------------------------------------------------
-  useEffect(() => {
-    console.log("GATES:", {
-      progressReady,
-      contentReady,
-      restoredReady,
-      initialHydrationDone
-    });
-    console.log("INDICES:", {
-      currentModuleIndex,
-      currentLessonIndex,
-      slideIndex
-    });
-  }, [progressReady, contentReady, restoredReady, initialHydrationDone,
-      currentModuleIndex, currentLessonIndex, slideIndex]);
-
-
     useEffect(() => {
       if (progressReady && contentReady && !initialHydrationDone) {
         setInitialHydrationDone(true);
@@ -1097,12 +1103,11 @@ const handleScrubStart = useCallback(() => {
     credentials: "include",
   });
     } catch (e) {
-      console.error("Failed to mark course complete", e);
     }
   }
 
   // ------------------------------------------------------
-  // AUDIO FADE HELPERS (HTMLAudioElement ONLY)
+  // AUDIO FADE HELPERS
   // ------------------------------------------------------
   const fadeFrameRef = useRef<number | null>(null);
   const targetVolumeRef = useRef(volume);
@@ -1460,7 +1465,6 @@ const handleScrubStart = useCallback(() => {
     } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
-      console.warn("No session — skipping terminal status");
       return;
     }
 
@@ -1471,13 +1475,10 @@ const handleScrubStart = useCallback(() => {
     });
 
     if (!res.ok) {
-      console.error("Failed to load terminal status", res.status);
       return;
     }
 
     const data = await res.json();
-
-    console.log("COURSE STATUS RESPONSE:", data);
 
     // SAFETY GUARD: null or undefined response
     if (!data) {
@@ -1595,11 +1596,6 @@ const handleScrubStart = useCallback(() => {
     if (didApplyProgress.current) return;
     didApplyProgress.current = true;
 
-    console.log("APPLY_PROGRESS INPUT:", {
-      modCount: modRows.length,
-      slideCount: slideRows.length,
-    });
-
     // ----------------------------------
     // BASIC SANITY
     // ----------------------------------
@@ -1607,20 +1603,6 @@ const handleScrubStart = useCallback(() => {
       unlockProgressGates();
       return;
     }
-
-  // ----------------------------------
-  // URL DEEP-LINK
-  // ----------------------------------
-  const rawParam = searchParams.get("module");
-
-  let urlIndex: number | null = null;
-
-  if (rawParam !== null) {
-    const parsed = Number(rawParam);
-    if (Number.isInteger(parsed)) {
-      urlIndex = parsed;
-    }
-  }
 
   // ----------------------------------
   // MODULE COMPLETION (DB)
@@ -1637,15 +1619,7 @@ const handleScrubStart = useCallback(() => {
   // FINAL MODULE DECISION (SINGLE SOURCE OF TRUTH)
   // ----------------------------------
   let finalModuleIndex = maxCompletedModuleIndex;
-
-  if (urlIndex !== null) {
-    finalModuleIndex = Math.min(urlIndex, maxCompletedModuleIndex);
-  }
-
-  console.log("📍 FINAL MODULE INDEX:", finalModuleIndex);
-
   setCurrentModuleIndex(finalModuleIndex);
-
 
   // ----------------------------------
   // SLIDE POSITION WITHIN *FINAL* MODULE
@@ -1733,13 +1707,11 @@ const handleScrubStart = useCallback(() => {
   ------------------------------------------------------ */
   async function loadLessonContent(lessonId: number) {
       if (scrubActive.current) {
-      console.warn("LOAD CANCELLED — scrub active")
       return
     }
 
     if (lessonLoadInFlightRef.current === lessonId) return;
     lessonLoadInFlightRef.current = lessonId;
-    console.log("LOAD_LESSON_CONTENT: start", { lessonId });
 
     try {
       // reset content-ready for this lesson load
@@ -1791,31 +1763,16 @@ const handleScrubStart = useCallback(() => {
 
       setCaptions(grouped);
 
-      console.log("LESSON CONTENT LOADED:", {
-        lessonId,
-        slidesLoaded: slideRows?.length ?? 0,
-        captionsLoaded: captionRows?.length ?? 0,
-        restoredReady,
-        contentReadyPending: true
-      });
-
-      // ------------------------------------------------------
       // PATCH: Unlock autoplay for *fresh module loads* 
-      // (restoredReady = false means NEW USER or NEW MODULE)
-      // ------------------------------------------------------
       if (!restoredReady) {
-        console.log("FRESH MODULE LOAD → enabling contentReady immediately");
         setContentReady(true);
       }
 
       // finished loading lesson data
       setLoading(false);
 
-      // ------------------------------------------------------
       // If restoring from saved progress, wait and then unlock.
-      // ------------------------------------------------------
       if (restoredReady) {
-        console.log("RESTORED PROGRESS → enabling contentReady");
         setContentReady(true);
       }
     } finally {
@@ -1862,7 +1819,6 @@ const handleScrubStart = useCallback(() => {
     // If restoredReady turned true AFTER lesson content loaded,
     // we must unlock contentReady manually.
     if (restoredReady && slides.length > 0 && Object.keys(captions).length > 0) {
-      console.log("LATE RESTORE → Unlocking contentReady now");
       setContentReady(true);
     }
   }, [restoredReady, slides, captions]);
@@ -1917,22 +1873,11 @@ useEffect(() => {
   useEffect(() => {
     captionAdvanceInFlightRef.current = null;
   }, [currentCaptionIndex]);
+ 
   useEffect(() => {
     if (scrubActive.current) return;
     const pendingSeek = appliedSeekTargetRef.current;
     const activeSlide = slides[slideIndex];
-
-    if (pendingSeek && !contentReady) {
-      console.warn("CONFLICT: pending seek cannot resolve while contentReady=false", {
-        pendingSeek,
-        progressReady,
-        contentReady,
-        restoredReady,
-        initialHydrationDone,
-        slideIndex,
-        moduleIndex: currentModuleIndex,
-      });
-    }
 
     if (!pendingSeek || !activeSlide || pendingSeek.slideId !== activeSlide.id) {
       return;
@@ -2123,12 +2068,9 @@ useEffect(() => {
   }, [isPaused, fadeToVolume]);
 
 
-  /* ------------------------------------------------------
-    PROGRESS UPDATERS (copy/paste exactly)
-  ------------------------------------------------------ */
+  // PROGRESS UPDATERS
   async function recordSlideComplete(moduleIndex: number, lessonIndex: number, slideIndex: number) {
     const user = await supabase.auth.getUser();
-    console.log("recordSlideComplete user:", user?.data?.user);
     if (!user.data.user) return;
 
     const module = modules[moduleIndex];
@@ -2180,30 +2122,20 @@ useEffect(() => {
 
     const completed = (completedSlides?.length ?? 0) >= (totalSlides?.length ?? 0);
 
-    // DEBUG THIS BEFORE UPSERT
-    console.log("updateModuleProgress payload:", {
-      user_id: user.data.user.id,
-      course_id: "FL_PERMIT_TRAINING",
-      module_id: module.id,
-      module_index: moduleIndex,
-      highest_slide_index: slides.length - 1,
-      completed
-    });
-
-  await supabase
-    .from("course_progress_modules")
-    .upsert(
-      {
-        user_id: user.data.user.id,
-        course_id: "FL_PERMIT_TRAINING",
-        module_id: module.id,
-        module_index: moduleIndex,
-        highest_slide_index: slides.length - 1,
-        completed,
-      },
-      { onConflict: "user_id,course_id,module_id" }
-    )
-    .select()
+    await supabase
+      .from("course_progress_modules")
+      .upsert(
+        {
+          user_id: user.data.user.id,
+          course_id: "FL_PERMIT_TRAINING",
+          module_id: module.id,
+          module_index: moduleIndex,
+          highest_slide_index: slides.length - 1,
+          completed,
+        },
+        { onConflict: "user_id,course_id,module_id" }
+      )
+      .select()
     .throwOnError();
 
     if (completed) {
@@ -2338,81 +2270,14 @@ useEffect(() => {
     }
   };
 
-  //--------------------------------------------------------------------
-  // jump to module only if user has unlocked it (GUARDED)
-  //--------------------------------------------------------------------
-  function goToModule(i: number) {
-    if (seekCommitInFlightRef.current) return;
-    const targetStartSeconds = moduleDurationSeconds
-      .slice(0, i)
-      .reduce((sum, duration) => sum + (duration ?? 0), 0);
+//--------------------------------------------------------------------
+// module jumping DISABLED — linear progression only
+//--------------------------------------------------------------------
+const goToModule = useCallback((_: number) => {
+    return;
+  }, []);
 
-    if (targetStartSeconds > allowedSeekSecondsRef.current) {
-      return;
-    }
-
-    // ✅ Always allow current module
-    if (i === currentModuleIndex) {
-      // fall through to existing reload logic below
-    }
-    // ✅ Allow completed modules
-    else if (i <= maxCompletedIndex) {
-      // allowed
-    }
-    // ✅ Allow next unlocked module
-    else if (i === maxCompletedIndex + 1) {
-      // allowed
-    }
-    // 🚫 Everything else blocked
-    else {
-      return;
-    }
-
-    // ------------------------------
-    // SAME MODULE CLICK → HARD RELOAD
-    // ------------------------------
-    if (i === currentModuleIndex) {
-      console.log("HARD MODULE RELOAD");
-
-      resetAudioElement();
-      cancelAutoplay.current = false;
-
-      setContentReady(false);
-      setRestoredReady(true);
-
-      setCurrentLessonIndex(0);
-      setSlideIndex(0);
-      setCurrentCaptionIndex(0);
-      setCanProceed(false);
-      setIsPaused(!shouldAutoPlayRef.current);
-
-      loadLessons(modules[i].id)
-        .then(() => loadLessonContent(lessons[0]?.id));
-
-      return;
-    }
-
-    // ------------------------------
-    // REAL MODULE SWITCH
-    // ------------------------------
-    resetAudioElement();
-    cancelAutoplay.current = false;
-
-    setContentReady(false);
-    setRestoredReady(false);
-
-    setCurrentModuleIndex(i);
-    setCurrentLessonIndex(0);
-    setSlideIndex(0);
-    setCurrentCaptionIndex(0);
-
-    setCanProceed(false);
-    setIsPaused(!shouldAutoPlayRef.current);
-
-    router.push(`/course-test?module=${i}`);
-  }
-
-  const resumePlayback = useCallback(() => {
+const resumePlayback = useCallback(() => {
     const audio = audioRef.current;
     cancelAutoplay.current = false;
     setIsPaused(false);
@@ -2902,7 +2767,7 @@ useEffect(() => {
             rounded-full
             bg-black/90
             text-white font-semibold text-xl
-            ring-4 ring-white/70
+            border border-white/40
             backdrop-blur-sm
             cursor-pointer
             transition
@@ -2948,7 +2813,11 @@ useEffect(() => {
       >
         <div
         ref={hoverTooltipTimeRef}
-        className="absolute top-2 left-2 px-2 py-[2px] rounded-full backdrop-blur-md bg-white/60 text-[#001f40] text-[11px] font-medium pointer-events-none"
+        className="absolute top-2 left-2 
+                   px-2 py-[2px] rounded-full 
+                   backdrop-blur-sm bg-white/50 
+                   text-[#001f40] text-[11px] 
+                   font-medium pointer-events-none"
         style={{ display: "none" }}
       />
 
@@ -2963,7 +2832,7 @@ useEffect(() => {
       />
       <div
         ref={hoverTooltipPlaceholderRef}
-        className="h-[165px] w-full bg-white/10 rounded-lg"
+        className="h-[165px] backdrop-blur-sm w-full bg-white/25 rounded-lg"
       />
 
       <div
@@ -3033,8 +2902,14 @@ useEffect(() => {
         totalCourseSeconds={totalCourseSeconds}
         moduleDurations={moduleDurationSeconds}
         onScrub={handleScrub}
-        onScrubStart={handleScrubStart}
-        onScrubEnd={handleScrubEnd}
+        onScrubStart={() => {
+          handleScrubStart()
+          beginTimelineUIInteraction()
+        }}
+        onScrubEnd={() => {
+          handleScrubEnd()
+          endTimelineUIInteraction()
+        }}
         onHoverResolve={handleHoverResolve}
         onHoverEnd={handleHoverEnd}
         timelineContainerRef={timelineHoverRef}
@@ -3059,8 +2934,17 @@ useEffect(() => {
             z-[200]
             pointer-events-auto
           "
+           onPointerDownCapture={(e) => {
+            e.stopPropagation()
+            beginTimelineUIInteraction()
+          }}
+          onPointerUpCapture={(e) => {
+            e.stopPropagation()
+            endTimelineUIInteraction()
+          }}
           onClick={(e) => e.stopPropagation()}
         >
+
           <div className="md:max-w-6xl md:mx-auto py-1 px-4">
             <div className="flex items-center justify-left gap-3 text-[#001f40] translate-x-[35px]">
 
@@ -3121,11 +3005,12 @@ useEffect(() => {
                       className="
                         fixed
                         z-[1000001]
-                        h-28 w-10
-                        bg-black/80
+                        translate-y-[7px]
+                        h-36 w-10
+                        bg-black/70
                         rounded-xl
+                        backdrop-blur-sm
                         flex items-center justify-center
-                        backdrop-blur
                         shadow-lg
                         pointer-events-auto
                       "
@@ -3133,9 +3018,18 @@ useEffect(() => {
                         left: volumePopoverPosition.left,
                         bottom: volumePopoverPosition.bottom,
                         transform: "translateX(-50%)",
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                        }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation()
+                          beginTimelineUIInteraction()
+                        }}
+                        onPointerUp={(e) => {
+                          e.stopPropagation()
+                          endTimelineUIInteraction()
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+
                       <input
                         type="range"
                         min={0}
@@ -3151,9 +3045,9 @@ useEffect(() => {
                           }
                         }}
                         className="
-                          h-20 w-1
+                          h-30 w-1
                           appearance-none
-                          bg-white/30
+                          bg-white/60
                           rounded
                           accent-white
                           [writing-mode:vertical-lr]
@@ -3225,16 +3119,24 @@ useEffect(() => {
         fixed
         z-[1000001]
         max-w-[100px]
-        bg-black/90
-        rounded-lg
+        bg-black/70
+        rounded-xl
         shadow-xl
-        backdrop-blur
+        backdrop-blur-sm
         pointer-events-auto
       "
       style={{
         left: ccPopoverPosition.left,
         bottom: ccPopoverPosition.bottom + 25,
         transform: "translateX(-50%)",
+      }}
+      onPointerDown={(e) => {
+        e.stopPropagation()
+        beginTimelineUIInteraction()
+      }}
+      onPointerUp={(e) => {
+        e.stopPropagation()
+        endTimelineUIInteraction()
       }}
       onClick={(e) => e.stopPropagation()}
     >

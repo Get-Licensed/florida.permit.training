@@ -245,6 +245,25 @@ useEffect(() => {
                       </button>
                     )}
                   </div>
+
+                  {!courseComplete && !examPassed && (
+                    <div className="mt-3 text-center">
+                      <button
+                        onClick={() => router.push("/course")}
+                        className="
+                          text-md
+                          text-[#001f40]
+                          underline
+                          underline-offset-3
+                          hover:text-[#00356e]
+                          transition
+                        "
+                      >
+                        Return to course
+                      </button>
+                    </div>
+                    )}
+
                 </div>
               ) : (
                 questions[index] && (
@@ -325,23 +344,6 @@ useEffect(() => {
           </main>
         )}
       </ExamShell>
-
-      {modules.length > 0 && !isBooting && (
-        <CourseTimeline
-          modules={modules}
-          currentModuleIndex={Math.min(
-            maxCompletedIndex,
-            modules.length - 1
-          )}
-          maxCompletedIndex={maxCompletedIndex}
-          currentLessonIndex={0}
-          elapsedSeconds={1}
-          totalModuleSeconds={1}
-          examPassed={examPassed}
-          paymentPaid={paid}
-          goToModule={goToModule}
-        />
-      )}
     </ExamProgressContext.Provider>
   );
 }

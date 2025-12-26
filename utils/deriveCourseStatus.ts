@@ -1,21 +1,56 @@
-export type DerivedCourseStatus =
-  | "in_progress"
-  | "course_completed_exam_pending"
-  | "completed_unpaid"
-  | "completed_full";
+//utils\deriveCourseStatus.ts
 
-export function deriveCourseStatus(cs: {
+export type DerivedCourseStatus =
+  | "not_started"              // no course progress, unpaid
+  | "in_progress"              // course started, unpaid
+  | "paid_incomplete"          // paid before finishing course
+  | "course_complete_unpaid"   // course done, exam unlocked, unpaid
+  | "course_complete_paid"     // course done, paid, exam unlocked
+  | "exam_passed_unpaid"       // exam passed, awaiting payment
+  | "exam_passed_paid";        // FINAL terminal state
+
+export type DeriveCourseStatusInput = {
   completed_at: string | null;
   exam_passed: boolean | null;
   paid_at: string | null;
-}): DerivedCourseStatus {
-  if (!cs.completed_at) return "in_progress";
+  total_time_seconds?: number | null; // optional, for future hardening
+};
 
-  if (cs.completed_at && !cs.exam_passed)
-    return "course_completed_exam_pending";
+/* This function is the SINGLE SOURCE OF TRUTH for course state.
+ * No caller should ever set `status` manually.*/
 
-  if (cs.completed_at && cs.exam_passed && !cs.paid_at)
-    return "completed_unpaid";
+export function deriveCourseStatus(
+  cs: DeriveCourseStatusInput
+): DerivedCourseStatus {
+  const courseComplete = !!cs.completed_at;
+  const examPassed = !!cs.exam_passed;
+  const paid = !!cs.paid_at;
 
-  return "completed_full";
+  // ───────── COURSE NOT COMPLETE ─────────
+  if (!courseComplete && !paid) {
+    // not started OR in progress (frontend can disambiguate by progress data)
+    return "not_started";
+  }
+
+  if (!courseComplete && paid) {
+    // payment happened early
+    return "paid_incomplete";
+  }
+
+  // ───────── COURSE COMPLETE ─────────
+  if (courseComplete && !examPassed && !paid) {
+    return "course_complete_unpaid";
+  }
+
+  if (courseComplete && !examPassed && paid) {
+    return "course_complete_paid";
+  }
+
+  // ───────── EXAM PASSED ─────────
+  if (examPassed && !paid) {
+    return "exam_passed_unpaid";
+  }
+
+  // exam passed + paid
+  return "exam_passed_paid";
 }

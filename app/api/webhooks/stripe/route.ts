@@ -3,6 +3,8 @@
 import Stripe from "stripe";
 import process from "node:process";
 import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
+import { deriveCourseStatus } from "@/utils/deriveCourseStatus";
+
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +13,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 });
 
 export async function POST(req: Request) {
+  console.log("🔥 STRIPE WEBHOOK HIT", new Date().toISOString());
   const sig = req.headers.get("stripe-signature");
   if (!sig) {
     return new Response("Missing stripe-signature", { status: 400 });
@@ -72,32 +75,34 @@ export async function POST(req: Request) {
     .in("status", ["requires_payment", "requires_confirmation"])
     .throwOnError();
 
-  /* ───────── COURSE STATUS (CANONICAL) ───────── */
-  const { data: existing } = await supabase
-    .from("course_status")
-    .select("completed_at, exam_passed, status")
-    .eq("user_id", user_id)
-    .eq("course_id", course_id)
-    .maybeSingle();
 
-  await supabase
-    .from("course_status")
-    .upsert(
-      {
-        user_id,
-        course_id,
+const { data: existing } = await supabase
+  .from("course_status")
+  .select("*")
+  .eq("user_id", user_id)
+  .eq("course_id", course_id)
+  .maybeSingle();
 
-        paid_at: now,
-        completed_at: existing?.completed_at ?? now,
+const updated = {
+  user_id,
+  course_id,
+  paid_at: now,
+  completed_at: existing?.completed_at ?? null,
+  exam_passed: existing?.exam_passed ?? false,
+  passed_at: existing?.passed_at ?? null,
+  total_time_seconds: existing?.total_time_seconds ?? 0,
+};
 
-        status:
-          existing?.exam_passed
-            ? "completed_paid"
-            : "completed_unpaid",
-      },
-      { onConflict: "user_id" }
-    )
-    .throwOnError();
+const status = deriveCourseStatus(updated);
 
-  return new Response("ok", { status: 200 });
+await supabase
+  .from("course_status")
+  .upsert(
+    { ...updated, status },
+    { onConflict: "user_id, course_id" }
+  )
+  .throwOnError();
+
+  
+    return new Response("ok", { status: 200 });
 }
