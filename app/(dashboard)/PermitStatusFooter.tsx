@@ -1,3 +1,4 @@
+//app\(dashboard)\PermitStatusFooter.tsx
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -35,7 +36,7 @@ export default function PermitFooter({
      ----------------------------------------- */
   return (
     <TimelineFooterShell>
-      <div className="grid grid-cols-3 gap-6 w-full items-center">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full items-center">
         {/* COURSE */}
         <FooterBlock
           done={!!courseComplete}
@@ -85,10 +86,10 @@ function FooterBlock({
 }) {
   if (done) {
     return (
-      <div className="flex justify-center">
+      <div className="flex w-full justify-center">
         <div
           className="
-            w-full max-w-[220px] h-12
+            w-[80%] md:max-w-[220px] h-12
             flex items-center justify-center gap-2
             rounded-lg font-semibold
             bg-green-100 text-green-800
@@ -103,12 +104,12 @@ function FooterBlock({
   }
 
   return (
-    <div className="flex justify-center">
+    <div className="flex w-full justify-center">
       <button
         disabled={disabled}
         onClick={onClick}
         className={`
-          w-full max-w-[220px] h-12
+          w-[80%] md:max-w-[220px] h-12
           rounded-lg font-semibold transition
           ${
             disabled

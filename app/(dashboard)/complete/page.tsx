@@ -6,34 +6,40 @@ import PermitStatusFooter from "../PermitStatusFooter";
 
 export default function CompletePage() {
   const router = useRouter();
-
-  const {
-    loading,
-    courseComplete,
-    examPassed,
-    paid,
-  } = usePermitStatus();
+  const { loading, courseComplete, examPassed, paid } = usePermitStatus();
 
   return (
     <>
+      {/* BACKGROUND IMAGE */}
+      <div
+        className="fixed inset-0 z-0 bg-cover bg-center"
+        style={{ backgroundImage: "url('/drone-car.jpg')" }}
+      />
+
+      {/* COLOR OVERLAY (15%) */}
+      <div className="fixed inset-0 z-0 bg-[#001f40]/15 pointer-events-none" />
+
       {/* MAIN CONTENT */}
-      <main className="px-6 py-12 pb-[240px]">
-        <div className="min-h-[50vh] flex items-center justify-center">
-          <div className="relative bg-white border border-gray-200 shadow-sm rounded-xl p-10 w-full max-w-md text-center">
-
-            {/* Subtle background logo */}
-            <img
-              src="/logo.png"
-              alt=""
-              className="absolute inset-0 m-auto opacity-[0.04] w-[600px] pointer-events-none"
-            />
-
-            <h1 className="text-xl font-bold text-[#001f40] mb-4 relative z-10">
+      <main className="relative z-10 px-4 py-8 pb-[9.5rem] md:pb-[7rem]">
+        <div className="min-h-[55vh] flex items-center justify-center">
+          <div
+            className="
+              flex flex-col items-center text-center
+              w-full max-w-[min(96vw,446px)]
+              bg-[#001f40]/20
+              border border-white/40
+              rounded-2xl
+              p-6 sm:p-8 md:p-10
+              backdrop-blur-md
+              shadow-[0_12px_40px_rgba(0,31,64,0.25)]
+            "
+          >
+            <h1 className="text-white text-[1.45rem] sm:text-[1.6rem] font-semibold mb-4">
               Payment Complete
             </h1>
 
-            <div className="flex flex-col items-center gap-4 relative z-10">
-              {/* Success check */}
+            <div className="flex flex-col items-center gap-4">
+              {/* CHECK ICON */}
               <div className="flex items-center justify-center w-10 h-10 rounded-full bg-green-100">
                 <svg
                   className="h-6 w-6 text-green-600"
@@ -50,32 +56,21 @@ export default function CompletePage() {
                 </svg>
               </div>
 
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-white/90">
                 Your payment has been received successfully.
-              </p>
-
-              <p className="text-sm text-gray-600">
-                If you have not completed the course and exam, you must complete them
-                before we notify the Florida DMV.
-              </p>
-
-              <p className="text-sm text-gray-600">
-                If you have already completed the course and exam, your record will be
-                submitted to the Florida DMV within 1 business day.
               </p>
 
               <button
                 onClick={() => router.push("/my-permit")}
                 className="
                   mt-4
-                  w-full
-                  h-12
-                  bg-[#001f40]
-                  text-white
+                  w-full h-12
+                  bg-white
+                  text-[#001f40]
                   font-semibold
                   rounded-lg
-                  hover:bg-[#00356e]
                   transition
+                  hover:bg-white/90
                 "
               >
                 Return to My Permit
@@ -85,7 +80,7 @@ export default function CompletePage() {
         </div>
       </main>
 
-      {/* TIMELINE FOOTER — STATUS AWARE */}
+      {/* FOOTER */}
       {!loading && (
         <PermitStatusFooter
           courseComplete={courseComplete}

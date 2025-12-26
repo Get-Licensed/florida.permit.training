@@ -233,7 +233,7 @@ useEffect(() => {
                       <button
                         disabled={!courseComplete}
                         onClick={() => setStarted(true)}
-                        className={`w-[50%] h-12 rounded-lg font-semibold transition ${
+                        className={`w-[50%] h-12 rounded-xl font-semibold transition ${
                           courseComplete
                             ? "bg-[#001f40] text-white hover:bg-[#00356e]"
                             : "bg-gray-300 text-gray-600 cursor-not-allowed"
@@ -308,7 +308,7 @@ useEffect(() => {
                       <button
                         disabled={index === 0}
                         onClick={() => setIndex((i) => i - 1)}
-                        className="px-6 py-2 rounded-lg border border-[#001f40] text-[#001f40] bg-white font-semibold hover:bg-[#001f40]/5 disabled:opacity-40"
+                        className="px-6 py-2 rounded-xl border border-[#001f40] text-[#001f40] bg-white font-semibold hover:bg-[#001f40]/5 disabled:opacity-40"
                       >
                         Previous
                       </button>
@@ -317,7 +317,7 @@ useEffect(() => {
                         <button
                           disabled={!answers[questions[index].id]}
                           onClick={() => setIndex((i) => i + 1)}
-                          className="px-6 py-2 rounded-lg bg-[#001f40] text-white disabled:opacity-40"
+                          className="px-6 py-2 rounded-xl bg-[#001f40] text-white disabled:opacity-40"
                         >
                           Next
                         </button>

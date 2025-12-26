@@ -5,12 +5,10 @@ import { useRouter } from "next/navigation";
 import { requireAuth } from "@/utils/requireAuth";
 import { usePermitStatus } from "@/utils/usePermitStatus";
 import { supabase } from "@/utils/supabaseClient";
-import CourseTimeline from "@/components/CourseTimeline";
 import Loader from "@/components/loader";
 
 export default function MyPermitPage() {
   const router = useRouter();
-
   const [authChecked, setAuthChecked] = useState(false);
 
   const {
@@ -20,9 +18,7 @@ export default function MyPermitPage() {
     paid,
   } = usePermitStatus();
 
-  const [modules, setModules] = useState<any[]>([]);
-  const [maxCompletedIndex, setMaxCompletedIndex] = useState(0);
-
+  /* ───────── AUTH ───────── */
   useEffect(() => {
     async function run() {
       const user = await requireAuth(router);
@@ -31,40 +27,7 @@ export default function MyPermitPage() {
     run();
   }, [router]);
 
-  useEffect(() => {
-    async function loadProgress() {
-      const user = await supabase.auth.getUser();
-      if (!user.data.user) return;
-
-      const { data } = await supabase
-        .from("course_progress_modules")
-        .select("module_index")
-        .eq("user_id", user.data.user.id)
-        .eq("course_id", "FL_PERMIT_TRAINING")
-        .eq("completed", true);
-
-      if (!data?.length) {
-        setMaxCompletedIndex(0);
-        return;
-      }
-
-      const max = Math.max(...data.map((r) => r.module_index ?? 0));
-      setMaxCompletedIndex(max);
-    }
-
-    loadProgress();
-  }, []);
-
-  useEffect(() => {
-    supabase
-      .from("modules")
-      .select("*")
-      .order("sort_order", { ascending: true })
-      .then(({ data }) => {
-        if (data) setModules(data);
-      });
-  }, []);
-
+  /* ───────── REDIRECT WHEN FULLY DONE ───────── */
   const shouldRedirect =
     authChecked &&
     !statusLoading &&
@@ -83,116 +46,147 @@ export default function MyPermitPage() {
   }
 
   return (
-    <>
-      <main className="min-h-screen bg-white p-8 fade-in">
-        <h1 className="text-3xl font-bold text-[#001f40] mb-6 text-center">
-          Your Florida Learner’s Permit – Final Steps
-        </h1>
+    <main
+      className="
+        relative min-h-screen w-screen
+        flex flex-col
+        bg-cover bg-center bg-no-repeat
+      "
+      style={{ backgroundImage: "url('/drone-car.jpg')" }}
+    >
+      {/* DARK OVERLAY */}
+      <div className="absolute inset-0 bg-[#001f40]/15" />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          <div className="p-6 rounded-2xl shadow-md border bg-white flex flex-col justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-[#001f40] mb-3">
-                Step 1: Complete the Course
-              </h2>
-              <p className="text-gray-700 mb-4">
-                You’ve completed the required Florida Permit Training course.
-              </p>
-            </div>
+      {/* CONTENT */}
+      <section
+        className="
+          relative z-10 flex-1
+          flex items-center justify-center
+          px-4 sm:px-6
+          md:items-start
+          md:pt-[20vh]
+          pb-20
+        "
+      >
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto w-full">
+      {/* STEP 1 */}
+      <GlassCard>
+        <h2 className="text-lg font-semibold mb-3">
+          Step 1: Complete the 6-Hour Course
+        </h2>
+        {courseComplete ? (
+          <StatusDone label="Course Complete" />
+        ) : (
+          <PrimaryButton onClick={() => router.push("/course")}>
+            Continue Course
+          </PrimaryButton>
+        )}
+      </GlassCard>
 
-            <div className="mt-6">
-              {courseComplete ? (
-                <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
-                  Course Complete
-                </div>
-              ) : (
-                <button
-                  onClick={() => router.push("/course")}
-                  className="w-full h-12 bg-[#001f40] text-white rounded-lg font-semibold hover:bg-[#00356e]"
-                >
-                  Continue Course
-                </button>
-              )}
-            </div>
-          </div>
+      {/* STEP 2 */}
+      <GlassCard>
+        <h2 className="text-lg font-semibold mb-3">
+          Step 2: Take the Exam
+        </h2>
+        {examPassed ? (
+          <StatusDone label="Exam Passed" />
+        ) : (
+          <PrimaryButton
+            disabled={!courseComplete}
+            onClick={() => router.push("/exam")}
+          >
+            Start Exam
+          </PrimaryButton>
+        )}
+      </GlassCard>
 
-          <div className="p-6 rounded-2xl shadow-md border bg-white flex flex-col justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-[#001f40] mb-3">
-                Step 2: Take the Exam
-              </h2>
-              <p className="text-gray-700 mb-4">
-                Take the final <strong>40-question exam</strong>. A minimum score
-                of <strong>80%</strong> is required.
-              </p>
-            </div>
-
-            <div className="mt-6">
-              {examPassed ? (
-                <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
-                  Exam Passed
-                </div>
-              ) : (
-                <button
-                  disabled={!courseComplete}
-                  onClick={() => router.push("/exam")}
-                  className={`w-full h-12 rounded-lg font-semibold ${
-                    courseComplete
-                      ? "bg-[#001f40] text-white hover:bg-[#00356e]"
-                      : "bg-gray-300 text-gray-600 cursor-not-allowed"
-                  }`}
-                >
-                  Start Exam
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="p-6 rounded-2xl shadow-md border bg-white flex flex-col justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-[#001f40] mb-3">
-                Step 3: Pay & Visit the DMV
-              </h2>
-              <p className="text-gray-700 mb-4">
-                After passing the exam, complete payment and visit the DMV.
-              </p>
-            </div>
-
-            <div className="mt-6">
-              {!paid ? (
-                <button
-                  onClick={() => router.push("/payment")}
-                  className="w-full h-12 bg-[#ca5608] text-white rounded-lg font-semibold hover:bg-[#b24b06]"
-                >
-                  Complete Payment
-                </button>
-              ) : (
-                <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
-                  Payment Complete
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* STEP 3 */}
+      <GlassCard>
+        <h2 className="text-lg font-semibold mb-3">
+          Step 3: Pay & Visit the DMV
+        </h2>
+        {paid ? (
+          <StatusDone label="Payment Complete" />
+        ) : (
+          <AccentButton onClick={() => router.push("/payment")}>
+            Complete Payment
+          </AccentButton>
+        )}
+      </GlassCard>
+    </div>
+  </section>
       </main>
+    );
+  }
 
-      {modules.length > 0 && (
-        <CourseTimeline
-          modules={modules}
-          currentModuleIndex={maxCompletedIndex}
-          maxCompletedIndex={maxCompletedIndex}
-          currentLessonIndex={0}
-          elapsedSeconds={1}
-          totalModuleSeconds={1}
-          examPassed={examPassed}
-          paymentPaid={paid}
-          goToModule={(i: number) => {
-            if (i <= modules.length - 1) {
-              router.push(`/course?module=${i}`);
-            }
-          }}
-        />
-      )}
-    </>
+/* ───────────────────────────────────────────── */
+/* UI HELPERS                                    */
+/* ───────────────────────────────────────────── */
+
+function GlassCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="
+        flex flex-col justify-between
+        bg-[#001f40]/20
+        border border-white/40
+        rounded-2xl
+        p-6
+        backdrop-blur-md
+        shadow-[0_12px_40px_rgba(0,31,64,0.25)]
+        text-white
+      "
+    >
+      {children}
+    </div>
+  );
+}
+
+function StatusDone({ label }: { label: string }) {
+  return (
+    <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center font-semibold">
+      {label}
+    </div>
+  );
+}
+
+function PrimaryButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full h-12 rounded-lg font-semibold transition ${
+        disabled
+          ? "bg-white/30 text-white/50 cursor-not-allowed"
+          : "bg-white text-[#001f40] hover:bg-white/90"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AccentButton({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full h-12 bg-[#ff7c24] text-white rounded-lg font-semibold hover:bg-[#e86e1f]"
+    >
+      {children}
+    </button>
   );
 }
