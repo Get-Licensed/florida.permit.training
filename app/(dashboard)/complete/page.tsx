@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import PaymentFAQs from "@/components/PaymentFAQs";
 import { usePermitStatus } from "@/utils/usePermitStatus";
 import PermitStatusFooter from "../PermitStatusFooter";
 

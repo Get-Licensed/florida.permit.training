@@ -38,7 +38,15 @@ export default function StripeCheckoutForm() {
 
       <button
         disabled={!stripe || loading}
-        className="w-full bg-[#ca5608] text-white py-3 rounded font-medium disabled:opacity-60"
+        className="
+        w-full bg-[#ca5608] text-white 
+        text-[1.35em] sm:text-[1.4em] md:text-[1.45em]
+        font-semibold
+        px-5 sm:px-6 py-2.5 sm:py-3
+        rounded-xl
+        cursor-pointer
+        py-3 rounded font-medium disabled:opacity-60
+        "
       >
         {loading ? "Processing…" : "Pay & Submit"}
       </button>

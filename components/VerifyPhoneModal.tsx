@@ -122,7 +122,7 @@ function handleClose() {
    UI
 --------------------------------------------------------- */
 return (
-    <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center">
+    <div className="fixed inset-0 z-[200] bg-black/30 flex items-center justify-center">
       <div
         className="
         relative  
@@ -131,7 +131,7 @@ return (
           justify-center
           min-h-[min(46vh,450px)]
           max-w-[min(96vw,446px)]
-          bg-white/30
+          bg-white/50
           border border-white/70
           rounded-2xl
           p-5 sm:p-8
@@ -207,6 +207,7 @@ return (
                 w-full
                 bg-[#001f40]
                 text-white
+                text-[1.35em] sm:text-[1.4em] md:text-[1.45em]
                 py-2.5
                 rounded-xl
                 font-semibold
@@ -255,6 +256,7 @@ return (
               disabled={loading}
               className="
                 w-full
+                text-[1.35em] sm:text-[1.4em] md:text-[1.45em]
                 bg-[#001f40]
                 text-white
                 py-2.5

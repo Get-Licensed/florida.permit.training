@@ -851,7 +851,21 @@
         if (!tooltip) return;
 
         const { imgUrl, text, timeLabel } = previewDataRef.current;
-        tooltip.style.left = `${previewXRef.current}px`;
+        if (window.innerWidth < 400) {
+          tooltip.style.left = "50%";
+          tooltip.style.transform = "translateX(-50%)";
+        } else {
+        const isMobile = window.innerWidth < 400
+
+        if (isMobile) {
+          tooltip.style.left = "50%"
+          tooltip.style.transform = "translateX(-50%)"
+        } else {
+          tooltip.style.left = `${previewXRef.current}px`
+          tooltip.style.transform = "none"
+        }
+        tooltip.style.transform = "none";
+        }
         tooltip.style.opacity = tooltipVisibleRef.current ? "1" : "0";
         tooltip.style.pointerEvents = tooltipVisibleRef.current
           ? "auto"
@@ -2600,6 +2614,7 @@ useEffect(() => {
         }}
       >
         <SlideView currentImage={currentImage} />
+        
 
       <div
     className={`
@@ -2897,19 +2912,41 @@ useEffect(() => {
           Continue
         </button>
       </div>
-    
+  
+  {/* TIMELINE THUMBNAILS */}
+
 {showTimeline && (
-  <div
-    ref={hoverTooltipRef}
-    className="fixed z-[999999] pointer-events-none transition-opacity duration-60"
-    style={{
-      left: 0,
-      bottom: 240,
-      opacity: 0,
-    }}
-  >
-    <div className="relative w-[375px] h-[250px] rounded-lg backdrop-blur-md bg-white/60 text-[#001f40] shadow-md overflow-hidden flex flex-col">
       <div
+        ref={hoverTooltipRef}
+       className="
+  fixed z-[999999]
+  pointer-events-none
+  transition-opacity duration-60
+  px-2
+"
+
+        style={{
+          bottom: 240,
+          opacity: 0,
+        }}
+      >
+            <div
+        className="
+          relative
+          w-[375px]
+          max-w-[calc(100vw-16px)]
+          sm:max-w-none
+          h-[250px]
+          rounded-lg
+          backdrop-blur-md
+          bg-white/60
+          text-[#001f40]
+          shadow-md
+          overflow-hidden
+          flex flex-col
+        "
+      >
+        <div
         ref={hoverTooltipTimeRef}
         className="absolute top-2 left-2 px-2 py-[2px] rounded-full backdrop-blur-md bg-white/60 text-[#001f40] text-[11px] font-medium pointer-events-none"
         style={{ display: "none" }}
@@ -2918,7 +2955,10 @@ useEffect(() => {
       <img
         ref={hoverTooltipImageRef}
         alt=""
-        className="h-[165px] w-full object-cover rounded-lg"
+        className="h-[165px] w-full
+                   object-cover
+                   sm:object-cover
+                   rounded-lg"
         style={{ display: "none" }}
       />
       <div
@@ -3293,7 +3333,6 @@ function SlideView({ currentImage }: { currentImage: string | null }) {
 
     const img = new Image()
     img.onload = () => {
-      // only swap when loaded
       setSrc(currentImage)
     }
     img.src = currentImage
@@ -3348,7 +3387,7 @@ return (
     fixed bottom-0 left-0 right-0
     bg-white/83 backdrop-blur-sm
     border-t shadow-inner
-    h-[120px] sm:h-[135px] md:h-[150px]
+    h-[clamp(120px,12vw,150px)]
     z-50
   ">
     <div className="
@@ -3388,8 +3427,8 @@ function KaraokeCaption({
     <div
       className="
         w-full text-center
-        text-[0.72rem] sm:text-[0.85rem] md:text-[1.05rem] lg:text-[1.2rem]
-        leading-[17px] sm:leading-[20px] md:leading-[26px] lg:leading-[32px]
+        text-[clamp(0.75rem,2.4vw,1.2rem)]
+        leading-[clamp(18px,3.6vw,32px)]
         tracking-[-0.015em] sm:tracking-normal
         px-2 sm:px-3 md:px-5
         max-h-[88px] sm:max-h-[104px] md:max-h-[120px]

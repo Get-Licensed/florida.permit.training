@@ -7,8 +7,6 @@ import { Elements } from "@stripe/react-stripe-js";
 import { supabase } from "@/utils/supabaseClient";
 import { usePermitStatus } from "@/utils/usePermitStatus";
 import StripeCheckoutForm from "@/components/StripeCheckoutForm";
-import CourseTimeline from "@/components/CourseTimeline";
-import { canNavigateToModule } from "@/utils/courseNavigation";
 import Loader from "@/components/loader";
 
 
@@ -227,7 +225,7 @@ return (
               </h1>
               <h2 className="text-[2em] text-[#ca5608] font-bold">$59.95</h2>
               <p className="text-sm italic mb-3">One-time fee</p>
-              <p className="mb-6">
+              <p className="mb-2  ">
                 This one-time administrative payment allows us to securely
                 submit your completion record to the DMV.
               </p>
@@ -243,19 +241,6 @@ return (
         </Wrapper>
       </Elements>
     </div>
-
-    {/* FIXED TIMELINE (NON-SCROLLING) */}
-    <CourseTimeline
-      modules={modules}
-      currentModuleIndex={maxCompletedIndex}
-      maxCompletedIndex={maxCompletedIndex}
-      currentLessonIndex={0}
-      elapsedSeconds={1}
-      totalModuleSeconds={1}
-      examPassed={examPassed}
-      paymentPaid={paid}
-      goToModule={goToModule}
-    />
-  </div>
-);
-}
+    </div>
+    );
+  }

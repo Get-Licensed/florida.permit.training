@@ -404,25 +404,44 @@ const scheduleTooltipUpdate = useCallback(() => {
   hoverTooltipRafRef.current = requestAnimationFrame(() => {
     hoverTooltipRafRef.current = null;
 
-    // timeline may have auto-hidden between frames
-    if (!showTimeline) return;
-
     const tooltip = hoverTooltipRef.current;
     if (!tooltip) return;
 
+    // If timeline hid between frames, hard-hide tooltip
+    if (!showTimeline) {
+      tooltip.style.opacity = "0";
+      tooltip.style.pointerEvents = "none";
+      return;
+    }
+
     const { imgUrl, text, timeLabel } = previewDataRef.current;
+    const isMobile = window.innerWidth < 400;
 
-    // position + visibility
-    tooltip.style.left = `${previewXRef.current}px`;
-    tooltip.style.opacity = tooltipVisibleRef.current ? "1" : "0";
-    tooltip.style.pointerEvents = tooltipVisibleRef.current ? "auto" : "none";
+    /* ----------------------------------
+       POSITION
+    ---------------------------------- */
+    if (isMobile) {
+      tooltip.style.left = "50%";
+      tooltip.style.transform = "translateX(-50%)";
+    } else {
+      tooltip.style.left = `${previewXRef.current}px`;
+      tooltip.style.transform = "none";
+    }
 
-    // SAFE element refs
+    /* ----------------------------------
+       VISIBILITY
+    ---------------------------------- */
+    const visible = tooltipVisibleRef.current;
+    tooltip.style.opacity = visible ? "1" : "0";
+    tooltip.style.pointerEvents = visible ? "auto" : "none";
+
+    /* ----------------------------------
+       IMAGE
+    ---------------------------------- */
     const imgEl = hoverTooltipImageRef.current;
     const placeholderEl = hoverTooltipPlaceholderRef.current;
 
-      if (imgEl) {
-      // clear any previous onload handler to avoid late firing
+    if (imgEl) {
       imgEl.onload = null;
 
       if (imgUrl) {
@@ -440,24 +459,28 @@ const scheduleTooltipUpdate = useCallback(() => {
       }
     }
 
-
-    // placeholder
     if (placeholderEl) {
       placeholderEl.style.display = imgUrl ? "none" : "block";
     }
 
-    // text
+    /* ----------------------------------
+       TEXT
+    ---------------------------------- */
     if (hoverTooltipTextRef.current) {
       hoverTooltipTextRef.current.textContent = text ?? "";
     }
 
-    // time
+    /* ----------------------------------
+       TIME LABEL
+    ---------------------------------- */
     if (hoverTooltipTimeRef.current) {
       hoverTooltipTimeRef.current.textContent = timeLabel ?? "";
-      hoverTooltipTimeRef.current.style.display = timeLabel ? "block" : "none";
+      hoverTooltipTimeRef.current.style.display =
+        timeLabel ? "block" : "none";
     }
   });
 }, [showTimeline]);
+
 
     const handleHoverResolve = useCallback(
       (seconds: number, clientX: number) => {
@@ -866,7 +889,7 @@ function togglePlay() {
                     relative z-10
                     flex items-center justify-center
                     border border-[#001f40]/60 bg-white text-[#001f40]
-                    text-[16px] sm:text-[18px] md:text-[21px]
+                    text-[1.35em] sm:text-[1.4em] md:text-[1.45em]
                     font-semibold
                     px-5 sm:px-6 py-2.5 sm:py-3
                     rounded-xl
@@ -933,26 +956,47 @@ function togglePlay() {
       {showTimeline && (
         <div
           ref={hoverTooltipRef}
-          className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60"
+          className="promo-box fixed z-[999999] pointer-events-none transition-opacity duration-60 px-2"
           style={{
             left: 0,
             bottom: 115,
             opacity: 0,
           }}
         >
-          <div className="relative w-[375px] h-[250px] rounded-lg backdrop-blur-md bg-white/60 text-[#001f40] shadow-md overflow-hidden flex flex-col pointer-events-auto">
+            <div
+              className="
+                relative
+                w-[375px]
+                max-w-[calc(100vw-16px)]
+                sm:max-w-none
+                h-[250px]
+                rounded-lg
+                backdrop-blur-md
+                bg-white/60
+                text-[#001f40]
+                shadow-md
+                overflow-hidden
+                flex flex-col
+                pointer-events-auto
+              "
+            >
             <div
               ref={hoverTooltipTimeRef}
               className="absolute top-2 left-2 px-2 py-[2px] rounded-full backdrop-blur-md bg-white/60 text-[#001f40] text-[11px] font-medium pointer-events-none"
               style={{ display: "none" }}
             />
-
             <img
               ref={hoverTooltipImageRef}
               alt=""
-              className="h-[165px] w-full object-cover"
+              className="
+                h-[165px] w-full
+                object-cover
+                sm:object-cover
+                rounded-lg
+              "
               style={{ display: "none" }}
             />
+
             <div
               ref={hoverTooltipPlaceholderRef}
               className="
@@ -1116,7 +1160,7 @@ function TimelineHoverHint() {
       aria-hidden="true"
     >
       <div className="w-6 h-6 timeline-hint-orb" />
-            <style jsx global>{`
+            <style jsx>{`
       .timeline-hint-orb {
         position: relative;
         border-radius: 9999px;
@@ -1150,43 +1194,7 @@ function TimelineHoverHint() {
           opacity: 0;
         }
       }
-
-      /* -------------------------------------------------
-        GOOGLE BUTTON HOVER RING (FASTER)
-      -------------------------------------------------- */
-
-      .google-hover-ring {
-        pointer-events: none;
-        position: absolute;
-        inset: -6px;
-        border-radius: 14px;
-        border: 2px solid rgba(255, 255, 255, 0.9);
-        opacity: 0;
-        transform: scale(0.7);
-        z-index: 20; 
-      }
-
-      .group:hover .google-hover-ring {
-        animation: googleRingPulse .5s ease-out;
-        opacity: 1;
-      }
-
-      @keyframes googleRingPulse {
-        0% {
-          transform: scale(0.92);
-          opacity: 0;
-        }
-        40% {
-          transform: scale(1.05);
-          opacity: .2;
-        }
-        100% {
-          transform: scale(1.18);
-          opacity: 0;
-        }
-      }
       `}</style>
-
     </div>
   );
 }
