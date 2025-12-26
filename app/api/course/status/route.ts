@@ -1,3 +1,4 @@
+//app\api\course\status\route.ts
 import { createSupabaseServerClient } from "@/utils/supabaseServer";
 
 export async function GET(req: Request) {

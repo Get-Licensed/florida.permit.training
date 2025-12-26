@@ -1,3 +1,4 @@
+//app\api\payment\verify\route.ts
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/utils/supabaseAdmin";
 
