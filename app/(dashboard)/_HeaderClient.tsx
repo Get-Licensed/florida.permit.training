@@ -537,10 +537,11 @@ onClick={(e) => {
 {!isMobile && !mobileEditOpen && previewOpen && profile && (
   <div
     className="
-      absolute left-full top-1/2 -translate-y-1/2
-      ml-4 z-50
-      min-w-[720px] max-w-[768px]
-    "
+    absolute top-1/2 -translate-y-1/2
+    left-full ml-4 z-50
+    min-w-[720px]
+    max-w-[min(768px,calc(100vw-6rem))]
+  "
     onClick={(e) => e.stopPropagation()}
   >
     {/* GLASS PANEL */}
@@ -551,68 +552,68 @@ onClick={(e) => {
       "
     >
       <div
-  className="
-    flex items-center gap-6
-    text-sm text-[#001f40]
-    whitespace-nowrap
-  "
->
-<div className="flex items-center gap-6 flex-1 min-w-0">
+        className="
+          flex items-center gap-6
+          text-sm text-[#001f40]
+          whitespace-nowrap
+        "
+      >
+        <div className="flex items-center gap-6 flex-1 min-w-0">
+          {/* ADDRESS */}
+          <div
+            className="cursor-pointer hover:text-[#ca5608] truncate flex-1 min-w-0"
+            onClick={() => setEditField("address")}
+          >
+            {profile.street ? (
+              <>
+                {profile.street}
+                {profile.apt ? `, ${profile.apt}` : ""}{" "}
+                {profile.city}, {profile.state} {profile.zip}
+              </>
+            ) : (
+              <span className="text-gray-400 italic">Add address</span>
+            )}
+          </div>
 
-        {/* ADDRESS */}
-        <div
-          className="cursor-pointer hover:text-[#ca5608] truncate"
-          onClick={() => setEditField("address")}
-        >
-          {profile.street ? (
-            <>
-              {profile.street}
-              {profile.apt ? `, ${profile.apt}` : ""}{" "}
-              {profile.city}, {profile.state} {profile.zip}
-            </>
-          ) : (
-            <span className="text-gray-400 italic">Add address</span>
-          )}
-        </div>
+          {/* PHONE */}
+          <div
+            className="cursor-pointer hover:text-[#ca5608] text-center flex-shrink-0"
+            onClick={() => setEditField("phone")}
+          >
+            {profile.home_phone ? (
+              formatUSPhone(profile.home_phone)
+            ) : (
+              <span className="text-gray-400 italic">Add phone</span>
+            )}
+          </div>
 
-        {/* PHONE */}
-        <div
-          className="cursor-pointer hover:text-[#ca5608] text-center"
-          onClick={() => setEditField("phone")}
-        >
-          {profile.home_phone ? (
-            formatUSPhone(profile.home_phone)
-          ) : (
-            <span className="text-gray-400 italic">Add phone</span>
-          )}
-        </div>
-
-        {/* DOB */}
-        <div
-          className="cursor-pointer hover:text-[#ca5608] text-center"
-          onClick={() => setEditField("dob")}
-        >
-          {profile.dob ? (
-            <>
-              <span className="font-semibold mr-1">Birthday:</span>
-              {formatDOB(profile.dob)}
-            </>
-          ) : (
-            <span className="text-gray-400 italic">Add birthday</span>
-          )}
+          {/* DOB */}
+          <div
+            className="cursor-pointer hover:text-[#ca5608] text-center flex-shrink-0"
+            onClick={() => setEditField("dob")}
+          >
+            {profile.dob ? (
+              <>
+                <span className="font-semibold mr-1">Birthday:</span>
+                {formatDOB(profile.dob)}
+              </>
+            ) : (
+              <span className="text-gray-400 italic">Add birthday</span>
+            )}
+          </div>
         </div>
 
         {/* LOG OUT — ALWAYS RIGHT */}
         <button
           className="
-                    ml-auto
-                    font-semibold
-                    text-[#001f40]
-                    hover:text-[#ca5608]
-                    transition
-                    flex-shrink-0
-                  "
-            onClick={async () => {
+            ml-auto
+            font-semibold
+            text-[#001f40]
+            hover:text-[#ca5608]
+            transition
+            flex-shrink-0
+          "
+          onClick={async () => {
             setPreviewOpen(false);
             await supabase.auth.signOut();
             router.replace("/");
@@ -623,7 +624,6 @@ onClick={(e) => {
       </div>
     </div>
   </div>
-</div>
 )}
     </div>
    </div>
@@ -737,6 +737,27 @@ onClick={(e) => {
             <h2 className="text-xl font-bold text-[#001f40] mb-4">
               Edit Profile
             </h2>
+            <button
+            className="
+              text-sm
+              text-[#001f40]
+              underline underline-offset-2 decoration-[#001f40]/60 hover:decoration-[#ca5608]
+              hover:text-[#ca5608]
+              transition
+              mb-3
+              text-left
+              -translate-y-[4px]
+            "
+            onClick={async () => {
+              setMobileEditOpen(false);
+              await supabase.auth.signOut();
+              router.replace("/");
+            }}
+          >
+            Log Out
+          </button>
+
+
       <div className="flex flex-col gap-3">
         <input
           className={INPUT_CLASS}
