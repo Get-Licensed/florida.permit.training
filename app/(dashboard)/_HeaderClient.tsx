@@ -52,7 +52,7 @@ export default function HeaderClient() {
   const [mobileEditOpen, setMobileEditOpen] = useState(false);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => setIsMobile(window.innerWidth < 900);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -421,7 +421,7 @@ async function cropToSquare(file: File): Promise<Blob> {
   }}
 >
 
-    <div className="flex items-baseline h-16 px-3 py-5 w-full gap-6 pl-[80px]">
+<div className="flex items-center h-16 px-6 pl-[90px] w-full">
 
   {/* LOGO (absolute, baseline-safe) */}
 <div
@@ -476,10 +476,10 @@ async function cropToSquare(file: File): Promise<Blob> {
 
 </div>
   
-  <div className="flex items-baseline h-16 px-3 pl-[26px] gap-6 w-full">
+<div className="flex items-center h-16 px-3 pl-[16px] gap-6 w-full">
     {/* NAME + INLINE PREVIEW */}
-    <div ref={nameRef} className="relative select-none">
-<div className="flex items-center gap-2">
+<div ref={nameRef} className="select-none flex items-center gap-2 flex-shrink-0">
+<div className="flex items-center gap-1">
 <div
   className={`
     text-[#001f40] text-lg font-semibold truncate max-w-[260px]
@@ -498,6 +498,8 @@ onClick={(e) => {
 >
   {fullName}
 </div>
+<div className="flex-1" />
+
   {/* EDIT / CLOSE ICON */}
   <div
     className="
@@ -537,10 +539,13 @@ onClick={(e) => {
 {!isMobile && !mobileEditOpen && previewOpen && profile && (
   <div
     className="
-    absolute top-1/2 -translate-y-1/2
-    left-full ml-4 z-50
+    absolute
+    right-4
+    top-1/2
+    -translate-y-1/2
+    z-50
     min-w-[720px]
-    max-w-[min(768px,calc(100vw-6rem))]
+    max-w-[min(900px,calc(100vw-2rem))]
   "
     onClick={(e) => e.stopPropagation()}
   >
@@ -553,16 +558,21 @@ onClick={(e) => {
     >
       <div
         className="
-          flex items-center gap-6
-          text-sm text-[#001f40]
-          whitespace-nowrap
+           flex items-center gap-10
+           text-sm text-[#001f40]
+           whitespace-nowrap
         "
       >
-        <div className="flex items-center gap-6 flex-1 min-w-0">
+<div className="flex items-center gap-6 justify-end flex-1 min-w-0">
           {/* ADDRESS */}
           <div
-            className="cursor-pointer hover:text-[#ca5608] truncate flex-1 min-w-0"
-            onClick={() => setEditField("address")}
+           className="
+              cursor-pointer hover:text-[#ca5608]
+              truncate
+              max-w-[500px]
+              [@media(max-width:1000px)]:max-w-[300px]
+            "
+              onClick={() => setEditField("address")}
           >
             {profile.street ? (
               <>
@@ -607,6 +617,7 @@ onClick={(e) => {
         <button
           className="
             ml-auto
+            pl-6
             font-semibold
             text-[#001f40]
             hover:text-[#ca5608]
@@ -619,7 +630,7 @@ onClick={(e) => {
             router.replace("/");
           }}
         >
-          Log Out!
+          Log Out
         </button>
       </div>
     </div>
