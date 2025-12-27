@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 
 type Props = {
@@ -8,121 +8,178 @@ type Props = {
   onComplete: () => void;
 };
 
+type Step = "loading" | "enter-phone" | "enter-code";
+
 export default function VerifyPhoneModal({ userId, onComplete }: Props) {
+  const [step, setStep] = useState<Step>("loading");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<"enter-phone" | "enter-code">("enter-phone");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /* ---------------------------------------------------------
-     FORM SUBMIT (ENTER HANDLER)
+     INITIAL LOAD — CHECK FOR SAVED PHONE
+  --------------------------------------------------------- */
+useEffect(() => {
+  let mounted = true;
+
+  async function init() {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("home_phone")
+      .eq("id", userId)
+      .single();
+
+    if (!mounted) return;
+
+    if (error || !data?.home_phone) {
+      setStep("enter-phone");
+      return;
+    }
+
+    setPhone(data.home_phone);
+    setStep("enter-code");
+    await sendCode(data.home_phone);
+  }
+
+  init();
+
+  return () => {
+    mounted = false;
+  };
+}, [userId]);
+
+  /* ---------------------------------------------------------
+     FORM SUBMIT
   --------------------------------------------------------- */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (loading) return;
 
     if (step === "enter-phone") {
-      await sendCode();
-    } else {
+      const normalized = normalizePhone(phone);
+      if (!normalized) {
+        setError("Invalid phone number");
+        return;
+      }
+
+      setPhone(normalized);
+      setStep("enter-code");
+      await sendCode(normalized);
+      return;
+    }
+
+    if (step === "enter-code") {
       await verifyCode();
     }
   }
 
   /* ---------------------------------------------------------
-     SEND SMS CODE
+     SEND CODE
   --------------------------------------------------------- */
-  async function sendCode() {
-    setLoading(true);
-    setError(null);
+  async function sendCode(targetPhone: string) {
+    try {
+      setLoading(true);
+      setError(null);
 
-    const normalized = normalizePhone(phone);
-    if (!normalized) {
-      setError("Invalid phone number");
+      const res = await fetch("/api/2fa/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: targetPhone }),
+      });
+
+      if (!res.ok) {
+        throw new Error();
+      }
+    } catch {
+      setError("Failed to send verification code");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const res = await fetch("/api/2fa/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: normalized }),
-    });
-
-    const text = await res.text();
-    const json = text ? JSON.parse(text) : {};
-
-    if (!res.ok) {
-      setError(json.error || "Failed to send code");
-      setLoading(false);
-      return;
-    }
-
-    setStep("enter-code");
-    setLoading(false);
   }
 
+  /* ---------------------------------------------------------
+     VERIFY CODE
+  --------------------------------------------------------- */
 async function verifyCode() {
-  if (code.length !== 6) {
-    setError("Enter the 6-digit code");
+  if (code.length < 4) {
+    setError("Enter the verification code");
     return;
   }
 
-  setLoading(true);
-  setError(null);
-
-  const normalized = normalizePhone(phone);
-
-  let res: Response;
   try {
-    res = await fetch("/api/2fa/verify", {
+    setLoading(true);
+    setError(null);
+
+    const res = await fetch("/api/2fa/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        phone: normalized,
+        phone,
         code,
         user_id: userId,
       }),
     });
+
+    const json = await res.json();
+
+    if (!json.success) {
+      setError("Invalid verification code");
+      return;
+    }
+
+    // ✅ SAVE VERIFIED PHONE NUMBER
+    await supabase
+      .from("profiles")
+      .update({ home_phone: phone })
+      .eq("id", userId);
+
+    // ✅ MARK SESSION VERIFIED
+    await supabase.auth.updateUser({
+      data: { session_2fa_verified: true },
+    });
+
+    onComplete();
   } catch {
-    setError("Network error. Please try again.");
+    setError("Verification failed");
+  } finally {
     setLoading(false);
-    return;
   }
-
-  let json: any = {};
-  try {
-    const text = await res.text();
-    json = text ? JSON.parse(text) : {};
-  } catch {
-    setError("Invalid server response.");
-    setLoading(false);
-    return;
-  }
-
-  if (!res.ok || !json.success) {
-    setError(json.error || "Invalid verification code");
-    setLoading(false);
-    return;
-  }
-
-  await supabase.auth.updateUser({
-    data: { session_2fa_verified: true },
-  });
-
-  onComplete();
 }
 
-function handleClose() {
-  // simply close the modal without verifying
-  onComplete();
-}
+  /* ---------------------------------------------------------
+     UI
+  --------------------------------------------------------- */
+  if (step === "loading") {
+    return (
+   <div className="fixed inset-0 z-[200] bg-black/30 flex items-center justify-center">
+      <div
+        className="
+        relative  
+          flex flex-col items-center justify-center text-center
+          w-full
+          min-h-[min(46vh,450px)]
+          max-w-[min(96vw,446px)]
+          text-[1em] sm:text-[1.2em] md:text-[1.2em]
+          bg-white/50
+          border border-white/70
+          rounded-2xl
+          text-lg
+          text-[#001f40]
+          p-5 sm:p-8
+          shadow-[0_12px_40px_rgba(0,31,64,0.25)]
+          backdrop-blur-md
+          -translate-y-[50px] sm:-translate-y-[70px] md:-translate-y-[80px]
+        "
+      >
+        Checking your account…
+        </div>
+      </div>
+    );
+  }
 
-/* ---------------------------------------------------------
-   UI
---------------------------------------------------------- */
-return (
-    <div className="fixed inset-0 z-[200] bg-black/30 flex items-center justify-center">
+  return (
+   <div className="fixed inset-0 z-[200] bg-black/30 flex items-center justify-center">
       <div
         className="
         relative  
@@ -131,181 +188,114 @@ return (
           justify-center
           min-h-[min(46vh,450px)]
           max-w-[min(96vw,446px)]
-          bg-white/50
+          bg-white/70
           border border-white/70
           rounded-2xl
           p-5 sm:p-8
           shadow-[0_12px_40px_rgba(0,31,64,0.25)]
           backdrop-blur-md
-          -translate-y-[60px] sm:-translate-y-[70px] md:-translate-y-[80px]
+          -translate-y-[50px] sm:-translate-y-[70px] md:-translate-y-[80px]
         "
-      >
+      >        <h2 className="text-center text-[#001f40] text-[1.35em] sm:text-[1.4em] md:text-[1.75em] font-semibold mb-4">
+          Verify It’s You
+        </h2>
 
-      <button
-        type="button"
-        onClick={onComplete}
-        aria-label="Close"
-        className="
-          absolute top-3 right-3
-          w-9 h-9
-          flex items-center justify-center
-          rounded-full
-          text-[#001f40]
-          hover:bg-[#001f40]/10
-          transition
-          focus:outline-none
-        "
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="w-5 h-5"
-          stroke="currentColor"
-          strokeWidth="2"
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
+        <form onSubmit={handleSubmit}>
+{step === "enter-phone" && (
+  <input
+    type="tel"
+    placeholder="Phone Number"
+    className="
+      w-full
+      mb-4
+      px-4
+      py-2.5
+      rounded-xl
+      bg-white/80
+      border border-[#001f40]/30
+      text-[#001f40]
+      placeholder:text-[#001f40]/40
+      outline-none
+      focus:border-[#001f40]
+    "
+    value={phone}
+    onChange={(e) => setPhone(formatPhone(e.target.value))}
+    autoFocus
+  />
+)}
 
+          {step === "enter-code" && (
+            <>
+              <p className="text-md text-center mb-3 text-[#001f40]">
+                We sent a code to {maskPhone(phone)}
+              </p>
 
-      <h2 className="text-[#001f40] text-[1.45rem] sm:text-[1.65rem] md:text-[1.75rem] font-semibold mb-4 text-center">
-        Verify It’s You
-      </h2>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="••••"
+                className="
+                  w-full
+                  mb-4
+                  px-4
+                  py-2.5
+                  text-center
+                  tracking-widest
+                  rounded-xl
+                  text-xl
+                  bg-white/80
+                  border border-[#001f40]/30
+                  text-[#001f40]
+                  placeholder:text-[#001f40]/40
+                  outline-none
+                  focus:border-[#001f40]
+                "
+                value={code}
+                onChange={(e) =>
+                  setCode(e.target.value.replace(/\D/g, ""))
+                }
+                autoFocus
+              />
+            </>
+          )}
 
-      <form onSubmit={handleSubmit} className="w-full">
-        {/* ENTER PHONE */}
-        {step === "enter-phone" && (
-          <>
-            <input
-              type="tel"
-              placeholder="Phone Number"
-              className="
-                w-full
-                bg-white/80
-                border border-[#001f40]/30
-                px-4 py-2.5
-                rounded-xl
-                mb-4
-                text-[#001f40]
-                placeholder:text-[#001f40]/40
-                outline-none
-                focus:border-[#001f40]
-              "
-              value={phone}
-              onChange={(e) => setPhone(formatPhone(e.target.value))}
-              maxLength={14}
-              autoFocus
-            />
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-[#001f40] text-white py-2.5 rounded-xl font-semibold disabled:opacity-60"
+          >
+            {loading ? "Please wait…" : step === "enter-phone" ? "Send Code" : "Verify"}
+          </button>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="
-                w-full
-                bg-[#001f40]
-                text-white
-                text-[1.35em] sm:text-[1.4em] md:text-[1.45em]
-                py-2.5
-                rounded-xl
-                font-semibold
-                transition
-                hover:bg-[#001f40]/90
-                disabled:opacity-60
-              "
-            >
-              {loading ? "Sending…" : "Send Code"}
-            </button>
-          </>
-        )}
-
-        {/* ENTER CODE */}
-        {step === "enter-code" && (
-          <>
-            <input
-              type="text"
-              maxLength={6}
-              placeholder="• • • • • •"
-              inputMode="numeric"
-              className="
-                w-full
-                bg-white/80
-                border border-[#001f40]/30
-                px-4 py-2.5
-                rounded-xl
-                mb-4
-                text-[#001f40]
-                placeholder:text-[#001f40]/40
-                text-center
-                text-xl
-                tracking-widest
-                outline-none
-                focus:border-[#001f40]
-              "
-              value={code}
-              onChange={(e) =>
-                setCode(e.target.value.replace(/\D/g, ""))
-              }
-              autoFocus
-            />
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="
-                w-full
-                text-[1.35em] sm:text-[1.4em] md:text-[1.45em]
-                bg-[#001f40]
-                text-white
-                py-2.5
-                rounded-xl
-                font-semibold
-                transition
-                hover:bg-[#001f40]/90
-                disabled:opacity-60
-              "
-            >
-              {loading ? "Verifying…" : "Verify"}
-            </button>
-          </>
-        )}
-
-        {error && (
-          <p className="text-red-600 text-sm mt-4 text-center">
-            {error}
-          </p>
-        )}
-      </form>
+          {error && (
+            <p className="text-red-600 text-sm mt-4 text-center">{error}</p>
+          )}
+        </form>
+      </div>
     </div>
-  </div>
-);
+  );
 }
+
 /* ---------------------------------------------------------
    HELPERS
 --------------------------------------------------------- */
 function normalizePhone(input: string): string | null {
-  if (!input) return null;
-
-  const digits = input.replace(/[^\d]/g, "");
-
+  const digits = input.replace(/\D/g, "");
   if (digits.length === 10) return "+1" + digits;
   if (digits.length === 11 && digits.startsWith("1")) return "+" + digits;
-
   return null;
 }
 
 function formatPhone(input: string): string {
-  const digits = input.replace(/\D/g, "").substring(0, 10);
-  const len = digits.length;
+  const digits = input.replace(/\D/g, "").slice(0, 10);
+  if (digits.length < 4) return digits;
+  if (digits.length < 7)
+    return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
 
-  if (len === 0) return "";
-  if (len < 4) return `(${digits}`;
-  if (len < 7) return `(${digits.substring(0, 3)}) ${digits.substring(3)}`;
-
-  return `(${digits.substring(0, 3)}) ${digits.substring(
-    3,
-    6
-  )}-${digits.substring(6)}`;
+function maskPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  return `(${digits.slice(1, 4)}) •••-${digits.slice(-4)}`;
 }

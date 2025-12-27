@@ -1,4 +1,4 @@
-// app\(dashboard)\_HeaderClient.tsx
+// app\(dashboard)\_HeaderClient2.tsx
 // deno-lint-ignore-file no-sloppy-imports
 "use client";
 
@@ -8,10 +8,7 @@ import { supabase } from "@/utils/supabaseClient";
 import _Link from "next/link";
 import Cropper from "react-easy-crop";
 
-const INPUT_CLASS =
-  "appearance-none w-full border border-[#001f40] px-3 py-2.5 rounded-md bg-white text-[#001f40] placeholder:text-[#001f40]/50 focus:outline-none focus:ring-2 focus:ring-[#001f40]/30";
-
-type EditField = "name" | "address" | "phone" | "dob" | null;
+type EditField = "address" | "phone" | "dob" | null;
 type ProfileRow = {
   id: string;
   full_name: string | null;
@@ -26,7 +23,7 @@ type ProfileRow = {
   dob: string | null;
 };
 
-export default function HeaderClient() {
+export default function PlayerHeader() {
   const router = useRouter();
   const nameRef = useRef<HTMLDivElement | null>(null);
 
@@ -37,16 +34,6 @@ export default function HeaderClient() {
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [editField, setEditField] = useState<EditField>(null);
-  const [isMobile, setIsMobile] = useState(false);
-  const [mobileEditOpen, setMobileEditOpen] = useState(false);
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
 
   const [saving, setSaving] = useState(false);
 
@@ -55,9 +42,6 @@ export default function HeaderClient() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const GLASS_MODAL =
-  "bg-white/60 backdrop-blur-md border border-white/40 rounded-2xl shadow-[0_12px_40px_rgba(0,31,64,0.25)]";
 
 
 async function getCroppedCompressedBlob(
@@ -151,29 +135,41 @@ function AvatarCropper({
         className="w-full mt-4"
       />
 
-<div className="flex justify-end gap-3 mt-6">
-  <button
-    type="button"
-    className="px-4 py-2 rounded-md border border-[#001f40]/30 text-[#001f40] hover:bg-[#001f40]/5 transition"
-    onClick={() => {
-      setDraft(profile);
-      setMobileEditOpen(false);
-    }}
-  >
-    Cancel
-  </button>
+      <div className="flex justify-end gap-3 mt-6">
+        <button
+          className="
+            px-4 py-2 rounded-md
+            border border-gray-300
+            bg-white text-[#001f40]
+            hover:bg-gray-100 transition
+          "
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
 
-  <button
-    type="button"
-    className="px-4 py-2 rounded-md bg-[#ca5608] text-white font-semibold hover:bg-[#a14505] transition"
-    onClick={async () => {
-      await submitProfile();
-      setMobileEditOpen(false);
-    }}
-  >
-    Save
-  </button>
-</div>
+        <button
+          disabled={uploading || !croppedAreaPixels}
+          className={`
+            px-4 py-2 rounded-md
+            flex items-center gap-2
+            bg-[#ca5608] text-white
+            hover:bg-[#a14505]
+            transition
+            ${uploading ? "opacity-80 cursor-not-allowed" : ""}
+          `}
+          onClick={async () => {
+            const blob = await getCroppedCompressedBlob(
+              URL.createObjectURL(file),
+              croppedAreaPixels
+            );
+            onSave(blob);
+          }}
+        >
+          {uploading ? "Saving…" : "Save Photo"}
+        </button>
+
+      </div>
     </>
   );
 }
@@ -233,7 +229,7 @@ useEffect(() => {
     }
 
     // 👇 EXISTING STATE SETTERS (unchanged)
-    setFullName(data.full_name || data.preferred_name || "Edit Profile");
+    setFullName(data.full_name || data.preferred_name || "Your Profile");
     setProfile(data);
     setDraft(data);
   }
@@ -244,24 +240,8 @@ useEffect(() => {
 async function submitProfile() {
   if (saving) return;
   setSaving(true);
-
   try {
-    const cleanFullName =
-      draft.full_name
-        ?.replace(/\s+/g, " ")
-        .trim() || null;
-
-    await upsertProfile({
-      ...draft,
-      full_name: cleanFullName,
-    });
-
-    setFullName(
-      cleanFullName ||
-      draft.preferred_name ||
-      "Your Profile"
-    );
-
+    await upsertProfile(draft);
     setEditField(null);
   } finally {
     setSaving(false);
@@ -277,6 +257,7 @@ function handleDrop(e: React.DragEvent) {
 
   setAvatarFile(file);
 }
+
 
 async function cropToSquare(file: File): Promise<Blob> {
   const img = new Image();
@@ -371,7 +352,19 @@ async function cropToSquare(file: File): Promise<Blob> {
     return (
     <>
     
-    <header className="relative h-16 flex items-center overflow-visible"
+<header
+  className="
+    fixed
+    top-0 left-0 right-0
+    z-[500]
+    h-16
+    flex
+    items-center
+    bg-transparent
+    pointer-events-auto
+    text-white
+    [&_*]:text-white
+  "
       onClick={() => {
         setPreviewOpen(v => {
           const next = !v;
@@ -442,24 +435,16 @@ async function cropToSquare(file: File): Promise<Blob> {
     {/* NAME + INLINE PREVIEW */}
     <div ref={nameRef} className="relative select-none">
 <div className="flex items-center gap-2">
-<div
-  className={`
-    text-[#001f40] text-lg font-semibold truncate max-w-[260px]
-    transition-all duration-500 ease-out
-    cursor-pointer hover:text-[#ca5608]
-    ${namePulse ? "scale-105 text-[#ca5608]" : "scale-100"}
-  `}
-onClick={(e) => {
-  e.stopPropagation();
-  if (isMobile) {
-    setMobileEditOpen(true);
-  } else {
-    setEditField("name");
-  }
-}}
->
-  {fullName}
-</div>
+  <div
+    className={`
+      text-[#001f40] text-lg font-semibold truncate max-w-[260px]
+      transition-all duration-500 ease-out
+      ${namePulse ? "scale-105 text-[#ca5608]" : "scale-100"}
+    `}
+  >
+    {fullName}
+  </div>
+
   {/* EDIT / CLOSE ICON */}
   <div
     className="
@@ -500,94 +485,90 @@ onClick={(e) => {
   <div
     className="
       absolute left-full top-1/2 -translate-y-1/2
-      ml-6 z-50
+      ml-6 px-4 py-3 z-50
       min-w-[1120px]
       translate-x-[15%]
+
     "
     onClick={(e) => e.stopPropagation()}
   >
-    {/* GLASS PANEL */}
-    <div
-      className="
-        bg-white/60
-        backdrop-blur-md
-        border border-white/40
-        rounded-2xl
-        shadow-[0_12px_40px_rgba(0,31,64,0.25)]
-        px-6 py-4
-      "
-    >
+<div
+  className="
+    grid
+    grid-cols-4
+    gap-x-16
+    gap-y-2
+    pr-4
+    w-full
+    bg-transparent
+    text-white
+    items-end
+  "
+>
+      {/* ADDRESS */}
       <div
-        className="
-          grid
-          grid-cols-[1.4fr_1fr_1fr_1fr_auto]
-          gap-8
-          text-sm text-[#001f40]
-          whitespace-nowrap
-          w-full
-        "
+        className="text-md cursor-pointer hover:text-[#ca5608] truncate"
+        onClick={() => setEditField('address')}
       >
-        {/* ADDRESS */}
-        <div
-          className="cursor-pointer hover:text-[#ca5608] truncate"
-          onClick={() => setEditField("address")}
-        >
-          {profile.street ? (
-            <>
-              {profile.street}
-              {profile.apt ? `, ${profile.apt}` : ""}{" "}
-              {profile.city}, {profile.state} {profile.zip}
-            </>
-          ) : (
-            <span className="text-gray-400 italic">Add address</span>
-          )}
-        </div>
+        {profile.street ? (
+          <>
+            {profile.street}
+            {profile.apt ? `, ${profile.apt}` : ''}{' '}
+            {profile.city}, {profile.state} {profile.zip}
+          </>
+        ) : (
+          <span className="text-md text-gray-400 italic">Add address</span>
+        )}
+      </div>
 
-        {/* PHONE */}
-        <div
-          className="cursor-pointer hover:text-[#ca5608] text-center"
-          onClick={() => setEditField("phone")}
-        >
+      {/* PHONE */}
+      <div
+        className="cursor-pointer hover:text-[#ca5608] flex justify-center"
+        onClick={() => setEditField('phone')}
+      >
+        <div className="text-md text-center w-full">
           {profile.home_phone ? (
             formatUSPhone(profile.home_phone)
           ) : (
-            <span className="text-gray-400 italic">Add phone</span>
+            <span className="text-md text-gray-400 italic">Add phone</span>
           )}
         </div>
+      </div>
 
-        {/* DOB */}
-        <div
-          className="cursor-pointer hover:text-[#ca5608] text-center"
-          onClick={() => setEditField("dob")}
-        >
+      {/* DOB */}
+      <div
+        className="cursor-pointer hover:text-[#ca5608] flex justify-center"
+        onClick={() => setEditField('dob')}
+      >
+        <div className="text-md text-center w-full">
           {profile.dob ? (
             <>
-              <span className="font-semibold mr-1">Birthday:</span>
+              <span className="text-md font-semibold mr-1">Birthday:</span>
               {formatDOB(profile.dob)}
             </>
           ) : (
-            <span className="text-gray-400 italic">Add birthday</span>
+            <span className="text-md text-gray-400 italic">Add birthday</span>
           )}
         </div>
-
-        {/* LOG OUT */}
-        <button
-          className="
-            font-semibold
-            text-[#001f40]
-            hover:text-[#ca5608]
-            transition
-            justify-self-end
-          "
-          onClick={async () => {
-            setPreviewOpen(false);
-            await supabase.auth.signOut();
-            router.replace("/");
-          }}
-        >
-          Log Out
-        </button>
       </div>
+
+      {/* LOG OUT */}
+      <button
+        className="
+          text-md font-semibold
+          text-[#001f40]
+          hover:text-[#ca5608]
+          transition
+          justify-self-end
+        "
+        onClick={async () => {
+          setPreviewOpen(false);
+          await supabase.auth.signOut();
+          router.replace('/');
+        }}
+      >
+        Log Out
+      </button>
     </div>
   </div>
 )}
@@ -596,7 +577,9 @@ onClick={(e) => {
       </div>
   </div>
         </header>
-<div className="h-px bg-gray-200 shadow-sm w-full" />
+        {/* REMOVE or gate this 
+
+<div className="h-px bg-gray-200 shadow-sm w-full" />*/}
 
 {/* AVATAR UPLOAD MODAL */}
 {avatarModalOpen && (
@@ -605,7 +588,7 @@ onClick={(e) => {
     onClick={() => setAvatarModalOpen(false)}
   >
     <div
-      className={`${GLASS_MODAL} w-[360px] max-w-[90vw] p-6`}
+      className="bg-white rounded-xl shadow-xl w-[360px] max-w-[90vw] p-6"
       onClick={(e) => e.stopPropagation()}
     >
       <h2 className="text-xl font-bold text-[#001f40] mb-4">
@@ -671,182 +654,25 @@ onClick={(e) => {
 )}
 
         {/* MODAL */}
-
-        {mobileEditOpen && (
-        <div
-          className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center"
-          onClick={() => setMobileEditOpen(false)}
-        >
-          <div
-            className={`${GLASS_MODAL} w-[92vw] max-h-[90vh] overflow-y-auto p-5`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-xl font-bold text-[#001f40] mb-4">
-              Edit Profile
-            </h2>
-      <div className="flex flex-col gap-3">
-        <input
-          className={INPUT_CLASS}
-          placeholder="Full name"
-          value={draft.full_name || ""}
-          onChange={(e) =>
-            setDraft({ ...draft, full_name: e.target.value })
-          }
-        />
-
-        <input
-          className={INPUT_CLASS}
-          placeholder="Preferred name"
-          value={draft.preferred_name || ""}
-          onChange={(e) =>
-            setDraft({ ...draft, preferred_name: e.target.value })
-          }
-        />
-
-        <input
-          className={INPUT_CLASS}
-          placeholder="Street"
-          value={draft.street || ""}
-          onChange={(e) =>
-            setDraft({ ...draft, street: e.target.value })
-          }
-        />
-
-        <input
-          className={INPUT_CLASS}
-          placeholder="Apt / Unit"
-          value={draft.apt || ""}
-          onChange={(e) =>
-            setDraft({ ...draft, apt: e.target.value })
-          }
-        />
-
-        <input
-          className={INPUT_CLASS}
-          placeholder="City"
-          value={draft.city || ""}
-          onChange={(e) =>
-            setDraft({ ...draft, city: e.target.value })
-          }
-        />
-
-        <input
-          className={INPUT_CLASS}
-          placeholder="State"
-          value={draft.state || ""}
-          onChange={(e) =>
-            setDraft({ ...draft, state: e.target.value })
-          }
-        />
-
-        <input
-          className={INPUT_CLASS}
-          placeholder="ZIP"
-          value={draft.zip || ""}
-          onChange={(e) =>
-            setDraft({ ...draft, zip: e.target.value })
-          }
-        />
-
-        <input
-          className={INPUT_CLASS}
-          placeholder="Phone"
-          value={formatUSPhone(draft.home_phone)}
-          onChange={(e) =>
-            setDraft({
-              ...draft,
-              home_phone: e.target.value.replace(/\D/g, ""),
-            })
-          }
-        />
-
-        <input
-          type="date"
-          className={INPUT_CLASS}
-          value={draft.dob || ""}
-          onChange={(e) =>
-            setDraft({ ...draft, dob: e.target.value })
-          }
-        />
-      </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                className="px-4 py-2 border rounded"
-                onClick={() => {
-                  setDraft(profile);
-                  setMobileEditOpen(false);
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                className="px-4 py-2 bg-[#ca5608] text-white rounded"
-                onClick={async () => {
-                  await submitProfile();
-                  setMobileEditOpen(false);
-                }}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
         {editField && (
           <div
             className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center"
             onClick={() => setEditField(null)}
           >
-              <div
-            className={`${GLASS_MODAL} w-[420px] max-w-[90vw] p-6`}
-            onClick={(e) => e.stopPropagation()}
-          >
-              <h2 className="text-xl font-bold text-[#001f40] mb-4 place-holdertext-[#001f40]/50">
-                Edit {editField === "dob" ? "birthday" : editField}
+            <div
+              className="bg-white rounded-xl shadow-xl w-[420px] max-w-[90vw] p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-xl font-bold text-[#001f40] mb-4">
+                Edit {editField === "dob" ? "Birthday" : editField}
               </h2>
-                            {/* NAME */}
-              {editField === "name" && (
-                <form
-                  className="flex flex-col gap-3"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    submitProfile();
-                  }}
-                >
-                <input
-                autoFocus
-                className="border px-3 py-2 rounded text-[#001f40] placeholder:text-[#001f40]/50"
-                placeholder="Full name"
-                value={draft.full_name || ""}
-                onChange={(e) =>
-                  setDraft({ ...draft, full_name: e.target.value })
-                }
-                onKeyDownCapture={(e) => {
-                  e.stopPropagation();
-                  (e.nativeEvent as any).stopImmediatePropagation?.();
-                }}
-              />
-
-                  <input
-                    className="border w-full px-3 py-2 text-[#001f40] placeholder:text-[#001f40]/50"
-                    placeholder="Preferred name (optional)"
-                    value={draft.preferred_name || ""}
-                    onChange={(e) =>
-                      setDraft({ ...draft, preferred_name: e.target.value })
-                    }
-                  />
-                </form>
-              )}
 
               {editField === "address" && (
                 <div className="flex flex-col gap-2">
                   {["street", "apt", "city", "state", "zip"].map((k) => (
                     <input
                       key={k}
-                      className="border px-2 py-1 text-[#001f40] placeholder:text-[#001f40]/50"
+                      className="border px-2 py-1 text-[#001f40]"
                       placeholder={k.toUpperCase()}
                       value={draft[k] || ""}
                       onChange={(e) =>
@@ -866,7 +692,7 @@ onClick={(e) => {
               {editField === "phone" && (
                 <input
                   autoFocus
-                  className="border w-full px-2 py-1 text-[#001f40] placeholder:text-[#001f40]/50"
+                  className="border w-full px-2 py-1 text-[#001f40]"
                   value={formatUSPhone(draft.home_phone)}
                   onChange={(e) =>
                     setDraft({
@@ -874,12 +700,13 @@ onClick={(e) => {
                       home_phone: e.target.value.replace(/\D/g, "")
                     })
                   }
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  submitProfile();
-                }
-              }}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      await upsertProfile(draft);
+                      setEditField(null);
+                    }
+                  }}
                 />
               )}
 
@@ -887,17 +714,18 @@ onClick={(e) => {
                 <input
                   type="date"
                   autoFocus
-                  className="border w-full px-2 py-1 text-[#001f40] placeholder:text-[#001f40]/50"
+                  className="border w-full px-2 py-1 text-[#001f40]"
                   value={draft.dob || ""}
                   onChange={(e) =>
                     setDraft({ ...draft, dob: e.target.value })
                   }
-                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    submitProfile();
-                  }
-                }}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      await upsertProfile(draft);
+                      setEditField(null);
+                    }
+                  }}
                 />
               )}
 

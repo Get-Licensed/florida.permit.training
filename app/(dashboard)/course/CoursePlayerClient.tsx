@@ -1033,35 +1033,57 @@ const handleScrubStart = useCallback(() => {
   isPausedRef.current = true;
 }, [clearTimelineAutoHideTimer, maybeAutoOpenPromo]);
 
-    useEffect(() => {
-      function handleSpace(e: KeyboardEvent) {
-        if (e.code !== "Space") return
-        e.preventDefault()
-        revealTimelineFor3s()
-        togglePlay()
-      }
+useEffect(() => {
+  function handleSpace(e: KeyboardEvent) {
+    const el = e.target as HTMLElement | null;
 
-      window.addEventListener("keydown", handleSpace)
-      return () => window.removeEventListener("keydown", handleSpace)
-    }, [])
+    // 🚫 DO NOT hijack typing
+    if (
+      el &&
+      (el.tagName === "INPUT" ||
+       el.tagName === "TEXTAREA" ||
+       el.isContentEditable)
+    ) {
+      return;
+    }
 
-    useEffect(() => {
-      function handleContinueHotkey(e: KeyboardEvent) {
-        if (!showContinueInstruction) return
+    if (e.code !== "Space") return;
 
-        // prevent space scrolling
-        if (e.code === "Space" || e.code === "Enter") {
-          e.preventDefault()
+    e.preventDefault();
+    revealTimelineFor3s();
+    togglePlay();
+  }
 
-          resetAudioElement()
-          setIsPaused(!shouldAutoPlayRef.current)
-          goNext()
-        }
-      }
+  window.addEventListener("keydown", handleSpace);
+  return () => window.removeEventListener("keydown", handleSpace);
+}, []);
 
-      window.addEventListener("keydown", handleContinueHotkey)
-      return () => window.removeEventListener("keydown", handleContinueHotkey)
-    }, [showContinueInstruction])
+useEffect(() => {
+  function handleContinueHotkey(e: KeyboardEvent) {
+    const el = e.target as HTMLElement | null;
+
+    if (
+      el &&
+      (el.tagName === "INPUT" ||
+       el.tagName === "TEXTAREA" ||
+       el.isContentEditable)
+    ) {
+      return;
+    }
+
+    if (!showContinueInstruction) return;
+
+    if (e.code === "Space" || e.code === "Enter") {
+      e.preventDefault();
+      resetAudioElement();
+      setIsPaused(!shouldAutoPlayRef.current);
+      goNext();
+    }
+  }
+
+  window.addEventListener("keydown", handleContinueHotkey);
+  return () => window.removeEventListener("keydown", handleContinueHotkey);
+}, [showContinueInstruction]);
 
 // VOLUME VERTICAL CLOSE ON HIDE or TAP
     useEffect(() => {

@@ -5,7 +5,7 @@ import NextDynamic from "next/dynamic"
 export const dynamic = "force-dynamic"
 
 const CoursePlayerLab = NextDynamic(
-  () => import("./CoursePlayerLab"),
+  () => import("./PlayerLab"),
   { ssr: false }
 )
 
