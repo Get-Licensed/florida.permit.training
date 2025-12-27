@@ -618,7 +618,7 @@ onClick={(e) => {
             router.replace("/");
           }}
         >
-          Log Out
+          Log Out!
         </button>
       </div>
     </div>
