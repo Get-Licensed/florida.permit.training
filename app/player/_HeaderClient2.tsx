@@ -8,6 +8,15 @@ import { supabase } from "@/utils/supabaseClient";
 import _Link from "next/link";
 import Cropper from "react-easy-crop";
 
+const INPUT_CLASS =
+  "appearance-none w-full border border-[#001f40] px-3 py-2.5 rounded-md bg-white text-[#001f40] placeholder:text-[#001f40]/50 focus:outline-none focus:ring-2 focus:ring-[#001f40]/30";
+const CANCEL_BUTTON_CLASS =
+  "px-4 py-2 rounded-md border border-[#001f40]/30 bg-white text-[#001f40] hover:bg-[#001f40]/5 transition";
+const SAVE_BUTTON_CLASS =
+  "px-4 py-2 rounded-md bg-[#ca5608] text-white font-semibold hover:bg-[#a14505] transition";
+const GLASS_MODAL =
+  "bg-white/60 backdrop-blur-md border border-white/40 rounded-2xl shadow-[0_12px_40px_rgba(0,31,64,0.25)]";
+
 type EditField = "address" | "phone" | "dob" | null;
 type ProfileRow = {
   id: string;
@@ -43,6 +52,21 @@ export default function PlayerHeader() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (avatarModalOpen) setAvatarModalOpen(false);
+        if (editField) setEditField(null);
+      }
+    };
+
+    if (avatarModalOpen || editField) {
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+
+    return undefined;
+  }, [avatarModalOpen, editField]);
 
 async function getCroppedCompressedBlob(
   imageSrc: string,
@@ -137,12 +161,7 @@ function AvatarCropper({
 
       <div className="flex justify-end gap-3 mt-6">
         <button
-          className="
-            px-4 py-2 rounded-md
-            border border-gray-300
-            bg-white text-[#001f40]
-            hover:bg-gray-100 transition
-          "
+          className={CANCEL_BUTTON_CLASS}
           onClick={onCancel}
         >
           Cancel
@@ -150,14 +169,9 @@ function AvatarCropper({
 
         <button
           disabled={uploading || !croppedAreaPixels}
-          className={`
-            px-4 py-2 rounded-md
-            flex items-center gap-2
-            bg-[#ca5608] text-white
-            hover:bg-[#a14505]
-            transition
-            ${uploading ? "opacity-80 cursor-not-allowed" : ""}
-          `}
+          className={`${SAVE_BUTTON_CLASS} ${
+            uploading || !croppedAreaPixels ? "opacity-80 cursor-not-allowed" : ""
+          }`}
           onClick={async () => {
             const blob = await getCroppedCompressedBlob(
               URL.createObjectURL(file),
@@ -166,7 +180,7 @@ function AvatarCropper({
             onSave(blob);
           }}
         >
-          {uploading ? "Saving…" : "Save Photo"}
+          {uploading ? "Saving…" : "Save"}
         </button>
 
       </div>
@@ -583,12 +597,12 @@ async function cropToSquare(file: File): Promise<Blob> {
 
 {/* AVATAR UPLOAD MODAL */}
 {avatarModalOpen && (
-  <div
-    className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center"
-    onClick={() => setAvatarModalOpen(false)}
-  >
     <div
-      className="bg-white rounded-xl shadow-xl w-[360px] max-w-[90vw] p-6"
+      className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center"
+      onClick={() => setAvatarModalOpen(false)}
+    >
+      <div
+      className={`${GLASS_MODAL} w-[360px] max-w-[90vw] p-6`}
       onClick={(e) => e.stopPropagation()}
     >
       <h2 className="text-xl font-bold text-[#001f40] mb-4">
@@ -640,6 +654,26 @@ async function cropToSquare(file: File): Promise<Blob> {
         </div>
       )}
 
+      {!avatarFile && (
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            type="button"
+            className={CANCEL_BUTTON_CLASS}
+            onClick={() => setAvatarModalOpen(false)}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            disabled
+            className={`${SAVE_BUTTON_CLASS} opacity-80 cursor-not-allowed`}
+          >
+            Save
+          </button>
+        </div>
+      )}
+
       {/* CROPPER */}
       {avatarFile && (
         <AvatarCropper
@@ -660,7 +694,7 @@ async function cropToSquare(file: File): Promise<Blob> {
             onClick={() => setEditField(null)}
           >
             <div
-              className="bg-white rounded-xl shadow-xl w-[420px] max-w-[90vw] p-6"
+              className={`${GLASS_MODAL} w-[420px] max-w-[90vw] p-6`}
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="text-xl font-bold text-[#001f40] mb-4">
@@ -672,7 +706,7 @@ async function cropToSquare(file: File): Promise<Blob> {
                   {["street", "apt", "city", "state", "zip"].map((k) => (
                     <input
                       key={k}
-                      className="border px-2 py-1 text-[#001f40]"
+                      className={INPUT_CLASS}
                       placeholder={k.toUpperCase()}
                       value={draft[k] || ""}
                       onChange={(e) =>
@@ -692,7 +726,7 @@ async function cropToSquare(file: File): Promise<Blob> {
               {editField === "phone" && (
                 <input
                   autoFocus
-                  className="border w-full px-2 py-1 text-[#001f40]"
+                  className={INPUT_CLASS}
                   value={formatUSPhone(draft.home_phone)}
                   onChange={(e) =>
                     setDraft({
@@ -714,7 +748,7 @@ async function cropToSquare(file: File): Promise<Blob> {
                 <input
                   type="date"
                   autoFocus
-                  className="border w-full px-2 py-1 text-[#001f40]"
+                  className={INPUT_CLASS}
                   value={draft.dob || ""}
                   onChange={(e) =>
                     setDraft({ ...draft, dob: e.target.value })
@@ -731,12 +765,7 @@ async function cropToSquare(file: File): Promise<Blob> {
 
               <div className="flex justify-end gap-3 mt-6">
                 <button
-                  className="
-                    px-4 py-2 rounded-md
-                    border border-gray-300
-                    bg-white text-[#001f40]
-                    hover:bg-gray-100 transition
-                  "
+                  className={CANCEL_BUTTON_CLASS}
                   onClick={() => {
                     setDraft(profile);
                     setEditField(null);
@@ -746,20 +775,15 @@ async function cropToSquare(file: File): Promise<Blob> {
                 </button>
                 <button
                   disabled={saving}
-                  className={`
-                    px-4 py-2 rounded-md
-                    flex items-center justify-center gap-2
-                    bg-[#ca5608] text-white
-                    hover:bg-[#a14505]
-                    transition
-                    ${saving ? "opacity-80 cursor-not-allowed" : ""}
-                  `}
+                  className={`${SAVE_BUTTON_CLASS} ${
+                    saving ? "opacity-80 cursor-not-allowed" : ""
+                  }`}
                   onClick={submitProfile}
                 >
                   {saving ? (
                     <>
                       <svg
-                        className="animate-spin h-4 w-4 text-white"
+                        className="inline-block animate-spin h-4 w-4 text-white mr-2"
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
                         viewBox="0 0 24 24"

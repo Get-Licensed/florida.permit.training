@@ -9,7 +9,18 @@ import _Link from "next/link";
 import Cropper from "react-easy-crop";
 
 const INPUT_CLASS =
-  "appearance-none w-full border border-[#001f40] px-3 py-2.5 rounded-md bg-white text-[#001f40] placeholder:text-[#001f40]/50 focus:outline-none focus:ring-2 focus:ring-[#001f40]/30";
+  "appearance-none w-full border border-[#001f40] \
+   px-3 py-1.5 sm:py-2.5 \
+   text-[14px] sm:text-[15px] \
+   rounded-md bg-white text-[#001f40] \
+   placeholder:text-[#001f40]/50 \
+   focus:outline-none focus:ring-2 focus:ring-[#001f40]/30";
+const CANCEL_BUTTON_CLASS =
+  "px-4 py-2 rounded-md border border-[#001f40]/30 bg-white text-[#001f40] hover:bg-[#001f40]/5 transition";
+const SAVE_BUTTON_CLASS =
+  "px-4 py-2 rounded-md bg-[#ca5608] text-white font-semibold hover:bg-[#a14505] transition";
+const GLASS_MODAL =
+  "bg-white/60 backdrop-blur-md border border-white/40 rounded-2xl shadow-[0_12px_40px_rgba(0,31,64,0.25)]";
 
 type EditField = "name" | "address" | "phone" | "dob" | null;
 type ProfileRow = {
@@ -56,9 +67,22 @@ export default function HeaderClient() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const GLASS_MODAL =
-  "bg-white/60 backdrop-blur-md border border-white/40 rounded-2xl shadow-[0_12px_40px_rgba(0,31,64,0.25)]";
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (avatarModalOpen) setAvatarModalOpen(false);
+        if (editField) setEditField(null);
+        if (mobileEditOpen) setMobileEditOpen(false);
+      }
+    };
 
+    if (avatarModalOpen || editField || mobileEditOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+
+    return undefined;
+  }, [avatarModalOpen, editField, mobileEditOpen]);
 
 async function getCroppedCompressedBlob(
   imageSrc: string,
@@ -151,29 +175,32 @@ function AvatarCropper({
         className="w-full mt-4"
       />
 
-<div className="flex justify-end gap-3 mt-6">
-  <button
-    type="button"
-    className="px-4 py-2 rounded-md border border-[#001f40]/30 text-[#001f40] hover:bg-[#001f40]/5 transition"
-    onClick={() => {
-      setDraft(profile);
-      setMobileEditOpen(false);
-    }}
-  >
-    Cancel
-  </button>
+      <div className="flex justify-end gap-3 mt-6">
+        <button
+          type="button"
+          className={CANCEL_BUTTON_CLASS}
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
 
-  <button
-    type="button"
-    className="px-4 py-2 rounded-md bg-[#ca5608] text-white font-semibold hover:bg-[#a14505] transition"
-    onClick={async () => {
-      await submitProfile();
-      setMobileEditOpen(false);
-    }}
-  >
-    Save
-  </button>
-</div>
+        <button
+          type="button"
+          disabled={uploading || !croppedAreaPixels}
+          className={`${SAVE_BUTTON_CLASS} ${
+            uploading || !croppedAreaPixels ? "opacity-80 cursor-not-allowed" : ""
+          }`}
+          onClick={async () => {
+            const blob = await getCroppedCompressedBlob(
+              URL.createObjectURL(file),
+              croppedAreaPixels
+            );
+            onSave(blob);
+          }}
+        >
+          {uploading ? "Saving…" : "Save"}
+        </button>
+      </div>
     </>
   );
 }
@@ -188,6 +215,13 @@ function AvatarCropper({
 
     setProfile((p: any) => ({ ...p, ...update }));
   }
+
+  useEffect(() => {
+  if (isMobile && mobileEditOpen) {
+    setPreviewOpen(false);
+  }
+}, [isMobile, mobileEditOpen]);
+
 
 useEffect(() => {
   async function loadProfile() {
@@ -371,18 +405,22 @@ async function cropToSquare(file: File): Promise<Blob> {
     return (
     <>
     
-    <header className="relative h-16 flex items-center overflow-visible"
-      onClick={() => {
-        setPreviewOpen(v => {
-          const next = !v;
-          if (next) {
-            setNamePulse(true);
-            setTimeout(() => setNamePulse(false), 500);
-          }
-          return next;
-        });
-      }}
-    >
+ <header
+  className="relative h-16 flex items-center overflow-visible"
+  onClick={() => {
+    if (isMobile || mobileEditOpen) return;
+
+    setPreviewOpen((v) => {
+      const next = !v;
+      if (next) {
+        setNamePulse(true);
+        setTimeout(() => setNamePulse(false), 500);
+      }
+      return next;
+    });
+  }}
+>
+
     <div className="flex items-baseline h-16 px-3 py-5 w-full gap-6 pl-[80px]">
 
   {/* LOGO (absolute, baseline-safe) */}
@@ -496,37 +534,31 @@ onClick={(e) => {
   </div>
 </div>
 
-{previewOpen && profile && (
+{!isMobile && !mobileEditOpen && previewOpen && profile && (
   <div
     className="
       absolute left-full top-1/2 -translate-y-1/2
-      ml-6 z-50
-      min-w-[1120px]
-      translate-x-[15%]
+      ml-4 z-50
+      min-w-[720px] max-w-[768px]
     "
     onClick={(e) => e.stopPropagation()}
   >
     {/* GLASS PANEL */}
     <div
       className="
-        bg-white/60
-        backdrop-blur-md
         border border-white/40
-        rounded-2xl
-        shadow-[0_12px_40px_rgba(0,31,64,0.25)]
         px-6 py-4
       "
     >
       <div
-        className="
-          grid
-          grid-cols-[1.4fr_1fr_1fr_1fr_auto]
-          gap-8
-          text-sm text-[#001f40]
-          whitespace-nowrap
-          w-full
-        "
-      >
+  className="
+    flex items-center gap-6
+    text-sm text-[#001f40]
+    whitespace-nowrap
+  "
+>
+<div className="flex items-center gap-6 flex-1 min-w-0">
+
         {/* ADDRESS */}
         <div
           className="cursor-pointer hover:text-[#ca5608] truncate"
@@ -570,16 +602,17 @@ onClick={(e) => {
           )}
         </div>
 
-        {/* LOG OUT */}
+        {/* LOG OUT — ALWAYS RIGHT */}
         <button
           className="
-            font-semibold
-            text-[#001f40]
-            hover:text-[#ca5608]
-            transition
-            justify-self-end
-          "
-          onClick={async () => {
+                    ml-auto
+                    font-semibold
+                    text-[#001f40]
+                    hover:text-[#ca5608]
+                    transition
+                    flex-shrink-0
+                  "
+            onClick={async () => {
             setPreviewOpen(false);
             await supabase.auth.signOut();
             router.replace("/");
@@ -590,10 +623,10 @@ onClick={(e) => {
       </div>
     </div>
   </div>
+</div>
 )}
     </div>
-
-      </div>
+   </div>
   </div>
         </header>
 <div className="h-px bg-gray-200 shadow-sm w-full" />
@@ -654,6 +687,26 @@ onClick={(e) => {
               if (f) setAvatarFile(f);
             }}
           />
+        </div>
+      )}
+
+      {!avatarFile && (
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            type="button"
+            className={CANCEL_BUTTON_CLASS}
+            onClick={() => setAvatarModalOpen(false)}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            disabled
+            className={`${SAVE_BUTTON_CLASS} opacity-80 cursor-not-allowed`}
+          >
+            Save
+          </button>
         </div>
       )}
 
@@ -762,17 +815,21 @@ onClick={(e) => {
 
         <input
           type="date"
-          className={INPUT_CLASS}
+          className={`
+            ${INPUT_CLASS}
+            text-[#001f40]/60
+            [&:not(:valid)]:text-[#001f40]/50
+            [&:valid]:text-[#001f40]
+          `}
           value={draft.dob || ""}
-          onChange={(e) =>
-            setDraft({ ...draft, dob: e.target.value })
-          }
+          onChange={(e) => setDraft({ ...draft, dob: e.target.value })}
         />
-      </div>
+
+              </div>
 
             <div className="flex justify-end gap-3 mt-6">
               <button
-                className="px-4 py-2 border rounded"
+                className={CANCEL_BUTTON_CLASS}
                 onClick={() => {
                   setDraft(profile);
                   setMobileEditOpen(false);
@@ -782,7 +839,7 @@ onClick={(e) => {
               </button>
 
               <button
-                className="px-4 py-2 bg-[#ca5608] text-white rounded"
+                className={SAVE_BUTTON_CLASS}
                 onClick={async () => {
                   await submitProfile();
                   setMobileEditOpen(false);
@@ -804,7 +861,7 @@ onClick={(e) => {
             className={`${GLASS_MODAL} w-[420px] max-w-[90vw] p-6`}
             onClick={(e) => e.stopPropagation()}
           >
-              <h2 className="text-xl font-bold text-[#001f40] mb-4 place-holdertext-[#001f40]/50">
+              <h2 className="text-xl font-bold text-[#001f40] mb-4">
                 Edit {editField === "dob" ? "birthday" : editField}
               </h2>
                             {/* NAME */}
@@ -818,7 +875,7 @@ onClick={(e) => {
                 >
                 <input
                 autoFocus
-                className="border px-3 py-2 rounded text-[#001f40] placeholder:text-[#001f40]/50"
+                className={INPUT_CLASS}
                 placeholder="Full name"
                 value={draft.full_name || ""}
                 onChange={(e) =>
@@ -831,7 +888,7 @@ onClick={(e) => {
               />
 
                   <input
-                    className="border w-full px-3 py-2 text-[#001f40] placeholder:text-[#001f40]/50"
+                    className={INPUT_CLASS}
                     placeholder="Preferred name (optional)"
                     value={draft.preferred_name || ""}
                     onChange={(e) =>
@@ -841,32 +898,38 @@ onClick={(e) => {
                 </form>
               )}
 
-              {editField === "address" && (
-                <div className="flex flex-col gap-2">
-                  {["street", "apt", "city", "state", "zip"].map((k) => (
-                    <input
-                      key={k}
-                      className="border px-2 py-1 text-[#001f40] placeholder:text-[#001f40]/50"
-                      placeholder={k.toUpperCase()}
-                      value={draft[k] || ""}
-                      onChange={(e) =>
-                        setDraft({ ...draft, [k]: e.target.value })
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          submitProfile();
-                        }
-                      }}
-                    />
-                  ))}
+         {editField === "address" && (
+            <div className="flex flex-col gap-2">
+              {[
+                { key: "street", label: "Street" },
+                { key: "apt", label: "Apt / Unit" },
+                { key: "city", label: "City" },
+                { key: "state", label: "State" },
+                { key: "zip", label: "ZIP" },
+              ].map(({ key, label }) => (
+                <input
+                  key={key}
+                  className={INPUT_CLASS}
+                  placeholder={label}
+                  value={draft[key] || ""}
+                  onChange={(e) =>
+                    setDraft({ ...draft, [key]: e.target.value })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      submitProfile();
+                    }
+                  }}
+                />
+              ))}
                 </div>
               )}
 
               {editField === "phone" && (
                 <input
                   autoFocus
-                  className="border w-full px-2 py-1 text-[#001f40] placeholder:text-[#001f40]/50"
+                  className={INPUT_CLASS}
                   value={formatUSPhone(draft.home_phone)}
                   onChange={(e) =>
                     setDraft({
@@ -887,7 +950,7 @@ onClick={(e) => {
                 <input
                   type="date"
                   autoFocus
-                  className="border w-full px-2 py-1 text-[#001f40] placeholder:text-[#001f40]/50"
+                  className={INPUT_CLASS}
                   value={draft.dob || ""}
                   onChange={(e) =>
                     setDraft({ ...draft, dob: e.target.value })
@@ -903,12 +966,7 @@ onClick={(e) => {
 
               <div className="flex justify-end gap-3 mt-6">
                 <button
-                  className="
-                    px-4 py-2 rounded-md
-                    border border-gray-300
-                    bg-white text-[#001f40]
-                    hover:bg-gray-100 transition
-                  "
+                  className={CANCEL_BUTTON_CLASS}
                   onClick={() => {
                     setDraft(profile);
                     setEditField(null);
@@ -918,20 +976,15 @@ onClick={(e) => {
                 </button>
                 <button
                   disabled={saving}
-                  className={`
-                    px-4 py-2 rounded-md
-                    flex items-center justify-center gap-2
-                    bg-[#ca5608] text-white
-                    hover:bg-[#a14505]
-                    transition
-                    ${saving ? "opacity-80 cursor-not-allowed" : ""}
-                  `}
+                  className={`${SAVE_BUTTON_CLASS} ${
+                    saving ? "opacity-80 cursor-not-allowed" : ""
+                  }`}
                   onClick={submitProfile}
                 >
                   {saving ? (
                     <>
                       <svg
-                        className="animate-spin h-4 w-4 text-white"
+                        className="inline-block animate-spin h-4 w-4 text-white mr-2"
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
                         viewBox="0 0 24 24"
