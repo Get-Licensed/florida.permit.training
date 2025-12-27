@@ -10,7 +10,7 @@ import Cropper from "react-easy-crop";
 
 const INPUT_CLASS =
   "appearance-none w-full border border-[#001f40] \
-   px-3 py-1.5 sm:py-2.5 \
+  h-10 sm:h-11 px-3 py-2 \
    text-[14px] sm:text-[15px] \
    rounded-md bg-white text-[#001f40] \
    placeholder:text-[#001f40]/50 \
